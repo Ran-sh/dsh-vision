@@ -6,24 +6,69 @@
 
 > **定位**：dsh-vision **不把视觉模型替换成主模型**，而是作为 DeepSeek 的视觉感知后端。视觉模型永远不会出现在主模型选择器里，`understand_image` 只是 DeepSeek 调用视觉端点的工具通道。
 
+## 架构（Service + Provider Plugin，官方同构）
+
+本仓库是一个 npm workspace，包含两个真正独立的包，严格遵循 DeepSeek Harness 官方「Service Definition / Provider Plugin」ownership 原则（与 `@deepseek-ai/dsh-llm` + `@deepseek-ai/dsh-llm-deepseek`、`@deepseek-ai/dsh-web` + `@deepseek-ai/dsh-web-search-exa` 完全同构）：
+
+```
+@ran-sh/dsh-vision          ← Service 包（packages/vision）
+       │
+       │ owns
+       ▼
+    ctx.vision               ← VisionRuntime 服务（唯一 owner）
+       ▲
+       │ inject ['vision']
+       │
+dsh-plugin-image-mind        ← Provider 插件（packages/image-mind）
+       │
+       ├── Provider          registerAdapter / registerConfigurableProviders（注册进 ctx.vision）
+       ├── Adapter           OpenAICompatibleVisionAdapter（chat-completions / responses）
+       ├── Credentials       凭证缝解析（provider 侧）
+       └── understand_image  薄工具（只调 ctx.vision.call(request)）
+```
+
+官方类比：
+
+```
+@deepseek-ai/dsh-llm                 @ran-sh/dsh-vision
+       ↑ owns ctx.llm                      ↑ owns ctx.vision
+@deepseek-ai/dsh-llm-deepseek        dsh-plugin-image-mind
+       └── inject ['llm']                 └── inject ['vision']
+
+@deepseek-ai/dsh-web                  @ran-sh/dsh-vision
+       ↑ owns ctx.web                      ↑ owns ctx.vision
+@deepseek-ai/dsh-web-search-exa       dsh-plugin-image-mind
+       └── inject ['web']                 └── inject ['vision']
+```
+
+调用链：
+
 ```
 DeepSeek V4
       │
       │ tool call
       ▼
-understand_image          ← 薄工具（只加载图片 + 调 ctx.vision）
+understand_image          ← 薄工具（只加载图片 + 调 ctx.vision.call({provider, model, prompt, images, signal})）
       │
       ▼
-VisionRuntime             ← ctx.vision 服务（Provider Registry + Connection Resolver + Adapter 分发）
+ctx.vision                ← @ran-sh/dsh-vision 拥有的服务
       │
-      ├── Provider Registry    注册表（目录 + 路由，原子热替换，含 replace([])）
-      ├── Connection Resolver  每调用解析不可变快照（baseURL/model/密钥引用/协议/超时同代）
-      ├── Credentials          凭证缝（DSH 凭据存储，key 不进配置）
-      └── Adapter              OpenAICompatibleVisionAdapter（chat-completions / responses）
+      ├── Provider Registry    （image-mind 注册的路由，原子热替换，含 replace([])）
+      ├── Connection Resolver  （每调用解析不可变快照，baseURL/model/密钥引用/协议/超时同代）
+      └── Adapter 分发          （image-mind 注册的 OpenAICompatibleVisionAdapter）
       │
       ▼
 Vision API                ← 真实视觉端点（Opencode Go / Command Code Goat / ...）
 ```
+
+**ownership 边界**：
+
+| 内容 | owner |
+|---|---|
+| `ctx.vision` / VisionRuntime / VisionAdapter / VisionError / 注册表 / 目录 / discoverModels / probe | `@ran-sh/dsh-vision`（provider-neutral，不知任何厂商） |
+| Provider Catalog（23 个端点）/ OpenAICompatibleVisionAdapter / credentials / migrate / settings / last-good / media / cache / attachments / tools / client | `dsh-plugin-image-mind`（Provider 插件） |
+
+**image-mind 不再自己创建 VisionRuntime**——它 `inject ['vision']`，通过 `ctx.vision.registerAdapter(...)` 与 `ctx.vision.registerConfigurableProviders(...)` 注册进注入的服务。Service 生命周期与 Provider 生命周期完全独立：卸载 image-mind 只撤销它的路由，`ctx.vision` 继续存活。
 
 插件 id `image-mind`、工具名 `understand_image`、路由前缀 `/image-mind`，实现与文档均为自行编写。
 
@@ -46,45 +91,37 @@ Vision API                ← 真实视觉端点（Opencode Go / Command Code Go
 ## 架构
 
 ```
-src/
-  index.ts                  组合根：创建 VisionRuntime / 注册目录 / 注册 adapter（带 connection resolver）/ 装 settings / 注册工具 / 挂路由；last-good 配置解析
-  config.ts                 Config schema（schemastery）+ resolveVisionConfig()（官方 resolve 模式）
-  runtime/
-    index.ts                VisionRuntime（ctx.vision 服务）
-    runtime.ts              注册表：registerAdapter(providers, adapter, resolveConnection) / registerConfigurableProviders / call(request) 单参 / discoverModels({provider|draft}) / replace([]) / vision/adapters-updated 事件
-    types.ts                VisionRequest / VisionResult / VisionConnection / VisionModel / VisionDraftConnection / VisionDiscoveryRequest
-    adapter.ts              abstract VisionAdapter（call + discoverModels，connection 深度冻结）
-    errors.ts               VisionError + 稳定错误码（含 DUPLICATE_ADAPTER / INVALID_ADAPTER / REGISTRATION_DISPOSED / DUPLICATE_PROVIDER / ...）
-    deep-freeze.ts          运行时快照深度冻结
-    vision-rpc.ts           薄 Host RPC（测试连接 / 模型列表，走 runtime.probe）
-  providers/
-    catalog.ts              官方视觉端点目录（纯数据，23 条）
-  adapters/
-    openai-compatible/      一个 adapter 服务全部 OpenAI 兼容端点
-      adapter.ts            请求 + 重试（退避/抖动）+ 缓存
-      chat-completions.ts / responses.ts   协议分派
-      parse.ts              响应解析（纯函数）
-      discovery.ts          /models 拉取 + 已知计划回落
-      retry.ts              backoff/jitter
-  credentials/
-    resolve.ts              密钥解析（官方 seam 优先；无 seam 才用 launch environment）
-    migrate.ts              legacy inline apiKey → 凭证存储的安全迁移
-  media/
-    load.ts                 图片加载（路径/URL/附件引用 + 私有网络策略）
-    validate.ts             魔数校验 + 严格 base64
-    types.ts                LoadedImage / ImageMimeType
-  cache/
-    vision-cache.ts         短时语义缓存（key 含 provider/model/baseURL/apiStyle/图片/prompt）
-  tools/
-    understand-image.ts     薄工具（只加载图片 + 调 ctx.vision.call(request) 单参）
-  attachments/
-    routes.ts               /image-mind 路由（attach / raw / 薄 RPC）
-    store.ts                附件引用注册表 + markdown/note
-    legacy-config.ts        旧设置网关（兼容层）
-  client/
-    index.ts                浏览器入口
-    settings/               设置卡片（store + transport + UI）
-    ...                     发送改写钩子 / 缩略图 / 上传 / 文案
+dsh-vision/                        ← npm workspace 根
+├── package.json                   workspace 根（统一 typecheck/test/build 入口）
+├── packages/
+│   ├── vision/                    ← Service 包：@ran-sh/dsh-vision
+│   │   ├── src/
+│   │   │   ├── index.ts           barrel + default export VisionRuntime（Cordis service class）
+│   │   │   ├── runtime.ts         VisionRuntime：registerAdapter / registerConfigurableProviders / call(request) 单参 / discoverModels / probe / replace([]) / vision/adapters-updated
+│   │   │   ├── adapter.ts         abstract VisionAdapter（call + discoverModels，connection 深度冻结）
+│   │   │   ├── types.ts           VisionRequest / VisionResult / VisionConnection / VisionModel / LoadedImage / VisionApiStyle
+│   │   │   ├── errors.ts          VisionError + 稳定错误码
+│   │   │   └── deep-freeze.ts     运行时快照深度冻结
+│   │   └── tests/                 provider-neutral 测试（注册/替换/dispose/目录/选择/事件/冻结）
+│   │
+│   └── image-mind/                ← Provider 插件：dsh-plugin-image-mind
+│       ├── src/
+│       │   ├── index.ts           组合根：inject ['vision','tools']，ctx.vision.registerAdapter / registerConfigurableProviders / setDefaultProviderResolver，装 settings / 注册工具 / 挂路由；last-good 配置
+│       │   ├── config.ts          Config schema（schemastery）+ resolveVisionConfig()
+│       │   ├── runtime/vision-rpc.ts   薄 Host RPC（测试连接 / 模型列表，走 ctx.vision.probe）
+│       │   ├── providers/         catalog.ts 官方视觉端点目录（纯数据，23 条）
+│       │   ├── adapters/openai-compatible/  OpenAICompatibleVisionAdapter（chat-completions / responses / discovery / retry）
+│       │   ├── credentials/       resolve.ts（凭证缝解析）+ migrate.ts（legacy inline key 迁移）
+│       │   ├── media/             图片加载（路径/URL/附件引用 + 私有网络策略）+ 魔数校验
+│       │   ├── cache/             短时语义缓存
+│       │   ├── tools/             understand-image.ts 薄工具（只调 ctx.vision.call(request)）
+│       │   ├── attachments/       /image-mind 路由（attach / raw / 薄 RPC）+ legacy-config 兼容层
+│       │   └── client/            浏览器入口 + 设置卡片 + 发送改写钩子 / 缩略图 / 上传 / 文案
+│       └── tests/                 config / last-good / credential / migration / adapter / discovery / retry / media / cache / attachments / settings / tool / integration / e2e
+│
+└── tests/
+    ├── composition.test.ts        cross-package 集成（Loader 加载双包：A-E 生命周期场景）
+    └── boundary.test.ts           包边界（依赖方向只能 image-mind → vision）
 ```
 
 ### 分层职责
@@ -101,8 +138,8 @@ src/
 ## 已安装
 
 - **项目**：`<PROJECT_DIR>`（本仓库克隆/解压位置，例如 `D:\path\to\dsh-vision`）
-- **挂载**：junction `%USERPROFILE%\.dsh\profiles\node_modules\dsh-plugin-image-mind` → 项目目录
-- **配置**：`%USERPROFILE%\.dsh\profiles\web\cordis.patch.yml` 里插入了 `/image-mind` 一行；`~/.dsh/settings.yaml` 里加了 `image-mind` 节（多视觉提供方：opencode-go / commandcode-goat，各自端点/模型/密钥缝）
+- **挂载**：junction `%USERPROFILE%\.dsh\profiles\node_modules\dsh-plugin-image-mind` → `<PROJECT_DIR>\packages\image-mind`；`%USERPROFILE%\.dsh\profiles\node_modules\@ran-sh\dsh-vision` → `<PROJECT_DIR>\packages\vision`
+- **配置**：`%USERPROFILE%\.dsh\profiles\web\cordis.patch.yml` 里插入了**两行**：`vision-runtime`（`@ran-sh/dsh-vision` 服务 entry）+ `image-mind`（`dsh-plugin-image-mind` provider entry）；`~/.dsh/settings.yaml` 里加了 `image-mind` 节（多视觉提供方：opencode-go / commandcode-goat，各自端点/模型/密钥缝）。两行的加载顺序由 `inject ['vision']` 自动保证，无需手工排序。
 
 当前配置（settings.yaml）：
 
@@ -151,14 +188,15 @@ image-mind:
 
 ```sh
 cd <PROJECT_DIR>
-npm install          # esbuild/typescript/react/vitest；SDK 类型来自 node_modules/@deepseek-ai junction（DSH profile 树）
-npm run typecheck    # tsc 检查 host + client 两侧
-npm test             # vitest 分层单测（runtime/credentials/adapter/discovery/media/cache/integration，无需网络）
-npm run build        # esbuild 产出 lib/index.js（node 侧）+ lib/client.js（浏览器侧）
-RUN_VISION_E2E=1 npm test   # 额外跑真实视觉端点 e2e（读 ~/.dsh/.credentials.yaml，不打印 key）
+npm install          # workspace：esbuild/typescript/react/vitest；SDK 类型来自 node_modules/@deepseek-ai junction（DSH profile 树）
+npm run typecheck    # workspace 统一：两个包的 tsc 检查（vision host + image-mind host/client）
+npm test             # workspace 统一：vision 单测 + image-mind 单测 + cross-package composition/boundary（无需网络）
+npm run build        # workspace 统一：vision lib/index.js + image-mind lib/index.js + lib/client.js
+cd packages/image-mind
+RUN_VISION_E2E=1 npx vitest run tests/e2e-real.test.ts   # 真实视觉端点 e2e（读 ~/.dsh/.credentials.yaml，不打印 key）
 ```
 
-> **⚠️ npm 安全注意事项**：本插件运行时要在项目 `node_modules` 里有一个指向 DSH profile SDK 树的 junction（`node_modules/@deepseek-ai`）。在改动依赖前**先执行 `npm run unlink-sdk`**，装完再 `npm run link-sdk`——否则 `npm install` 的 prune 会顺着 junction 把 DSH 的 SDK 树清空（这是此前的真实事故，恢复方法见下）。
+> **⚠️ npm 安全注意事项**：本插件运行时要在项目 `node_modules` 里有一个指向 DSH profile SDK 树的 junction（`node_modules/@deepseek-ai`）。在改动依赖前**先执行 `npm run unlink-sdk`**（在 `packages/image-mind` 下），装完再 `npm run link-sdk`——否则 `npm install` 的 prune 会顺着 junction 把 DSH 的 SDK 树清空（这是此前的真实事故，恢复方法见下）。
 >
 > SDK 类型解析走项目内 `node_modules/@deepseek-ai` junction；本仓库不含任何机器特定绝对路径（tsconfig / vitest 均相对解析）。
 
@@ -179,12 +217,13 @@ cp -r <项目>/node_modules/schemastery/. "$HOME/.dsh/profiles/node_modules/sche
 ## 卸载
 
 ```sh
-# 1. 从 profile patch 里删掉 image-mind 段（或整行 insert）
-# 2. 删 junction
+# 1. 从 profile patch 里删掉 image-mind 段与 vision-runtime 段（两行 insert）
+# 2. 删两个 junction
 rmdir %USERPROFILE%\.dsh\profiles\node_modules\dsh-plugin-image-mind
+rmdir %USERPROFILE%\.dsh\profiles\node_modules\@ran-sh\dsh-vision
 # 3. 重启 DSH web
 ```
 
 ## 源代码结构和许可
 
-架构见上文「架构」一节。代码全部为自行编写，插件按 MIT 许可开源。
+架构见上文「架构」一节。代码全部为自行编写，两个包均按 MIT 许可开源。

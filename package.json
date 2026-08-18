@@ -1,68 +1,17 @@
 {
-  "name": "dsh-plugin-image-mind",
-  "description": "Image-understanding plugin for the DeepSeek Harness (DSH) web UI: the understand_image tool lets a text-only model ask an OpenAI-compatible vision endpoint (Qwen-VL, GLM-4V, GPT-4o, local Ollama...) about one image; only the returned text enters the conversation. Dragged/pasted images are rewritten into image-mind references at send time.",
+  "name": "dsh-vision",
+  "description": "Workspace root: the @ran-sh/dsh-vision service package (owns ctx.vision) plus the dsh-plugin-image-mind provider/tool plugin (injects ['vision'] and registers into it), following the DeepSeek Harness Service Definition / Provider Plugin split.",
   "version": "0.1.0",
+  "private": true,
   "type": "module",
-  "engines": {
-    "node": "^22.19.0 || >=24.0.0"
-  },
-  "main": "lib/index.js",
-  "exports": {
-    ".": {
-      "default": "./lib/index.js"
-    },
-    "./client": {
-      "default": "./lib/client.js"
-    },
-    "./src/*": "./src/*",
-    "./package.json": "./package.json"
-  },
-  "dsh": {
-    "bundle": {
-      "patch": "./cordis.patch.yml"
-    },
-    "client": {
-      "inject": [
-        "@deepseek-ai/dsh-client-locale",
-        "@deepseek-ai/dsh-client-runtime",
-        "@deepseek-ai/dsh-client-ui-conversation",
-        "@deepseek-ai/dsh-client-ui-slots",
-        "@deepseek-ai/dsh-client-ui-settings-plugins",
-        "@deepseek-ai/dsh-client-connection"
-      ],
-      "platform": "web"
-    }
-  },
-  "scripts": {
-    "build": "node build.mjs",
-    "typecheck": "tsc -p tsconfig.host.json --noEmit && tsc -p tsconfig.client.json --noEmit",
-    "test": "vitest run",
-    "link-sdk": "node scripts/devhelpers/link-sdk.mjs",
-    "unlink-sdk": "node scripts/devhelpers/link-sdk.mjs --remove",
-    "dev:verify": "node --no-warnings scripts/e2e-vision.ts",
-    "dev:retry": "node --no-warnings scripts/e2e-retry.ts",
-    "dev:test-connect": "node --no-warnings scripts/e2e-test-connect.ts"
-  },
-  "dependencies": {
-    "schemastery": "^3.18.0"
-  },
-  "devDependencies": {
-    "@types/node": "^22.20.0",
-    "@types/react": "~18.3.1",
-    "esbuild": "^0.25.5",
-    "react": "^18.3.1",
-    "typescript": "~5.7.2",
-    "vitest": "^2.1.9"
-  },
-  "files": [
-    "lib/**/*.js",
-    "lib/**/*.js.map",
-    "src",
-    "cordis.patch.yml",
-    "README.md"
+  "workspaces": [
+    "packages/vision",
+    "packages/image-mind"
   ],
-  "license": "MIT",
-  "allowScripts": {
-    "esbuild@0.25.12": true
-  }
+  "scripts": {
+    "typecheck": "npm -ws run typecheck",
+    "test": "npm -ws run test && vitest run --config vitest.config.ts",
+    "build": "npm -ws run build"
+  },
+  "license": "MIT"
 }

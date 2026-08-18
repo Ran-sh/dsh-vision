@@ -1,0 +1,32 @@
+{
+  "compilerOptions": {
+    "target": "ES2024",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "lib": ["ES2024"],
+    "strict": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "noEmit": true,
+    "types": ["node"],
+    "baseUrl": ".",
+    "paths": {
+      "@deepseek-ai/*": ["../../node_modules/@deepseek-ai/*"],
+      "@ran-sh/dsh-vision": ["../vision/src/index.ts"]
+    }
+  },
+  "include": [
+    "src/*.ts",
+    "src/runtime/**/*.ts",
+    "src/adapters/**/*.ts",
+    "src/providers/**/*.ts",
+    "src/credentials/**/*.ts",
+    "src/media/**/*.ts",
+    "src/cache/**/*.ts",
+    "src/tools/**/*.ts",
+    "src/attachments/**/*.ts"
+  ]
+}

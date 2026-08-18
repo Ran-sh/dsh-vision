@@ -1,0 +1,36 @@
+{
+  "name": "@ran-sh/dsh-vision",
+  "description": "Provider-neutral vision service interface for the DeepSeek Harness: owns ctx.vision (VisionRuntime), the VisionAdapter contract, and provider registration/directory/discovery primitives. Provider plugins (e.g. dsh-plugin-image-mind) inject ['vision'] and register into it — the same Service Definition / Provider Plugin split as @deepseek-ai/dsh-llm vs @deepseek-ai/dsh-llm-deepseek.",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./src/*": "./src/*",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/index.js",
+    "lib/types/**/*.d.ts",
+    "src",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "*"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "file:../../../node_modules/@deepseek-ai/cordis",
+    "typescript": "~5.7.2",
+    "vitest": "^2.1.9"
+  },
+  "license": "MIT"
+}
