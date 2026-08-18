@@ -1,10 +1,15 @@
 /**
  * The `understand_image` tool: a thin consumer of `ctx.vision`. It loads one
- * image (media layer) and hands the request to the runtime — it never touches
- * baseURL, apiKey, apiStyle, timeout, fetch, protocol selection, model
- * discovery, or retry policy. Provider and model defaults are resolved by the
- * runtime from its own provider registration. The image never enters the
- * conversation: only the returned text crosses.
+ * or more images (media layer) and hands the request to the runtime — it
+ * never touches baseURL, apiKey, apiStyle, timeout, fetch, protocol selection,
+ * model discovery, or retry policy. Provider and model defaults are resolved
+ * by the runtime from its own provider registration. The image never enters
+ * the conversation: only the returned text crosses.
+ *
+ * Multi-image: pass `images` (up to `maxImagesPerRequest`, default 4) for
+ * compare/diff/batch tasks — the request carries all of them to the vision
+ * model in one call. The legacy single `image` argument remains fully
+ * supported; both normalize to the same `LoadedImage[]`.
  * @module dsh-plugin-image-mind/tools/understand-image
  */
 
@@ -14,9 +19,15 @@ import { loadImage } from '../media/load.ts'
 // The `ctx.vision` Context augmentation, owned by the vision service package.
 import type {} from '@ran-sh/dsh-vision'
 
+/** Upper bound on images one call may carry (payload/cost guard). */
+export const MAX_IMAGES_PER_REQUEST = 4
+
 /** The understand_image call's validated arguments. */
 export interface UnderstandImageArgs {
-  image: string
+  /** Single image: local path, http(s) URL, attachment JSON, or bare attachment id. */
+  image?: string
+  /** Multiple images for compare/diff/batch tasks; mutually exclusive with `image`. */
+  images?: string[]
   prompt?: string
   provider?: string
   /** Model id override; absent uses the provider's configured default. */
@@ -24,17 +35,20 @@ export interface UnderstandImageArgs {
 }
 
 /**
- * Pure call view: a generic read card, with a file location for local paths.
+ * Pure call view: a generic read card, with file locations for local paths.
  * @param args - the validated call arguments.
  * @returns the pending-state card for one understand_image call.
  */
 export function understandImageCallView(args: UnderstandImageArgs): GenericCallView {
+  const refs = args.image !== undefined ? [args.image] : args.images ?? []
   return {
     card: 'generic',
     title: 'Understand image',
     kind: 'read',
     rawInput: args,
-    .../^https?:\/\//i.test(args.image) ? {} : { locations: [{ path: args.image }] },
+    ...refs.filter(ref => !/^https?:\/\//i.test(ref)).length > 0
+      ? { locations: refs.filter(ref => !/^https?:\/\//i.test(ref)).map(ref => ({ path: ref })) }
+      : {},
   }
 }
 
@@ -45,8 +59,8 @@ export function understandImageTool(
   mediaOptions: () => { maxBytes: number; allowPrivateNetwork: boolean },
 ): ReturnType<typeof defineTool> {
   const DESCRIPTION_HEAD =
-    'Inspect one image — a local absolute path, an http(s) URL, or the JSON of an image attachment '
-    + 'note — and return the text the user needs. Use when the user references an image file or URL, '
+    'Inspect one or more images — local absolute paths, http(s) URLs, or the JSON of image attachment '
+    + 'notes — and return the text the user needs. Call this when the user references an image file or URL, '
     + 'or when a task needs OCR, chart or diagram reading, screenshot or UI analysis, translation of '
     + 'image text, or photo understanding. '
     + 'Always pass an explicit `prompt` with a precise instruction — e.g. "transcribe all text", '
@@ -54,28 +68,33 @@ export function understandImageTool(
     + 'Chinese" — instead of leaving it to the default description: a targeted instruction produces '
     + 'a much more useful answer. '
     + 'When the task involves several images (compare screenshots, diff two versions, batch-read a '
-    + 'page of photos), CALL THIS TOOL ONCE PER IMAGE — give each call its own `image` reference '
-    + 'and the same or tailored `prompt` — then combine the answers in your reply. '
+    + `page of photos), pass them as the \`images\` array in ONE call (up to ${MAX_IMAGES_PER_REQUEST}): the vision model sees them together. `
+    + 'Do NOT re-call this tool for an image whose analysis already appears in the conversation, unless '
+    + 'the user asks for a fresh look.'
 
   return defineTool({
     name: 'understand_image',
     description: DESCRIPTION_HEAD
-      + 'The image may be a local path, an http(s) URL, the JSON object from an `[image attachment …]` '
+      + 'Each image may be a local path, an http(s) URL, the JSON object from an `[image attachment …]` '
       + "note, or — the common case when the user sent an image through this plugin's input rewriting — a "
       + 'short markdown image reference like `![图片](/image-mind/raw/sha256:abc…)` pasted into '
       + 'the conversation. In the markdown form, take the attachment id from the URL and pass that id '
-      + 'as the `image` value (never the whole markdown, and never a made-up path); the tool resolves '
-      + 'the id to the stored image. The image itself never enters the conversation — only the '
-      + 'returned text is shown to you.',
+      + 'as the `image`/`images` value (never the whole markdown, and never a made-up path); the tool '
+      + 'resolves the id to the stored image. The images themselves never enter the conversation — only '
+      + 'the returned text is shown to you.',
     parameters: {
       image: {
         type: 'string',
-        required: true,
-        description: 'Absolute path to a local image file, an http(s) URL of the image, the JSON object from an [image attachment …] note, or the bare attachment id (e.g. sha256:abc…) taken from the markdown image reference ![图片](/image-mind/raw/<id>) that appeared in the conversation.',
+        description: 'Absolute path to a local image file, an http(s) URL of the image, the JSON object from an [image attachment …] note, or the bare attachment id (e.g. sha256:abc…) taken from the markdown image reference ![图片](/image-mind/raw/<id>) that appeared in the conversation. Use this for a single image; for several images pass `images` instead.',
+      },
+      images: {
+        type: 'array',
+        items: { type: 'string' },
+        description: `Several image references (local paths, http(s) URLs, attachment ids) to analyze together — for comparing screenshots, diffing before/after, or batch-reading a page of photos. At most ${MAX_IMAGES_PER_REQUEST}. Mutually exclusive with \`image\`.`,
       },
       prompt: {
         type: 'string',
-        description: 'Your precise instruction for the vision model about this image (e.g. "transcribe all text", "extract the table as CSV", "diagnose the UI problems", "translate the text"). Prefer a targeted prompt over the generic default description.',
+        description: 'Your precise instruction for the vision model about the image(s) (e.g. "transcribe all text", "extract the table as CSV", "diagnose the UI problems", "compare the two screenshots and list the differences", "translate the text"). Prefer a targeted prompt over the generic default description.',
       },
       provider: {
         type: 'string',
@@ -94,32 +113,57 @@ export function understandImageTool(
           text: { type: 'string', required: true },
           model: { type: 'string', required: true },
           provider: { type: 'string' },
-          image: { type: 'string', required: true },
-          mimeType: { type: 'string', required: true, enum: ['image/png', 'image/jpeg', 'image/gif', 'image/webp'] },
-          bytes: { type: 'integer', required: true },
+          images: {
+            type: 'array',
+            required: true,
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                image: { type: 'string', required: true },
+                mimeType: { type: 'string', required: true, enum: ['image/png', 'image/jpeg', 'image/gif', 'image/webp'] },
+                bytes: { type: 'integer', required: true },
+              },
+            },
+          },
         },
       },
       render: (_args, value) => [{ type: 'text', text: value.text }],
     },
     async execute(args, exec) {
       const { maxBytes, allowPrivateNetwork } = mediaOptions()
-      const image = await loadImage(ctx, args.image, exec.signal, maxBytes, { allowPrivateNetwork })
+      // Normalize the single-image and multi-image forms into one list.
+      const refs = args.image !== undefined && args.image.trim().length > 0
+        ? [args.image.trim()]
+        : (args.images ?? []).map(ref => ref.trim()).filter(ref => ref.length > 0)
+      if (refs.length === 0) {
+        throw new Error('image-mind: pass `image` (single) or `images` (array) with at least one image reference')
+      }
+      if (refs.length > MAX_IMAGES_PER_REQUEST) {
+        throw new Error(`image-mind: at most ${MAX_IMAGES_PER_REQUEST} images per call; got ${refs.length}`)
+      }
+      const images = []
+      for (const ref of refs) {
+        images.push(await loadImage(ctx, ref, exec.signal, maxBytes, { allowPrivateNetwork }))
+      }
       // The runtime selects the provider (explicit `provider`, else active),
       // resolves the connection snapshot, and dispatches to the adapter.
       const result = await ctx.vision.call({
         provider: args.provider,
         model: args.model,
         prompt: args.prompt ?? defaultPrompt(),
-        images: [image],
+        images,
         signal: exec.signal,
       })
       return {
         text: result.text,
         model: result.model,
         provider: result.provider,
-        image: args.image,
-        mimeType: image.mimeType,
-        bytes: image.bytes.length,
+        images: images.map((image, index) => ({
+          image: refs[index],
+          mimeType: image.mimeType,
+          bytes: image.bytes.length,
+        })),
       }
     },
     presentCall: understandImageCallView,

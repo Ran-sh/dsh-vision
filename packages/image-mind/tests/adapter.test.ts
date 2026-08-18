@@ -281,6 +281,23 @@ describe('OpenAICompatibleVisionAdapter', () => {
     expect(second.model).toBe('configured-default')
   })
 
+  it('sends every image in one request (multi-image wire)', async () => {
+    const fetchMock = vi.fn(async () => chatResponse('ok'))
+    vi.stubGlobal('fetch', fetchMock)
+    const adapter = fixedAdapter()
+    const second = { bytes: Buffer.from([9, 9, 9]), mimeType: 'image/jpeg' as const }
+    await adapter.call('p', { ...request, images: [IMAGE, second] })
+    const init = fetchMock.mock.calls[0][1] as RequestInit
+    const body = JSON.parse(String(init.body)) as { messages: Array<{ content: Array<{ type: string; image_url: { url: string } | string }> }> }
+    const parts = body.messages[0].content
+    const imageParts = parts.filter(part => part.type === 'image_url')
+    expect(imageParts).toHaveLength(2)
+    // chat-completions nests the data URL: { image_url: { url: ... } }.
+    const urls = imageParts.map(part => (part.image_url as { url: string }).url)
+    expect(urls[0]).toContain('data:image/png;base64')
+    expect(urls[1]).toContain('data:image/jpeg;base64')
+  })
+
   it('resolves the endpoint snapshot once per call and freezes it (immutable in-flight)', async () => {
     const fetchMock = vi.fn(async () => chatResponse('ok'))
     vi.stubGlobal('fetch', fetchMock)

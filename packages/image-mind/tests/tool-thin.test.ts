@@ -60,12 +60,84 @@ describe('understand_image execute (behavioral)', () => {
 
     const tool = understandImageTool(ctx, () => 'default prompt', () => ({ maxBytes: 10 * 1024 * 1024, allowPrivateNetwork: false }))
     const result = await tool.execute({ image: file, prompt: 'describe' }, { signal: new AbortController().signal } as never)
-    expect(result).toEqual({ text: 'the answer', model: 'm1', provider: 'a', image: file, mimeType: 'image/png', bytes: image.length })
+    expect(result).toEqual({
+      text: 'the answer',
+      model: 'm1',
+      provider: 'a',
+      images: [{ image: file, mimeType: 'image/png', bytes: image.length }],
+    })
     expect(called).toHaveLength(1)
     const request = called[0] as { provider?: string; model?: string; prompt: string; images: unknown[]; signal: unknown }
     expect(request.provider).toBeUndefined()
     expect(request.model).toBeUndefined()
     expect(request.prompt).toBe('describe')
     expect(Array.isArray(request.images)).toBe(true)
+    expect(request.images).toHaveLength(1)
+  })
+
+  it('passes several images via the `images` array (multi-image flow)', async () => {
+    const ctx = new Context()
+    const called: unknown[] = []
+    ctx.provide('vision', {
+      call: vi.fn(async (request: unknown) => {
+        called.push(request)
+        return { text: 'the answer', provider: 'a', model: 'm1' }
+      }),
+    } as never)
+    ctx.provide('attachments', {} as never)
+    const imageA = Buffer.from([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d,
+      0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+    ])
+    const imageB = Buffer.from([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d,
+      0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+    ])
+    const dir = mkdtempSync(join(tmpdir(), 'dsh-vision-test-'))
+    const fileA = join(dir, 'a.png')
+    const fileB = join(dir, 'b.png')
+    writeFileSync(fileA, imageA)
+    writeFileSync(fileB, imageB)
+
+    const tool = understandImageTool(ctx, () => 'compare them', () => ({ maxBytes: 10 * 1024 * 1024, allowPrivateNetwork: false }))
+    const result = await tool.execute({ images: [fileA, fileB] }, { signal: new AbortController().signal } as never)
+    expect(result).toEqual({
+      text: 'the answer',
+      model: 'm1',
+      provider: 'a',
+      images: [
+        { image: fileA, mimeType: 'image/png', bytes: imageA.length },
+        { image: fileB, mimeType: 'image/png', bytes: imageB.length },
+      ],
+    })
+    const request = called[0] as { images: unknown[]; prompt: string }
+    expect(request.images).toHaveLength(2)
+    expect(request.prompt).toBe('compare them')
+  })
+
+  it('rejects more than MAX_IMAGES_PER_REQUEST images', async () => {
+    const ctx = new Context()
+    ctx.provide('vision', { call: vi.fn(async () => ({ text: 'x', provider: 'a', model: 'm' })) } as never)
+    ctx.provide('attachments', {} as never)
+    const dir = mkdtempSync(join(tmpdir(), 'dsh-vision-test-'))
+    const files = []
+    for (let i = 0; i < 6; i++) {
+      const file = join(dir, `img-${i}.png`)
+      writeFileSync(file, Buffer.from([
+        0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d,
+        0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+      ]))
+      files.push(file)
+    }
+    const tool = understandImageTool(ctx, () => 'p', () => ({ maxBytes: 10 * 1024 * 1024, allowPrivateNetwork: false }))
+    await expect(tool.execute({ images: files }, { signal: new AbortController().signal } as never)).rejects.toThrow(/at most 4 images/)
+  })
+
+  it('rejects an empty image reference set', async () => {
+    const ctx = new Context()
+    ctx.provide('vision', { call: vi.fn(async () => ({ text: 'x', provider: 'a', model: 'm' })) } as never)
+    ctx.provide('attachments', {} as never)
+    const tool = understandImageTool(ctx, () => 'p', () => ({ maxBytes: 10 * 1024 * 1024, allowPrivateNetwork: false }))
+    await expect(tool.execute({}, { signal: new AbortController().signal } as never)).rejects.toThrow(/at least one image/)
   })
 })

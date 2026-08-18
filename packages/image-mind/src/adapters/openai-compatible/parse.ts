@@ -66,9 +66,8 @@ export function buildVisionRequest(
   apiStyle: VisionApiStyle,
   maxOutputTokens: number,
   prompt: string,
-  image: LoadedImage,
+  images: readonly LoadedImage[],
 ): { path: string; body: string } {
-  const dataUrl = `data:${image.mimeType};base64,${image.bytes.toString('base64')}`
   if (apiStyle === 'responses') {
     return {
       path: `${baseURL}/responses`,
@@ -79,7 +78,10 @@ export function buildVisionRequest(
           role: 'user',
           content: [
             { type: 'input_text', text: prompt },
-            { type: 'input_image', image_url: dataUrl },
+            ...images.map(image => ({
+              type: 'input_image',
+              image_url: `data:${image.mimeType};base64,${image.bytes.toString('base64')}`,
+            })),
           ],
         }],
       }),
@@ -94,7 +96,10 @@ export function buildVisionRequest(
         role: 'user',
         content: [
           { type: 'text', text: prompt },
-          { type: 'image_url', image_url: { url: dataUrl } },
+          ...images.map(image => ({
+            type: 'image_url',
+            image_url: { url: `data:${image.mimeType};base64,${image.bytes.toString('base64')}` },
+          })),
         ],
       }],
     }),

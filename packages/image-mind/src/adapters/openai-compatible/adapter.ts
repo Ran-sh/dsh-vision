@@ -83,12 +83,13 @@ function responseHint(status: number, retried: boolean, excerpt?: string): strin
 export function semanticRequestKey(
   options: Readonly<OpenAICompatibleVisionOptions>,
   prompt: string,
-  image: { bytes: Buffer; mimeType: string },
+  images: readonly { bytes: Buffer; mimeType: string }[],
 ): string {
   return JSON.stringify([
     options.provider, options.baseURL, options.model,
     options.apiStyle, options.maxOutputTokens,
-    image.bytes.toString('base64'), image.mimeType, prompt,
+    images.map(image => [image.bytes.toString('base64'), image.mimeType]),
+    prompt,
   ])
 }
 
@@ -156,7 +157,7 @@ async function callVisionOnce(
 ): Promise<VisionResult> {
   const { path, body } = buildVisionRequest(
     options.baseURL, options.model, options.apiStyle, options.maxOutputTokens,
-    request.prompt, request.images[0],
+    request.prompt, request.images,
   )
   let response: Response
   try {
@@ -231,7 +232,7 @@ export class OpenAICompatibleVisionAdapter extends VisionAdapter {
     const apiKey = await this.options.resolveApiKey(options)
     const cacheKey = this.options.cache === undefined
       ? undefined
-      : semanticRequestKey(options, request.prompt, request.images[0])
+      : semanticRequestKey(options, request.prompt, request.images)
     if (cacheKey !== undefined) {
       const cached = this.options.cache?.get(cacheKey)
       if (cached !== undefined) {

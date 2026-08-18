@@ -63,38 +63,38 @@ describe('createVisionCache', () => {
 
 describe('semanticRequestKey (cache isolation)', () => {
   it('separates provider A from provider B', () => {
-    const keyA = semanticRequestKey(connection({ provider: 'a' }), 'p', IMAGE_A)
-    const keyB = semanticRequestKey(connection({ provider: 'b' }), 'p', IMAGE_A)
+    const keyA = semanticRequestKey(connection({ provider: 'a' }), 'p', [IMAGE_A])
+    const keyB = semanticRequestKey(connection({ provider: 'b' }), 'p', [IMAGE_A])
     expect(keyA).not.toBe(keyB)
   })
 
   it('separates model A from model B', () => {
-    const keyA = semanticRequestKey(connection({ model: 'm1' }), 'p', IMAGE_A)
-    const keyB = semanticRequestKey(connection({ model: 'm2' }), 'p', IMAGE_A)
+    const keyA = semanticRequestKey(connection({ model: 'm1' }), 'p', [IMAGE_A])
+    const keyB = semanticRequestKey(connection({ model: 'm2' }), 'p', [IMAGE_A])
     expect(keyA).not.toBe(keyB)
   })
 
   it('separates baseURL changes', () => {
-    const keyA = semanticRequestKey(connection({ baseURL: 'https://a/v1' }), 'p', IMAGE_A)
-    const keyB = semanticRequestKey(connection({ baseURL: 'https://b/v1' }), 'p', IMAGE_A)
+    const keyA = semanticRequestKey(connection({ baseURL: 'https://a/v1' }), 'p', [IMAGE_A])
+    const keyB = semanticRequestKey(connection({ baseURL: 'https://b/v1' }), 'p', [IMAGE_A])
     expect(keyA).not.toBe(keyB)
   })
 
   it('separates protocol styles', () => {
-    const keyA = semanticRequestKey(connection({ apiStyle: 'chat-completions' }), 'p', IMAGE_A)
-    const keyB = semanticRequestKey(connection({ apiStyle: 'responses' }), 'p', IMAGE_A)
+    const keyA = semanticRequestKey(connection({ apiStyle: 'chat-completions' }), 'p', [IMAGE_A])
+    const keyB = semanticRequestKey(connection({ apiStyle: 'responses' }), 'p', [IMAGE_A])
     expect(keyA).not.toBe(keyB)
   })
 
   it('separates prompts', () => {
-    const keyA = semanticRequestKey(connection(), 'describe', IMAGE_A)
-    const keyB = semanticRequestKey(connection(), 'transcribe', IMAGE_A)
+    const keyA = semanticRequestKey(connection(), 'describe', [IMAGE_A])
+    const keyB = semanticRequestKey(connection(), 'transcribe', [IMAGE_A])
     expect(keyA).not.toBe(keyB)
   })
 
   it('separates images', () => {
-    const keyA = semanticRequestKey(connection(), 'p', IMAGE_A)
-    const keyB = semanticRequestKey(connection(), 'p', IMAGE_B)
+    const keyA = semanticRequestKey(connection(), 'p', [IMAGE_A])
+    const keyB = semanticRequestKey(connection(), 'p', [IMAGE_B])
     expect(keyA).not.toBe(keyB)
   })
 })
