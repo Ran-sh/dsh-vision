@@ -9,6 +9,7 @@
  */
 
 import { readFile, stat } from 'node:fs/promises'
+import { validateImageUrl } from './network.ts'
 import type { Context } from '@deepseek-ai/cordis'
 import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import { attachmentRefById, parseImageAttachmentRef } from '../attachments/store.ts'
@@ -68,17 +69,8 @@ function assertWithinBound(bytes: number, maxBytes: number): void {
   }
 }
 
-/** Hostnames that are always reachable: local vision endpoints. */
-function isLocalHostname(hostname: string): boolean {
-  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1' || hostname === '[::1]'
-}
-
-/** Whether a hostname is on a private or loopback network. */
-function isPrivateHostname(hostname: string): boolean {
-  if (isLocalHostname(hostname)) return true
-  return /^(10\.|127\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.)/.test(hostname)
-    || /^\[?fc|^\[?fd|^\[?fe8|^\[?::1\]?$/.test(hostname.toLowerCase())
-}
+// Private-network policy moved to media/network.ts (proper IP classification
+// + DNS pre-resolution); this module only orchestrates loading.
 
 /**
  * Load one image from a local absolute path, an http(s) URL, an attachment
@@ -111,15 +103,10 @@ export async function loadImage(
     return toImage(bytes, trimmed.slice(0, 96))
   }
   if (/^https?:\/\//i.test(trimmed)) {
-    let hostname = ''
-    try {
-      hostname = new URL(trimmed).hostname
-    } catch {
-      throw new Error(`image-mind: image URL is not valid: ${trimmed.slice(0, 96)}`)
-    }
-    if (!allowPrivateNetwork && isPrivateHostname(hostname)) {
-      throw new Error(`image-mind: image URL points to a private network host (${hostname}); set allowPrivateNetwork to fetch it`)
-    }
+    // SSRF guard: private IP literals (v4/v6/mapped), local names, and DNS
+    // pre-resolution landing private all reject unless explicitly allowed;
+    // embedded URL credentials are refused; redirects stay rejected.
+    await validateImageUrl(trimmed, allowPrivateNetwork)
     const response = await fetch(trimmed, { signal, redirect: 'error' })
     if (!response.ok) {
       throw new Error(`image-mind: image fetch returned HTTP ${response.status}`)
