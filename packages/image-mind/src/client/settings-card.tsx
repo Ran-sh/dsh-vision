@@ -433,9 +433,10 @@ export function ImageMindSettingsCard(props: ImageMindSettingsCardProps) {
         {state.providers.map(p => {
           const test = tests[p.id]
           // Truthful lamp: config state by default; test overrides it only
-          // after a real test ran (or is running).
-          const lamp: CardStatus = test?.status ?? (p.complete ? (p.keyReady ? 'ok' : 'fail') : 'fail')
-          const lampLabel = test?.label ?? (p.complete ? (p.keyReady ? t('provider.ready') : t('provider.missingKey')) : t('provider.notReady'))
+          // after a real test ran (or is running). 未配置 = gray, 密钥缺失 =
+          // red, 可连接 = green.
+          const lamp: CardStatus = test?.status ?? (!p.complete ? 'fail' : (p.keyReady ? 'ok' : 'fail'))
+          const lampLabel = test?.label ?? (!p.complete ? t('provider.notReady') : (p.keyReady ? t('provider.ready') : t('provider.missingKey')))
           return (
             <li key={p.id} className="image-mind-provider-row">
               <button type="button" className="image-mind-provider-row-main" onClick={() => { setEditingId(editingId === p.id ? null : p.id) }} aria-expanded={editingId === p.id}>
@@ -467,6 +468,10 @@ export function ImageMindSettingsCard(props: ImageMindSettingsCardProps) {
           if (p === undefined) return null
           const test = tests[p.id]
           const models = modelsBy[p.id]
+          // Advanced parameters (endpoint root, protocol, output cap) start
+          // collapsed so the everyday flow is just key + model, exactly like
+          // the built-in Models page; the disclosure sits above the test row.
+          const [advancedOpen, setAdvancedOpen] = useState(false)
           return (
             <div className="image-mind-provider-editor">
               <div className="image-mind-provider-editor-head">
@@ -474,16 +479,23 @@ export function ImageMindSettingsCard(props: ImageMindSettingsCardProps) {
                 <button type="button" className="image-mind-provider-action" onClick={() => { setEditingId(null) }}>{t('provider.done')}</button>
               </div>
               <ValueField
-                id={`image-mind-${p.id}-baseurl`}
-                label={t('field.baseURL')}
-                hint={t('field.baseURL.hint')}
-                placeholder="https://api.example.com/v1"
+                id={`image-mind-${p.id}-apikey`}
+                label={t('field.apiKey')}
+                hint={t('field.apiKey.hint')}
                 {...fieldProps}
-                text={p.baseURL}
-                overridden={false}
+                text={p.apiKeyText}
+                overridden={p.apiKeyConfigured}
                 invalid={false}
-                onEdit={(text) => { props.editProvider(p.id, 'baseURL', text) }}
-                onReset={() => { props.editProvider(p.id, 'baseURL', '') }}
+                onEdit={(text) => {
+                  props.editProvider(p.id, 'apiKeyText', text)
+                  // A freshly typed key unlocks the model list: fetch it right
+                  // away so the user only needs to fill the key, then pick a
+                  // model. Masks and empty input never trigger a fetch.
+                  if (p.baseURL.trim().length > 0 && text.length > 0 && !/^\*+$/.test(text)) {
+                    void loadModels({ ...p, apiKeyText: text }, text)
+                  }
+                }}
+                onReset={() => { props.editProvider(p.id, 'apiKeyText', '') }}
               />
               <ModelField
                 id={`image-mind-${p.id}-model`}
@@ -504,64 +516,72 @@ export function ImageMindSettingsCard(props: ImageMindSettingsCardProps) {
                 onReset={() => { props.editProvider(p.id, 'model', '') }}
                 onLoad={() => { void loadModels(p) }}
               />
-              <ChoiceField
-                id={`image-mind-${p.id}-apistyle`}
-                label={t('field.apiStyle')}
-                hint={t('field.apiStyle.hint')}
-                inheritLabel={t('settings.inherit')}
-                choices={[
-                  { value: 'chat-completions', label: t('field.apiStyle.chatCompletions') },
-                  { value: 'responses', label: t('field.apiStyle.responses') },
-                ]}
-                {...fieldProps}
-                text={p.apiStyle}
-                overridden={false}
-                invalid={false}
-                onEdit={(text) => { props.editProvider(p.id, 'apiStyle', text) }}
-                onReset={() => { props.editProvider(p.id, 'apiStyle', '') }}
-              />
-              <ValueField
-                id={`image-mind-${p.id}-apikey`}
-                label={t('field.apiKey')}
-                hint={t('field.apiKey.hint')}
-                {...fieldProps}
-                text={p.apiKeyText}
-                overridden={p.apiKeyConfigured}
-                invalid={false}
-                onEdit={(text) => {
-                  props.editProvider(p.id, 'apiKeyText', text)
-                  // A freshly typed key unlocks the model list: fetch it right
-                  // away so the user only needs to fill the key, then pick a
-                  // model. Masks and empty input never trigger a fetch.
-                  if (p.baseURL.trim().length > 0 && text.length > 0 && !/^\*+$/.test(text)) {
-                    void loadModels({ ...p, apiKeyText: text }, text)
-                  }
-                }}
-                onReset={() => { props.editProvider(p.id, 'apiKeyText', '') }}
-              />
-              <ValueField
-                id={`image-mind-${p.id}-apikeyenv`}
-                label={t('field.apiKeyEnv')}
-                hint={t('field.apiKeyEnv.hint.multi')}
-                {...fieldProps}
-                text={p.apiKeyEnv}
-                overridden={false}
-                invalid={false}
-                onEdit={(text) => { props.editProvider(p.id, 'apiKeyEnv', text) }}
-                onReset={() => { props.editProvider(p.id, 'apiKeyEnv', '') }}
-              />
-              <ValueField
-                id={`image-mind-${p.id}-maxoutputtokens`}
-                label={t('field.maxOutputTokens')}
-                hint={t('field.maxOutputTokens.hint')}
-                numeric
-                {...fieldProps}
-                text={p.maxOutputTokens}
-                overridden={false}
-                invalid={false}
-                onEdit={(text) => { props.editProvider(p.id, 'maxOutputTokens', text) }}
-                onReset={() => { props.editProvider(p.id, 'maxOutputTokens', '') }}
-              />
+              <button
+                type="button"
+                className="image-mind-provider-advanced-toggle"
+                disabled={disabled}
+                onClick={() => { setAdvancedOpen(!advancedOpen) }}
+                aria-expanded={advancedOpen}
+              >
+                {advancedOpen ? t('settings.collapse') : t('settings.expand')}
+              </button>
+              {advancedOpen
+                ? (
+                  <>
+                    <ValueField
+                      id={`image-mind-${p.id}-baseurl`}
+                      label={t('field.baseURL')}
+                      hint={t('field.baseURL.hint')}
+                      placeholder="https://api.example.com/v1"
+                      {...fieldProps}
+                      text={p.baseURL}
+                      overridden={false}
+                      invalid={false}
+                      onEdit={(text) => { props.editProvider(p.id, 'baseURL', text) }}
+                      onReset={() => { props.editProvider(p.id, 'baseURL', '') }}
+                    />
+                    <ChoiceField
+                      id={`image-mind-${p.id}-apistyle`}
+                      label={t('field.apiStyle')}
+                      hint={t('field.apiStyle.hint')}
+                      inheritLabel={t('settings.inherit')}
+                      choices={[
+                        { value: 'chat-completions', label: t('field.apiStyle.chatCompletions') },
+                        { value: 'responses', label: t('field.apiStyle.responses') },
+                      ]}
+                      {...fieldProps}
+                      text={p.apiStyle}
+                      overridden={false}
+                      invalid={false}
+                      onEdit={(text) => { props.editProvider(p.id, 'apiStyle', text) }}
+                      onReset={() => { props.editProvider(p.id, 'apiStyle', '') }}
+                    />
+                    <ValueField
+                      id={`image-mind-${p.id}-apikeyenv`}
+                      label={t('field.apiKeyEnv')}
+                      hint={t('field.apiKeyEnv.hint.multi')}
+                      {...fieldProps}
+                      text={p.apiKeyEnv}
+                      overridden={false}
+                      invalid={false}
+                      onEdit={(text) => { props.editProvider(p.id, 'apiKeyEnv', text) }}
+                      onReset={() => { props.editProvider(p.id, 'apiKeyEnv', '') }}
+                    />
+                    <ValueField
+                      id={`image-mind-${p.id}-maxoutputtokens`}
+                      label={t('field.maxOutputTokens')}
+                      hint={t('field.maxOutputTokens.hint')}
+                      numeric
+                      {...fieldProps}
+                      text={p.maxOutputTokens}
+                      overridden={false}
+                      invalid={false}
+                      onEdit={(text) => { props.editProvider(p.id, 'maxOutputTokens', text) }}
+                      onReset={() => { props.editProvider(p.id, 'maxOutputTokens', '') }}
+                    />
+                  </>
+                )
+                : null}
               <div className="image-mind-card-testrow">
                 {test?.text !== undefined
                   ? <p className={test.status === 'ok' ? 'image-mind-card-test-ok' : 'image-mind-card-test-err'} role="status">{test.text}</p>

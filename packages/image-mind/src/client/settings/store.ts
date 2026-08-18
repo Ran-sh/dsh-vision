@@ -231,15 +231,25 @@ export class ImageMindSettingsStore {
   private projection(): ImageMindSettingsState {
     const providers = (this.view.value?.['providers'] ?? {}) as Record<string, unknown>
     const ids = [...new Set([...Object.keys(providers), ...this.draft.keys()])]
-    const rows: ProviderCardState[] = ids.map(id => {
-      const d = this.draft.get(id) ?? draftOf(id, providerRecordOf(this.view, id), this.credentialConfigured(id), this.credentialMask(id))
-      return {
-        id,
-        ...d,
-        complete: d.baseURL.trim().length > 0 && d.model.trim().length > 0,
-        keyReady: d.apiKeyMask.length > 0,
-      }
-    })
+    const activeNow = this.top('active')
+    const rows: ProviderCardState[] = ids
+      // Stable order: the active provider first, then configured providers
+      // in insertion order, then name — so the list never jumps around.
+      .sort((a, b) => {
+        const aActive = a === activeNow ? 0 : 1
+        const bActive = b === activeNow ? 0 : 1
+        if (aActive !== bActive) return aActive - bActive
+        return a.localeCompare(b)
+      })
+      .map(id => {
+        const d = this.draft.get(id) ?? draftOf(id, providerRecordOf(this.view, id), this.credentialConfigured(id), this.credentialMask(id))
+        return {
+          id,
+          ...d,
+          complete: d.baseURL.trim().length > 0 && d.model.trim().length > 0,
+          keyReady: d.apiKeyMask.length > 0,
+        }
+      })
     return {
       shell: {
         available: this.view.status !== 'loading',
