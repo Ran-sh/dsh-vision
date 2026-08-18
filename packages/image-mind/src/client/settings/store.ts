@@ -72,7 +72,7 @@ export function normalizeId(name: string): string {
 // The conventional credential reference for a provider route is owned by the
 // host credential layer (shared with the legacy-key migration); the card
 // re-exports it so the browser never keeps a second definition.
-import { deriveKeyRef } from '../../credentials/migrate.ts'
+import { deriveKeyRef, isValidProviderId, isKeylessBaseURL, connectionFingerprint, PROVIDER_ID_RE } from './identity.ts'
 export { deriveKeyRef }
 
 /** Read one top-level string field from a snapshot value. */

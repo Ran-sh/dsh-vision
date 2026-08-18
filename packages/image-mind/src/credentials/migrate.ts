@@ -18,10 +18,8 @@ import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import { IMAGE_MIND_SETTINGS_NAMESPACE, type Provider } from '../config.ts'
 
 /** Derive a safe credential reference from a provider id (e.g. `my-vision` → `MY_VISION_API_KEY`). */
-export function deriveKeyRef(provider: string): string {
-  const base = provider.toUpperCase().replace(/[^A-Z0-9]+/g, '_')
-  return `${base}_API_KEY`
-}
+import { deriveKeyRef } from '../client/settings/identity.ts'
+export { deriveKeyRef }
 
 /** One legacy inline key found in a stored section. */
 export interface LegacyInlineKey {
