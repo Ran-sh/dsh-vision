@@ -14,7 +14,9 @@
     "build": "npm -ws run build",
     "test:e2e": "node scripts/run-e2e.mjs",
     "install:dsh": "node scripts/install-dsh.mjs",
-    "uninstall:dsh": "node scripts/uninstall-dsh.mjs"
+    "uninstall:dsh": "node scripts/uninstall-dsh.mjs",
+    "diagnose:dsh": "node scripts/diagnose-dsh.mjs",
+    "test:install": "vitest run --config vitest.config.ts tests/install.test.ts"
   },
   "license": "MIT",
   "devDependencies": {

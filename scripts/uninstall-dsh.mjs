@@ -19,7 +19,7 @@
  *   npm run uninstall:dsh -- --purge-settings
  *   npm run uninstall:dsh -- --profile web
  */
-import { existsSync, readdirSync, readFileSync, writeFileSync, lstatSync, unlinkSync, renameSync, realpathSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, writeFileSync, lstatSync, unlinkSync, renameSync, realpathSync, rmdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join, basename } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -39,6 +39,7 @@ const ROW_IDS = ['vision-runtime', 'image-mind']
 const ROW_NAMES = ['@ran-sh/dsh-vision', 'dsh-plugin-image-mind']
 
 const purgeSettings = process.argv.includes('--purge-settings')
+const dryRun = process.argv.includes('--dry-run')
 
 function profileArg() {
   const args = process.argv.slice(2)
@@ -87,6 +88,10 @@ function unlinkPackage(name) {
   } catch {
     // A broken link still resolves to a non-existent target; remove it.
   }
+  if (dryRun) {
+    console.log(`[dry-run] would unlink ${name}`)
+    return
+  }
   unlinkSync(linkPath)
   console.log(`unlinked ${name}`)
 }
@@ -115,6 +120,10 @@ function unpatchProfile(profile) {
       return
     }
     const next = text.replace(fallback, '')
+    if (dryRun) {
+      console.log(`[dry-run] would remove dsh-vision rows from ${patchPath}`)
+      return
+    }
     const backup = `${patchPath}.bak-${new Date().toISOString().replace(/[:.]/g, '-')}`
     renameSync(patchPath, backup)
     writeFileSync(patchPath, next)
@@ -122,6 +131,10 @@ function unpatchProfile(profile) {
     return
   }
   const next = text.replace(blockRe, '')
+  if (dryRun) {
+    console.log(`[dry-run] would remove dsh-vision rows from ${patchPath}`)
+    return
+  }
   const backup = `${patchPath}.bak-${new Date().toISOString().replace(/[:.]/g, '-')}`
   renameSync(patchPath, backup)
   writeFileSync(patchPath, next)
@@ -163,13 +176,29 @@ function purgeSettingsSection() {
   console.log(`removed image-mind section from ${settingsPath} (backup: ${basename(backup)})`)
 }
 
-console.log(`DSH_HOME: ${dshHome}`)
+console.log(`DSH_HOME: ${dshHome}${dryRun ? ' [dry-run]' : ''}`)
 if (!existsSync(profilesRoot)) {
   console.log(`no Harness profiles found under ${profilesRoot}; nothing to uninstall`)
   process.exit(0)
 }
 
 for (const name of LINK_NAMES) unlinkPackage(name)
+
+// Clean up the scoped parent directory only when WE emptied it and nothing
+// else lives there; a directory with other scoped packages is never touched.
+const scopeDir = join(modulesRoot, '@ran-sh')
+try {
+  if (existsSync(scopeDir) && readdirSync(scopeDir).length === 0) {
+    if (dryRun) {
+      console.log(`[dry-run] would remove empty ${scopeDir}`)
+    } else {
+      rmdirSync(scopeDir)
+      console.log(`removed empty ${scopeDir}`)
+    }
+  }
+} catch {
+  // A non-empty or locked directory is left alone.
+}
 
 const profile = pickProfile()
 if (profile !== undefined) unpatchProfile(profile)

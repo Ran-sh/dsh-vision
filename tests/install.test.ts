@@ -7,7 +7,7 @@
  * @vitest-environment node
  */
 
-import { mkdtempSync, writeFileSync, readFileSync, existsSync, mkdirSync, rmSync, lstatSync } from 'node:fs'
+import { mkdtempSync, writeFileSync, readFileSync, existsSync, mkdirSync, rmSync, lstatSync, renameSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -26,7 +26,7 @@ beforeEach(() => {
   // A realistic profile skeleton: one profile with an existing patch.
   mkdirSync(join(home, 'profiles', 'web'), { recursive: true })
   mkdirSync(join(home, 'profiles', 'node_modules'), { recursive: true })
-  mkdirSync(join(home, 'profiles', 'node_modules', '@ran-sh'), { recursive: true })
+  // NOTE: @ran-sh is deliberately NOT pre-created — the installer must make it.
   writeFileSync(join(home, 'profiles', 'web', 'cordis.patch.yml'),
     '# existing patch\n- insert:\n    - id: some-other-plugin\n      name: dsh-some-other\n')
   writeFileSync(join(home, 'settings.yaml'), 'someOther:\n  key: value\n')
@@ -107,5 +107,76 @@ describe('npm run install:dsh / uninstall:dsh (temp DSH_HOME)', () => {
     const out = run(uninstallScript)
     expect(out).toMatch(/nothing to uninstall|skip|settings kept/)
     expect(readFileSync(patchPath(), 'utf8')).toMatch(/some-other-plugin/)
+  })
+
+  it('fresh install creates the @ran-sh scope directory itself', () => {
+    expect(existsSync(join(home, 'profiles', 'node_modules', '@ran-sh'))).toBe(false)
+    run(installScript)
+    expect(existsSync(join(home, 'profiles', 'node_modules', '@ran-sh', 'dsh-vision'))).toBe(true)
+  })
+
+  it('--dry-run performs zero mutations', () => {
+    const before = readFileSync(patchPath(), 'utf8')
+    const out = run(installScript, ['--dry-run'])
+    expect(out).toMatch(/\[dry-run\]/)
+    expect(readFileSync(patchPath(), 'utf8')).toBe(before)
+    expect(existsSync(visionLink())).toBe(false)
+    const webDir = require('node:fs').readdirSync(join(home, 'profiles', 'web'))
+    expect(webDir.filter(f => f.includes('.bak-'))).toHaveLength(0)
+  })
+
+  it('preserves CRLF in the patch file', () => {
+    const crlf = '\r\n'
+    writeFileSync(patchPath(), '# existing patch' + crlf + '- insert:' + crlf + '    - id: some-other-plugin' + crlf + '      name: dsh-some-other' + crlf)
+    run(installScript)
+    const text = readFileSync(patchPath(), 'utf8')
+    expect(text).toContain(crlf)
+    expect(text).toMatch(/- id: vision-runtime/)
+    const lfOnly = text.split('\n').filter(line => line.length > 0 && !line.endsWith('\r')).length
+    expect(lfOnly).toBe(0)
+  })
+
+  it('refuses to guess when multiple profiles exist and none is named', () => {
+    rmSync(join(home, 'profiles', 'web'), { recursive: true, force: true })
+    for (const name of ['alpha', 'beta']) {
+      mkdirSync(join(home, 'profiles', name), { recursive: true })
+      writeFileSync(join(home, 'profiles', name, 'cordis.patch.yml'), '# ' + name + '\n')
+    }
+    expect(() => run(installScript)).toThrow(/multiple profiles|refusing to guess/)
+  })
+
+  it('--profile names the target explicitly', () => {
+    mkdirSync(join(home, 'profiles', 'other'), { recursive: true })
+    writeFileSync(join(home, 'profiles', 'other', 'cordis.patch.yml'), '# other\n')
+    const out = run(installScript, ['--profile', 'other'])
+    expect(out).toMatch(/added dsh-vision rows/)
+    expect(readFileSync(join(home, 'profiles', 'other', 'cordis.patch.yml'), 'utf8')).toMatch(/- id: vision-runtime/)
+    expect(readFileSync(patchPath(), 'utf8')).not.toMatch(/- id: vision-runtime/)
+  })
+
+  it('refuses to install when the build artifact is missing', () => {
+    const lib = join(projectRoot, 'packages', 'vision', 'lib')
+    const moved = lib + '.test-hidden'
+    renameSync(lib, moved)
+    try {
+      expect(() => run(installScript)).toThrow(/no built artifact/)
+    } finally {
+      renameSync(moved, lib)
+    }
+  })
+
+  it('uninstall cleans the empty @ran-sh scope directory', () => {
+    run(installScript)
+    run(uninstallScript)
+    expect(existsSync(join(home, 'profiles', 'node_modules', '@ran-sh'))).toBe(false)
+  })
+
+  it('uninstall --dry-run performs zero mutations', () => {
+    run(installScript)
+    const before = readFileSync(patchPath(), 'utf8')
+    const out = run(uninstallScript, ['--dry-run'])
+    expect(out).toMatch(/\[dry-run\]/)
+    expect(readFileSync(patchPath(), 'utf8')).toBe(before)
+    expect(existsSync(visionLink())).toBe(true)
   })
 })
