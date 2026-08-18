@@ -19,6 +19,8 @@ import {
 
 /** One provider as the browser edits it (all string drafts; secret kept write-only). */
 export interface ProviderDraft {
+  /** Presentation name; never the route identity. */
+  displayName: string
   baseURL: string
   model: string
   apiKeyEnv: string
@@ -29,6 +31,8 @@ export interface ProviderDraft {
   /** Whether a key is configured today (credential store or inline legacy). */
   apiKeyConfigured: boolean
   apiKeyMask: string
+  /** Whether this provider needs no credential (local endpoints, explicit config). */
+  keyless: boolean
 }
 
 /** One provider row the renderer consumes. */
@@ -36,8 +40,10 @@ export interface ProviderCardState extends ProviderDraft {
   id: string
   /** endpoint+model filled (regardless of key). */
   complete: boolean
-  /** a key actually resolves today (credential store or env seam). */
+  /** a key actually resolves today (credential store or env seam), or keyless. */
   keyReady: boolean
+  /** The provider needs a credential and none resolves. */
+  missingKey: boolean
 }
 
 /** The whole image-mind card state. */
@@ -73,7 +79,7 @@ export function normalizeId(name: string): string {
 // host credential layer (shared with the legacy-key migration); the card
 // re-exports it so the browser never keeps a second definition.
 import { deriveKeyRef, isValidProviderId, isKeylessBaseURL, connectionFingerprint, PROVIDER_ID_RE } from './identity.ts'
-export { deriveKeyRef }
+export { deriveKeyRef, isValidProviderId, isKeylessBaseURL, connectionFingerprint, PROVIDER_ID_RE }
 
 /** Read one top-level string field from a snapshot value. */
 export function topText(value: Record<string, unknown> | undefined, field: string): string {
@@ -85,8 +91,10 @@ export function topText(value: Record<string, unknown> | undefined, field: strin
 /** Build a draft provider from a loaded provider record (or a blank one). */
 export function draftOf(id: string, record: Record<string, unknown> | undefined, configured: boolean, mask: string): ProviderDraft {
   const provider = record ?? {}
+  const rawBaseURL = typeof provider['baseURL'] === 'string' ? provider['baseURL'] : ''
   return {
-    baseURL: typeof provider['baseURL'] === 'string' ? provider['baseURL'] : '',
+    displayName: typeof provider['displayName'] === 'string' && provider['displayName'].trim().length > 0 ? provider['displayName'] : id,
+    baseURL: rawBaseURL,
     model: typeof provider['model'] === 'string' ? provider['model'] : '',
     apiKeyEnv: typeof provider['apiKeyEnv'] === 'string' ? provider['apiKeyEnv'] : '',
     apiStyle: typeof provider['apiStyle'] === 'string' ? provider['apiStyle'] : 'chat-completions',
@@ -94,6 +102,7 @@ export function draftOf(id: string, record: Record<string, unknown> | undefined,
     apiKeyText: mask,
     apiKeyConfigured: configured,
     apiKeyMask: mask,
+    keyless: typeof provider['keyless'] === 'boolean' ? provider['keyless'] : isKeylessBaseURL(rawBaseURL),
   }
 }
 
@@ -216,8 +225,9 @@ export class ImageMindSettingsStore {
         continue
       }
       const original = draftOf(id, record, this.credentialConfigured(id), this.credentialMask(id))
-      if (original.baseURL !== d.baseURL || original.model !== d.model || original.apiKeyEnv !== d.apiKeyEnv
-        || original.apiStyle !== d.apiStyle || original.maxOutputTokens !== d.maxOutputTokens
+      if (original.displayName !== d.displayName || original.baseURL !== d.baseURL || original.model !== d.model
+        || original.apiKeyEnv !== d.apiKeyEnv || original.apiStyle !== d.apiStyle
+        || original.maxOutputTokens !== d.maxOutputTokens || original.keyless !== d.keyless
         || d.apiKeyText !== original.apiKeyText) return true
     }
     for (const id of this.draft.keys()) {
@@ -244,11 +254,16 @@ export class ImageMindSettingsStore {
       })
       .map(id => {
         const d = this.draft.get(id) ?? draftOf(id, providerRecordOf(this.view, id), this.credentialConfigured(id), this.credentialMask(id))
+        const complete = d.baseURL.trim().length > 0 && d.model.trim().length > 0
+        // A keyless provider never needs a key; a keyed one needs a
+        // resolvable credential. Local endpoint roots default to keyless.
+        const keyReady = d.keyless || d.apiKeyMask.length > 0
         return {
           id,
           ...d,
-          complete: d.baseURL.trim().length > 0 && d.model.trim().length > 0,
-          keyReady: d.apiKeyMask.length > 0,
+          complete,
+          keyReady,
+          missingKey: complete && !d.keyless && d.apiKeyMask.length === 0,
         }
       })
     return {
@@ -294,17 +309,31 @@ export class ImageMindSettingsStore {
     this.publish()
   }
 
-  /** Add a new provider: from the catalog (preset) or a blank custom card. */
-  addProvider(name: string, preset?: { baseURL: string; model: string; apiKeyEnv: string }): boolean {
-    const id = normalizeId(name)
-    if (id.length === 0) return false
+  /**
+   * Add a new provider with an EXPLICIT route id — never derived from a
+   * display name. Catalog entries pass their stable `entry.id`; custom
+   * providers pass the user-typed id (validated). The display name is
+   * presentation-only and never becomes the route identity.
+   */
+  addProvider(options: {
+    id: string
+    displayName?: string
+    preset?: { baseURL: string; model: string; apiKeyEnv: string; apiStyle?: string; keyless?: boolean }
+  }): boolean {
+    const id = options.id.trim()
+    if (!isValidProviderId(id)) return false
     const providers = (this.view.value?.['providers'] ?? {}) as Record<string, unknown>
     if (this.draft.has(id) || Object.hasOwn(providers, id)) return false
     const draft = draftOf(id, undefined, false, '')
-    if (preset !== undefined) {
-      draft.baseURL = preset.baseURL
-      draft.model = preset.model
-      draft.apiKeyEnv = preset.apiKeyEnv
+    if (options.displayName !== undefined && options.displayName.trim().length > 0) {
+      draft.displayName = options.displayName.trim()
+    }
+    if (options.preset !== undefined) {
+      draft.baseURL = options.preset.baseURL
+      draft.model = options.preset.model
+      draft.apiKeyEnv = options.preset.apiKeyEnv
+      if (options.preset.apiStyle !== undefined) draft.apiStyle = options.preset.apiStyle
+      draft.keyless = options.preset.keyless === true || isKeylessBaseURL(options.preset.baseURL)
     }
     this.draft.set(id, draft)
     this.failed = false
@@ -359,11 +388,13 @@ export class ImageMindSettingsStore {
           op: 'set',
           path: ['providers', id],
           value: {
+            ...d.displayName.trim() !== '' && d.displayName.trim() !== id ? { displayName: d.displayName.trim() } : {},
             baseURL: d.baseURL.trim(),
             model: d.model.trim(),
             ...d.apiStyle.trim() !== '' ? { apiStyle: d.apiStyle.trim() } : {},
             ...d.maxOutputTokens.trim() !== '' ? { maxOutputTokens: Number(d.maxOutputTokens.trim()) } : {},
             ...d.apiKeyEnv.trim() !== '' ? { apiKeyEnv: d.apiKeyEnv.trim() } : {},
+            ...d.keyless ? { keyless: true } : {},
           },
         })
         continue

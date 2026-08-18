@@ -76,7 +76,15 @@ export interface CardCopy {
   'provider.needName': string
   'provider.duplicate': string
   'provider.incomplete': string
+  'provider.invalidId': string
+  'provider.customIdPlaceholder': string
   'provider.untested': string
+  'field.displayName': string
+  'field.displayName.hint': string
+  'field.keyless': string
+  'field.keyless.hint': string
+  'field.apiKey.keylessHint': string
+  'test.visualFailed': string
   'provider.testing': string
   'provider.ok': string
   'provider.fail': string
@@ -172,7 +180,15 @@ const zh: CardCopy = {
   'provider.needName': '请先填写提供方名称',
   'provider.duplicate': '已有同名提供方',
   'provider.incomplete': '请填写端点地址与模型',
-  'provider.untested': '未测试',
+  'provider.invalidId': 'Provider ID 无效：以小写字母开头，只允许 a-z、0-9、点、下划线、连字符。',
+  'provider.customIdPlaceholder': 'Provider ID（如 my-vision，创建后不可改）',
+  'provider.untested': '已配置，未测试',
+  'field.displayName': '显示名称',
+  'field.displayName.hint': '仅用于界面显示；路由 ID 一旦创建保持不变。',
+  'field.keyless': '无需 API Key',
+  'field.keyless.hint': '本地端点（Ollama / LM Studio）自动视为无需密钥；远程端点请勿随意开启。',
+  'field.apiKey.keylessHint': '此提供方无需 API Key。',
+  'test.visualFailed': '端点可连接，但视觉验证失败（模型可能不支持图片输入）：',
   'provider.testing': '测试中…',
   'provider.ok': '已连接',
   'provider.fail': '连接失败',
@@ -266,7 +282,15 @@ const en: CardCopy = {
   'provider.needName': 'Enter a provider name first',
   'provider.duplicate': 'A provider with that name already exists',
   'provider.incomplete': 'Fill in the endpoint and model',
-  'provider.untested': 'Untested',
+  'provider.invalidId': 'Invalid provider ID: start with a lowercase letter; only a-z, 0-9, dot, underscore, hyphen allowed.',
+  'provider.customIdPlaceholder': 'Provider ID (e.g. my-vision; cannot change after creation)',
+  'provider.untested': 'Configured, not tested',
+  'field.displayName': 'Display name',
+  'field.displayName.hint': 'Shown in the UI only; the route ID never changes.',
+  'field.keyless': 'No API key needed',
+  'field.keyless.hint': 'Local endpoints (Ollama / LM Studio) are keyless automatically; keep remote endpoints keyed.',
+  'field.apiKey.keylessHint': 'This provider needs no API key.',
+  'test.visualFailed': 'Endpoint reachable, but visual verification failed (the model may not accept images): ',
   'provider.testing': 'Testing…',
   'provider.ok': 'Connected',
   'provider.fail': 'Failed',
