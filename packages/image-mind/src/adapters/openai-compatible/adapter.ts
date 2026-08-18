@@ -74,23 +74,33 @@ function responseHint(status: number, retried: boolean, excerpt?: string): strin
   if (status === 401 || status === 403) return '（请检查 API Key 是否有效，或 apiKeyEnv 指向的凭据是否正确）'
   if (status === 404) return '（请检查 baseURL 是否带版本前缀，例如 https://xxx/v1，不要包含 /chat/completions）'
   if (status === 400) return '（请检查 model 名称在该端点是否存在，以及请求消息格式）'
-  if (status === 429) return retried ? '（请求过频：已自动重试一次仍失败）' : '（请求过频，已自动重试一次）'
-  if (status >= 500) return retried ? '（端点暂时不可用：已自动重试一次仍失败）' : '（端点暂时不可用，已自动重试一次）'
+  if (status === 429) return retried ? '（请求过频：自动重试后仍失败）' : '（请求过频，已自动重试）'
+  if (status >= 500) return retried ? '（端点暂时不可用：自动重试后仍失败）' : '（端点暂时不可用，已自动重试）'
   return ''
 }
 
-/** The semantic identity of one vision request: endpoint fields plus the same image bytes and prompt. */
+/** The semantic identity of one vision request: a fixed-length SHA-256 of
+ * every wire-affecting field plus the ORDERED image digests (never the image
+ * bytes themselves — the cache must not hold large image copies). */
 export function semanticRequestKey(
   options: Readonly<OpenAICompatibleVisionOptions>,
   prompt: string,
   images: readonly { bytes: Buffer; mimeType: string }[],
 ): string {
-  return JSON.stringify([
+  const canonical = JSON.stringify([
     options.provider, options.baseURL, options.model,
     options.apiStyle, options.maxOutputTokens,
-    images.map(image => [image.bytes.toString('base64'), image.mimeType]),
+    // Ordered image digests: [A,B] != [B,A].
+    images.map(image => [sha256Hex(image.bytes), image.mimeType]),
     prompt,
   ])
+  return sha256Hex(Buffer.from(canonical, 'utf8'))
+}
+
+/** SHA-256 hex digest of a buffer (node:crypto). */
+function sha256Hex(bytes: Buffer): string {
+  const { createHash } = require('node:crypto') as typeof import('node:crypto')
+  return createHash('sha256').update(bytes).digest('hex')
 }
 
 /** Re-export for the wire-parsing layer. */
@@ -139,6 +149,14 @@ function asWireError(error: unknown): ImageMindVisionError {
   return new ImageMindVisionError((error as Error).message ?? String(error), 'PROVIDER_ERROR', { cause: error })
 }
 
+/** Strip secret patterns from a provider error excerpt before it reaches a message. */
+function redactExcerpt(excerpt: string): string {
+  return excerpt
+    .replace(/(authorization\s*:\s*)bearer\s+[^\s,;]+/gi, '$1[REDACTED]')
+    .replace(/(api[_-]?key[=:]\s*)[^\s,;&]+/gi, '$1[REDACTED]')
+    .replace(/sk-[a-zA-Z0-9]{8,}/g, 'sk-[REDACTED]')
+}
+
 /** Classify a non-2xx HTTP status into a stable code. 401/403 are auth failures; 429 is rate-limited; 5xx are provider errors. */
 function visionCodeForStatus(status: number): ProviderWireCode {
   if (status === 401 || status === 403) return 'AUTH_FAILED'
@@ -169,12 +187,11 @@ async function callVisionOnce(
       signal: AbortSignal.any([request.signal ?? new AbortController().signal, AbortSignal.timeout(options.timeoutMs)]),
     })
   } catch (error) {
-    // A user cancellation must not be replayed; anything else (network
-    // failure, our own timeout, protocol error) is transient.
+    // A user cancellation must not be replayed: caller abort propagates
+    // as-is and is never retried.
     const callerAborted = request.signal !== undefined && request.signal.aborted
-    if (callerAborted || (error instanceof Error && error.name === 'AbortError' && callerAborted)) {
-      throw error
-    }
+    if (callerAborted) throw error
+    // An AbortError WITHOUT a caller abort is our internal timeout signal.
     const isTimeout = error instanceof Error && error.name === 'AbortError'
     throw new ImageMindVisionError(
       isTimeout
@@ -188,7 +205,10 @@ async function callVisionOnce(
     const excerpt = await readBoundedText(response, 200)
     const status = response.status
     const code = visionCodeForStatus(status)
-    const message = `image-mind: vision endpoint returned HTTP ${status}${excerpt ? `: ${excerpt}` : ''}${responseHint(status, false, excerpt)}`
+    // Providers sometimes echo the request (including the key) in error
+    // bodies; strip Authorization/Bearer/api_key patterns before surfacing.
+    const safeExcerpt = redactExcerpt(excerpt)
+    const message = `image-mind: vision endpoint returned HTTP ${status}${safeExcerpt ? `: ${safeExcerpt}` : ''}${responseHint(status, false, safeExcerpt)}`
     throw new ImageMindVisionError(message, code, { status })
   }
   const payloadBytes = await readBoundedBody(response, options.maxOutputTokens * 8 + 64 * 1024)

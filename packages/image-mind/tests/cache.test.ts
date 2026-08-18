@@ -97,4 +97,16 @@ describe('semanticRequestKey (cache isolation)', () => {
     const keyB = semanticRequestKey(connection(), 'p', [IMAGE_B])
     expect(keyA).not.toBe(keyB)
   })
+
+  it('is a fixed-length hash and never embeds image bytes', () => {
+    const key = semanticRequestKey(connection(), 'p', [IMAGE_A])
+    expect(key).toMatch(/^[0-9a-f]{64}$/)
+    expect(key).not.toContain(IMAGE_A.bytes.toString('base64'))
+  })
+
+  it('image ORDER matters: [A,B] != [B,A]', () => {
+    const ab = semanticRequestKey(connection(), 'p', [IMAGE_A, IMAGE_B])
+    const ba = semanticRequestKey(connection(), 'p', [IMAGE_B, IMAGE_A])
+    expect(ab).not.toBe(ba)
+  })
 })
