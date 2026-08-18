@@ -64,8 +64,10 @@ describe('understand_image execute (behavioral)', () => {
       text: 'the answer',
       model: 'm1',
       provider: 'a',
-      images: [{ image: file, mimeType: 'image/png', bytes: image.length }],
+      // The result carries a SAFE identity (basename), never the full path.
+      images: [{ source: 'img.png', mimeType: 'image/png', bytes: image.length }],
     })
+    expect(JSON.stringify(result)).not.toContain(dir)
     expect(called).toHaveLength(1)
     const request = called[0] as { provider?: string; model?: string; prompt: string; images: unknown[]; signal: unknown }
     expect(request.provider).toBeUndefined()
@@ -106,10 +108,11 @@ describe('understand_image execute (behavioral)', () => {
       model: 'm1',
       provider: 'a',
       images: [
-        { image: fileA, mimeType: 'image/png', bytes: imageA.length },
-        { image: fileB, mimeType: 'image/png', bytes: imageB.length },
+        { source: 'a.png', mimeType: 'image/png', bytes: imageA.length },
+        { source: 'b.png', mimeType: 'image/png', bytes: imageB.length },
       ],
     })
+    expect(JSON.stringify(result)).not.toContain(dir)
     const request = called[0] as { images: unknown[]; prompt: string }
     expect(request.images).toHaveLength(2)
     expect(request.prompt).toBe('compare them')
@@ -139,5 +142,73 @@ describe('understand_image execute (behavioral)', () => {
     ctx.provide('attachments', {} as never)
     const tool = understandImageTool(ctx, () => 'p', () => ({ maxBytes: 10 * 1024 * 1024, allowPrivateNetwork: false }))
     await expect(tool.execute({}, { signal: new AbortController().signal } as never)).rejects.toThrow(/at least one image/)
+  })
+
+  it('rejects `image` and `images` together (mutual exclusion)', async () => {
+    const ctx = new Context()
+    ctx.provide('vision', { call: vi.fn(async () => ({ text: 'x', provider: 'a', model: 'm' })) } as never)
+    ctx.provide('attachments', {} as never)
+    const dir = mkdtempSync(join(tmpdir(), 'dsh-vision-test-'))
+    const file = join(dir, 'img.png')
+    writeFileSync(file, Buffer.from([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d,
+      0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+    ]))
+    const tool = understandImageTool(ctx, () => 'p', () => ({ maxBytes: 10 * 1024 * 1024, allowPrivateNetwork: false }))
+    await expect(tool.execute({ image: file, images: [file] }, { signal: new AbortController().signal } as never))
+      .rejects.toThrow(/not both/)
+  })
+
+  it('rejects empty strings inside the images array', async () => {
+    const ctx = new Context()
+    ctx.provide('vision', { call: vi.fn(async () => ({ text: 'x', provider: 'a', model: 'm' })) } as never)
+    ctx.provide('attachments', {} as never)
+    const dir = mkdtempSync(join(tmpdir(), 'dsh-vision-test-'))
+    const file = join(dir, 'img.png')
+    writeFileSync(file, Buffer.from([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d,
+      0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+    ]))
+    const tool = understandImageTool(ctx, () => 'p', () => ({ maxBytes: 10 * 1024 * 1024, allowPrivateNetwork: false }))
+    await expect(tool.execute({ images: [file, ''] }, { signal: new AbortController().signal } as never))
+      .rejects.toThrow(/non-empty/)
+  })
+
+  it('rejects a combined size above the total byte bound', async () => {
+    const ctx = new Context()
+    ctx.provide('vision', { call: vi.fn(async () => ({ text: 'x', provider: 'a', model: 'm' })) } as never)
+    ctx.provide('attachments', {} as never)
+    const dir = mkdtempSync(join(tmpdir(), 'dsh-vision-test-'))
+    // Four files, each under the per-image cap (60 < 100) but summing past
+    // the total bound (totalCap = 100 * 2 = 200; 4 * 60 = 240 > 200).
+    const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(52)])
+    const files = []
+    for (let i = 0; i < 4; i++) {
+      const file = join(dir, `t-${i}.png`)
+      writeFileSync(file, png)
+      files.push(file)
+    }
+    const tool = understandImageTool(ctx, () => 'p', () => ({ maxBytes: 100, allowPrivateNetwork: false }))
+    await expect(tool.execute({ images: files }, { signal: new AbortController().signal } as never))
+      .rejects.toThrow(/combined image size/)
+  })
+
+  it('URL sources are reported as host only (no query secrets)', async () => {
+    const ctx = new Context()
+    ctx.provide('vision', { call: vi.fn(async () => ({ text: 'x', provider: 'a', model: 'm' })) } as never)
+    ctx.provide('attachments', {} as never)
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(Buffer.from([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d,
+      0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+    ]), { status: 200 })))
+    const tool = understandImageTool(ctx, () => 'p', () => ({ maxBytes: 10 * 1024 * 1024, allowPrivateNetwork: false }))
+    const result = await tool.execute(
+      { image: 'https://example.com/secret?token=abc123' },
+      { signal: new AbortController().signal } as never,
+    )
+    const resultJson = JSON.stringify(result)
+    expect(resultJson).not.toContain('token=abc123')
+    expect(resultJson).toContain('example.com')
+    vi.unstubAllGlobals()
   })
 })

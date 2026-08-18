@@ -16,11 +16,67 @@
 import type { Context } from '@deepseek-ai/cordis'
 import { defineTool, type GenericCallView } from '@deepseek-ai/dsh-tools'
 import { loadImage } from '../media/load.ts'
+import type { LoadedImage } from '../media/types.ts'
 // The `ctx.vision` Context augmentation, owned by the vision service package.
 import type {} from '@ran-sh/dsh-vision'
 
 /** Upper bound on images one call may carry (payload/cost guard). */
 export const MAX_IMAGES_PER_REQUEST = 4
+
+/** Total-byte bound across all images: 2x the single-image cap. */
+export const MAX_TOTAL_IMAGE_BYTES_FACTOR = 2
+
+/**
+ * Load several images with bounded concurrency (2), preserving input order
+ * and sharing one AbortSignal; the summed byte bound is enforced before any
+ * provider request.
+ */
+async function loadImagesConcurrent(
+  ctx: Context,
+  refs: string[],
+  signal: AbortSignal,
+  maxBytes: number,
+  allowPrivateNetwork: boolean,
+  factor: number,
+): Promise<LoadedImage[]> {
+  const totalCap = maxBytes * factor
+  const images: LoadedImage[] = new Array(refs.length)
+  let total = 0
+  let cursor = 0
+  const workers = Array.from({ length: 2 }, async () => {
+    for (;;) {
+      const index = cursor++
+      if (index >= refs.length) return
+      const image = await loadImage(ctx, refs[index], signal, maxBytes, { allowPrivateNetwork })
+      total += image.bytes.length
+      if (total > totalCap) {
+        throw new Error(`image-mind: combined image size exceeds the ${totalCap}-byte bound`)
+      }
+      images[index] = image
+    }
+  })
+  await Promise.all(workers)
+  return images
+}
+
+/**
+ * A safe identity for one image in the model-facing result: never a full
+ * local path, never a URL with a query string. Local refs become the
+ * basename; URLs become `host/...`; anything else stays opaque.
+ */
+export function safeImageIdentity(ref: string): string {
+  if (/^https?:\/\//i.test(ref)) {
+    try {
+      const url = new URL(ref)
+      return `${url.hostname}/...`
+    } catch {
+      return 'url/...'
+    }
+  }
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(ref)) return 'url/...'
+  const base = ref.split(/[/\\]/).pop()
+  return base !== undefined && base.length > 0 ? base : ref.slice(0, 40)
+}
 
 /** The understand_image call's validated arguments. */
 export interface UnderstandImageArgs {
@@ -120,7 +176,7 @@ export function understandImageTool(
               type: 'object',
               additionalProperties: false,
               properties: {
-                image: { type: 'string', required: true },
+                source: { type: 'string', required: true },
                 mimeType: { type: 'string', required: true, enum: ['image/png', 'image/jpeg', 'image/gif', 'image/webp'] },
                 bytes: { type: 'integer', required: true },
               },
@@ -132,20 +188,31 @@ export function understandImageTool(
     },
     async execute(args, exec) {
       const { maxBytes, allowPrivateNetwork } = mediaOptions()
-      // Normalize the single-image and multi-image forms into one list.
-      const refs = args.image !== undefined && args.image.trim().length > 0
-        ? [args.image.trim()]
-        : (args.images ?? []).map(ref => ref.trim()).filter(ref => ref.length > 0)
+      // Mutual exclusion: `image` and `images` are documented as alternatives;
+      // passing both is a caller bug and must fail loudly, never silently
+      // prefer one (the caller would believe all images were sent).
+      const hasSingle = args.image !== undefined && args.image.trim().length > 0
+      const hasMany = (args.images ?? []).some(ref => ref.trim().length > 0)
+      if (hasSingle && hasMany) {
+        throw new Error('image-mind: pass either `image` (single) or `images` (array), not both')
+      }
+      const rawRefs = hasSingle ? [args.image!.trim()] : (args.images ?? []).map(ref => ref.trim())
+      // Empty strings inside the array are invalid, not silently dropped.
+      if (rawRefs.some(ref => ref.length === 0)) {
+        throw new Error('image-mind: image references must be non-empty strings')
+      }
+      const refs = rawRefs.filter(ref => ref.length > 0)
       if (refs.length === 0) {
         throw new Error('image-mind: pass `image` (single) or `images` (array) with at least one image reference')
       }
       if (refs.length > MAX_IMAGES_PER_REQUEST) {
         throw new Error(`image-mind: at most ${MAX_IMAGES_PER_REQUEST} images per call; got ${refs.length}`)
       }
-      const images = []
-      for (const ref of refs) {
-        images.push(await loadImage(ctx, ref, exec.signal, maxBytes, { allowPrivateNetwork }))
-      }
+      // Load with bounded concurrency (2) while preserving input order; a
+      // shared AbortSignal cancels all in-flight loads together. The total
+      // byte bound is enforced BEFORE any provider request, so a huge
+      // multi-image payload can never reach the wire.
+      const images = await loadImagesConcurrent(ctx, refs, exec.signal, maxBytes, allowPrivateNetwork, MAX_TOTAL_IMAGE_BYTES_FACTOR)
       // The runtime selects the provider (explicit `provider`, else active),
       // resolves the connection snapshot, and dispatches to the adapter.
       const result = await ctx.vision.call({
@@ -155,12 +222,14 @@ export function understandImageTool(
         images,
         signal: exec.signal,
       })
+      // The model-facing result never echoes full local paths or URL query
+      // strings: it reports a safe identity (basename or host + opaque index).
       return {
         text: result.text,
         model: result.model,
         provider: result.provider,
         images: images.map((image, index) => ({
-          image: refs[index],
+          source: safeImageIdentity(refs[index]),
           mimeType: image.mimeType,
           bytes: image.bytes.length,
         })),
