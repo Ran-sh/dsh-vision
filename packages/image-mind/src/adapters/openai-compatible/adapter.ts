@@ -128,18 +128,63 @@ function toSeamCode(code: ProviderWireCode): VisionErrorCode {
 }
 
 /** Adapter-local wire failure: carries the transport detail the seam must not see. */
+/** Upper bound on a provider-requested Retry-After delay (avoid hour-long stalls). */
+export const MAX_RETRY_AFTER_MS = 15_000
+
 export class ImageMindVisionError extends Error {
   readonly code: ProviderWireCode
   readonly status?: number
   readonly retryable: boolean
+  /** Provider-requested delay from a Retry-After header, capped at MAX_RETRY_AFTER_MS. */
+  readonly retryAfterMs?: number
 
-  constructor(message: string, code: ProviderWireCode, options?: { status?: number; cause?: unknown }) {
+  constructor(message: string, code: ProviderWireCode, options?: { status?: number; retryAfterMs?: number; cause?: unknown }) {
     super(message, options?.cause === undefined ? undefined : { cause: options.cause })
     this.name = 'ImageMindVisionError'
     this.code = code
     this.status = options?.status
+    this.retryAfterMs = options?.retryAfterMs
     this.retryable = code === 'RATE_LIMITED' || code === 'PROVIDER_ERROR' || code === 'TIMEOUT' || code === 'NETWORK_ERROR'
   }
+}
+
+/**
+ * Parse a Retry-After header: integer seconds, or an HTTP-date. Returns the
+ * delay in ms, capped at MAX_RETRY_AFTER_MS; unparseable values yield
+ * undefined (fall back to the backoff schedule).
+ */
+export function parseRetryAfter(header: string | null): number | undefined {
+  if (header === null) return undefined
+  const trimmed = header.trim()
+  if (trimmed.length === 0) return undefined
+  if (/^\d+$/.test(trimmed)) {
+    const seconds = Number(trimmed)
+    if (!Number.isSafeInteger(seconds) || seconds < 0) return undefined
+    return Math.min(seconds * 1000, MAX_RETRY_AFTER_MS)
+  }
+  const date = Date.parse(trimmed)
+  if (!Number.isNaN(date)) {
+    const delay = date - Date.now()
+    if (delay <= 0) return 0
+    return Math.min(delay, MAX_RETRY_AFTER_MS)
+  }
+  return undefined
+}
+
+/** Sleep a fixed delay, abortable (used for Retry-After). */
+async function sleepFor(ms: number, signal?: AbortSignal): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    if (signal?.aborted === true) {
+      reject(signal.reason instanceof Error ? signal.reason : new Error('image-mind: request aborted during retry delay'))
+      return
+    }
+    const timer = setTimeout(resolve, ms)
+    const onAbort = (): void => {
+      clearTimeout(timer)
+      reject(signal?.reason instanceof Error ? signal.reason : new Error('image-mind: request aborted during retry delay'))
+    }
+    signal?.addEventListener('abort', onAbort, { once: true })
+  })
 }
 
 /** Normalize one thrown value into the adapter's wire failure vocabulary. */
@@ -209,7 +254,10 @@ async function callVisionOnce(
     // bodies; strip Authorization/Bearer/api_key patterns before surfacing.
     const safeExcerpt = redactExcerpt(excerpt)
     const message = `image-mind: vision endpoint returned HTTP ${status}${safeExcerpt ? `: ${safeExcerpt}` : ''}${responseHint(status, false, safeExcerpt)}`
-    throw new ImageMindVisionError(message, code, { status })
+    throw new ImageMindVisionError(message, code, {
+      status,
+      retryAfterMs: response.headers !== undefined ? parseRetryAfter(response.headers.get('retry-after')) : undefined,
+    })
   }
   const payloadBytes = await readBoundedBody(response, options.maxOutputTokens * 8 + 64 * 1024)
   let payload: unknown
@@ -285,7 +333,14 @@ export class OpenAICompatibleVisionAdapter extends VisionAdapter {
         }
         attempt += 1
         try {
-          await sleepBackoff(attempt - 1, this.backoff, request.signal)
+          const delay = wireError.retryAfterMs !== undefined
+            ? Math.max(this.backoff.initialDelayMs, wireError.retryAfterMs)
+            : undefined
+          if (delay !== undefined) {
+            await sleepFor(delay, request.signal)
+          } else {
+            await sleepBackoff(attempt - 1, this.backoff, request.signal)
+          }
         } catch (abortError) {
           throw abortError
         }
