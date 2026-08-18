@@ -54,8 +54,8 @@ understand_image          ← 薄工具（只加载图片 + 调 ctx.vision.call(
 ctx.vision                ← @ran-sh/dsh-vision 拥有的服务
       │
       ├── Provider Registry    （image-mind 注册的路由，原子热替换，含 replace([])）
-      ├── Connection Resolver  （每调用解析不可变快照，baseURL/model/密钥引用/协议/超时同代）
-      └── Adapter 分发          （image-mind 注册的 OpenAICompatibleVisionAdapter）
+      ├── Default Provider     （image-mind 注册的 active 解析策略，单 owner + 完整生命周期，卸载自动撤销）
+      └── Adapter 分发          （provider → adapter，只此一条 dispatch 依据）
       │
       ▼
 Vision API                ← 真实视觉端点（Opencode Go / Command Code Goat / ...）
@@ -97,20 +97,20 @@ dsh-vision/                        ← npm workspace 根
 │   ├── vision/                    ← Service 包：@ran-sh/dsh-vision
 │   │   ├── src/
 │   │   │   ├── index.ts           barrel + default export VisionRuntime（Cordis service class）
-│   │   │   ├── runtime.ts         VisionRuntime：registerAdapter / registerConfigurableProviders / call(request) 单参 / discoverModels / probe / replace([]) / vision/adapters-updated
-│   │   │   ├── adapter.ts         abstract VisionAdapter（call + discoverModels，connection 深度冻结）
-│   │   │   ├── types.ts           VisionRequest / VisionResult / VisionConnection / VisionModel / LoadedImage / VisionApiStyle
-│   │   │   ├── errors.ts          VisionError + 稳定错误码
-│   │   │   └── deep-freeze.ts     运行时快照深度冻结
+│   │   │   ├── runtime.ts         VisionRuntime：registerAdapter(providers, adapter) / registerConfigurableProviders / registerDefaultProviderResolver(owner, resolver) / call(request) 单参 / discoverModels / probe / replace([]) / vision/adapters-updated
+│   │   │   ├── adapter.ts         abstract VisionAdapter（call(provider, request) + discoverModels + probe，adapter 自持全部 provider 事实）
+│   │   │   ├── types.ts           VisionRequest / VisionResult / VisionModel / VisionProviderDescriptor / LoadedImage
+│   │   │   ├── errors.ts          VisionError extends HarnessError + 稳定错误码 + deepFreeze
+│   │   │   └── tests/             provider-neutral 测试（注册/替换/dispose/目录/选择/默认策略生命周期/事件/多 adapter 分发）
 │   │   └── tests/                 provider-neutral 测试（注册/替换/dispose/目录/选择/事件/冻结）
 │   │
 │   └── image-mind/                ← Provider 插件：dsh-plugin-image-mind
 │       ├── src/
-│       │   ├── index.ts           组合根：inject ['vision','tools']，ctx.vision.registerAdapter / registerConfigurableProviders / setDefaultProviderResolver，装 settings / 注册工具 / 挂路由；last-good 配置
+│   │   │   ├── index.ts           组合根：inject ['vision','tools']，ctx.vision.registerAdapter / registerConfigurableProviders / registerDefaultProviderResolver，装 settings / 注册工具 / 挂路由；last-good 配置
 │       │   ├── config.ts          Config schema（schemastery）+ resolveVisionConfig()
-│       │   ├── runtime/vision-rpc.ts   薄 Host RPC（测试连接 / 模型列表，走 ctx.vision.probe）
+│   │   │   ├── runtime/vision-rpc.ts   薄 Host RPC（测试连接 / 模型列表，draft 快照直接走 adapter，不进 Core）
 │       │   ├── providers/         catalog.ts 官方视觉端点目录（纯数据，23 条）
-│       │   ├── adapters/openai-compatible/  OpenAICompatibleVisionAdapter（chat-completions / responses / discovery / retry）
+│   │   │   ├── adapters/openai-compatible/  OpenAICompatibleVisionAdapter（自持 options/credential 解析 + chat-completions / responses / discovery / retry）
 │       │   ├── credentials/       resolve.ts（凭证缝解析）+ migrate.ts（legacy inline key 迁移）
 │       │   ├── media/             图片加载（路径/URL/附件引用 + 私有网络策略）+ 魔数校验
 │       │   ├── cache/             短时语义缓存
@@ -128,7 +128,7 @@ dsh-vision/                        ← npm workspace 根
 
 - **`understand_image` 是薄工具**：只负责加载图片（media 层）和把请求交给 `ctx.vision.call(request)`——一个参数，只表达「哪个 provider/model、对这个 prompt、这些图片」。它不 import `ResolvedProvider` / `ResolvedConfig`，不构造 `VisionConnection`，不接触 baseURL、API Key、协议、超时、模型发现或重试策略。
 - **VisionRuntime 是独立服务（`ctx.vision`）**：不注册进 `ctx.llm`。视觉模型是 DeepSeek 的感知后端，不是主会话模型。每次调用由 Runtime 完成：provider selection → route lookup → connection snapshot → adapter.call。注册与路由替换是原子的（`registerAdapter` 返回 handle，`replace()` 含 `replace([])` 原子撤销；`REGISTRATION_DISPOSED` 后拒绝再 replace）。
-- **Connection Resolver 属于注册**：`registerAdapter(providers, adapter, resolveConnection)` 把「每个 provider 的连接事实」关联到路由——调用者不再传 connection。Resolver 每次调用从配置解析一个**深度冻结**的不可变快照（baseURL/model/apiStyle/maxOutputTokens/timeoutMs/apiKeyEnv 同一 generation），在途请求不受设置修改影响。
+- **Adapter 自持 provider 事实**：`registerAdapter(providers, adapter)` 只关联 provider 路由与 adapter 实例（官方 LlmRuntime 两参形状）。OpenAICompatibleVisionAdapter 在构造时接收 `resolveProviderOptions` / `resolveApiKey` 钩子，每次调用从 last-good 配置解析并**深度冻结**一个不可变端点快照（baseURL/model/apiStyle/maxOutputTokens/timeoutMs/apiKeyEnv 同一 generation）——在途请求不受设置修改影响，下次调用重新解析。Core 永远看不到这些字段。
 - **last-good 配置**：静态启动配置错误 fail loud；运行期间新设置超出 schema 的进一步校验失败时，记录错误并保留上一个 good 快照，配置恢复正确后自动切换（官方 llm-deepseek 模式）。
 - **Provider Catalog 与 Adapter 分离**：`providers/catalog.ts` 只描述厂商；目录注册（`registerConfigurableProviders`）与路由注册（`registerAdapter`）分开——目录回答「可以配置哪些」，注册表回答「当前哪些可调用」。每次提交发布 `vision/adapters-updated` 事件（listener 失败被包含，不 veto 提交）。
 - **Credentials 走官方 seam**：卡片键入的 API Key 通过 `credentials.set` 存入 DSH 凭据存储，settings.yaml 只保存 `apiKeyEnv` 引用。解析顺序与官方一致：**凭证缝存在时由它全权负责**（miss 即 miss，不回退环境变量）；没有凭证缝时才用 launch environment。legacy inline `apiKey` 在启动时自动迁移到凭证存储并清空配置（失败则保留 host-only fallback，绝不丢配置）。

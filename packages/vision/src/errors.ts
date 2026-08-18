@@ -1,15 +1,20 @@
 /**
- * Typed vision failures: a stable machine-routable code plus optional HTTP
- * status, mirroring the harness `LlmError` taxonomy without importing LLM
- * business semantics. Tool results and the settings card route on `code`,
- * never by parsing `message`.
+ * Typed vision failures: extends the harness `HarnessError` base so the
+ * `code` string is the shared taxonomy (exactly as `LlmError` and `WebError`
+ * extend it), with a stable provider-neutral code per failure class. Tool
+ * results and the settings card route on `code`, never by parsing `message`.
  *
  * Registration lifecycle failures carry their own codes —`DUPLICATE_ADAPTER`,
  * `INVALID_ADAPTER`, `REGISTRATION_DISPOSED`, `DUPLICATE_PROVIDER`,
  * `INVALID_PROVIDER` —so a registry conflict is never mistaken for a plain
- * provider lookup miss (`PROVIDER_NOT_FOUND`).
+ * provider lookup miss (`PROVIDER_NOT_FOUND`). Adapter-level failures (auth,
+ * rate limit, timeout, network, response shape) belong to the provider
+ * plugin's own error vocabulary and wrap into the generic `PROVIDER_ERROR`
+ * when they cross the seam.
  * @module @ran-sh/dsh-vision/errors
  */
+
+import { HarnessError } from '@deepseek-ai/dsh-llm'
 
 /** Stable provider-neutral failure classes for one vision operation. */
 export type VisionErrorCode =
@@ -26,58 +31,28 @@ export type VisionErrorCode =
   | 'INVALID_PROVIDER'
   | 'DUPLICATE_DIRECTORY'
   | 'INVALID_DIRECTORY'
-  // Credentials.
-  | 'MISSING_CREDENTIAL'
-  | 'INVALID_CREDENTIAL'
-  // Media.
-  | 'IMAGE_TOO_LARGE'
-  | 'UNSUPPORTED_IMAGE_TYPE'
-  // Provider wire.
-  | 'AUTH_FAILED'
-  | 'RATE_LIMITED'
+  // Default-provider ownership.
+  | 'DUPLICATE_DEFAULT_PROVIDER'
+  // Provider wire failures crossing the seam.
   | 'PROVIDER_ERROR'
-  | 'TIMEOUT'
-  | 'NETWORK_ERROR'
-  | 'EMPTY_RESPONSE'
-  | 'INVALID_RESPONSE'
-
-/** Whether a failure class is worth an automatic retry (transient). */
-const RETRYABLE_CODES: ReadonlySet<VisionErrorCode> = new Set<VisionErrorCode>([
-  'RATE_LIMITED',
-  'PROVIDER_ERROR',
-  'TIMEOUT',
-  'NETWORK_ERROR',
-])
-
-/** A failure class that automatic retry may repeat. */
-export function isRetryableVisionCode(code: VisionErrorCode): boolean {
-  return RETRYABLE_CODES.has(code)
-}
 
 /**
- * Typed error for one vision operation. Carries the stable {@link code} and
- * optional HTTP status observed at the provider boundary; `retryable` is the
- * policy decision the adapter's retry loop reads.
+ * Typed error for one vision operation. Carries the stable {@link code};
+ * adapter-internal detail (HTTP status, provider messages) arrives chained
+ * through `cause` and never leaks transport vocabulary into the code.
  */
-export class VisionError extends Error {
+export class VisionError extends HarnessError {
   /** Stable machine-routable failure class. */
-  readonly code: VisionErrorCode
-  /** HTTP status observed at the provider boundary, when available. */
-  readonly status?: number
-  /** Whether automatic retry may repeat this failure. */
-  readonly retryable: boolean
+  declare readonly code: VisionErrorCode
 
   /**
    * @param message - human-readable failure summary.
    * @param code - stable provider-neutral machine code.
-   * @param options - optional status and chained cause.
+   * @param options - optional chained cause.
    */
-  constructor(message: string, code: VisionErrorCode, options?: { status?: number; cause?: unknown }) {
-    super(message, options?.cause === undefined ? undefined : { cause: options.cause })
+  constructor(message: string, code: VisionErrorCode, options?: { cause?: unknown }) {
+    super(message, code, options?.cause === undefined ? undefined : { cause: options.cause })
     this.name = 'VisionError'
-    this.code = code
-    this.status = options?.status
-    this.retryable = isRetryableVisionCode(code)
   }
 }
 
@@ -87,14 +62,37 @@ export function isVisionError(value: unknown): value is VisionError {
 }
 
 /**
- * Classify a non-2xx HTTP status into a stable code. 401/403 are auth
- * failures; 429 is rate-limited; 5xx are provider errors; everything else is
- * a provider error carrying the exact status.
- * @param status - HTTP status of a non-2xx provider response.
- * @returns the normalized failure class.
+ * Deep-freeze for runtime snapshots. The TypeScript `Readonly<>` / `interface`
+ * modifiers are compile-time only; a snapshot an adapter receives must also
+ * resist accidental mutation at runtime, so callers freeze the whole object
+ * graph before handing it over.
+ *
+ * Iterative (a WeakSet + explicit pending stack) rather than recursive so a
+ * deep graph cannot overflow the call stack; cycles are safe; `AbortSignal`
+ * instances are left mutable (freezing a signal breaks later abort).
  */
-export function visionCodeForStatus(status: number): VisionErrorCode {
-  if (status === 401 || status === 403) return 'AUTH_FAILED'
-  if (status === 429) return 'RATE_LIMITED'
-  return 'PROVIDER_ERROR'
+export function deepFreeze<T>(value: T): T {
+  const seen = new WeakSet<object>()
+  const pending: Array<{ kind: 'visit'; node: unknown } | { kind: 'property'; source: Record<string, unknown>; key: string }> = [
+    { kind: 'visit', node: value },
+  ]
+  while (pending.length > 0) {
+    const task = pending.pop()
+    if (task === undefined) continue
+    if (task.kind === 'property') {
+      pending.push({ kind: 'visit', node: task.source[task.key] })
+      continue
+    }
+    const node = task.node
+    if (node === null || typeof node !== 'object') continue
+    // A live signal must stay mutable so cancellation still works.
+    if (node instanceof AbortSignal) continue
+    if (seen.has(node)) continue
+    seen.add(node)
+    Object.freeze(node)
+    for (const key of Object.keys(node)) {
+      pending.push({ kind: 'property', source: node as Record<string, unknown>, key })
+    }
+  }
+  return value
 }

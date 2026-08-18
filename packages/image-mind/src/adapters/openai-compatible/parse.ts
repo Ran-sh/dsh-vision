@@ -5,12 +5,13 @@
  * @module dsh-plugin-image-mind/adapters/openai-compatible/parse
  */
 
-import { VisionError } from '@ran-sh/dsh-vision'
-import type { LoadedImage, VisionApiStyle } from '@ran-sh/dsh-vision'
+import { ImageMindVisionError } from './adapter.ts'
+import type { LoadedImage } from './adapter.ts'
+import type { VisionApiStyle } from './types.ts'
 
 /** Promise rejection helper shared by both response-shape extractors. */
 function unexpectedShape(): never {
-  throw new VisionError('image-mind: vision endpoint returned an unexpected response shape', 'INVALID_RESPONSE')
+  throw new ImageMindVisionError('image-mind: vision endpoint returned an unexpected response shape', 'INVALID_RESPONSE')
 }
 
 /** Narrow an unknown value to a plain, non-array object, or undefined. */
@@ -27,7 +28,7 @@ export function extractChatCompletionsContent(payload: unknown): string {
   const message = asRecord(asRecord(choices[0])?.message)
   const content = message?.['content']
   if (typeof content !== 'string' || content.trim().length === 0) {
-    throw new VisionError('image-mind: vision endpoint returned no text content', 'EMPTY_RESPONSE')
+    throw new ImageMindVisionError('image-mind: vision endpoint returned no text content', 'EMPTY_RESPONSE')
   }
   return content
 }
@@ -53,7 +54,7 @@ export function extractResponsesContent(payload: unknown): string {
   }
   const text = parts.join('\n')
   if (text.trim().length === 0) {
-    throw new VisionError('image-mind: vision endpoint returned no text content', 'EMPTY_RESPONSE')
+    throw new ImageMindVisionError('image-mind: vision endpoint returned no text content', 'EMPTY_RESPONSE')
   }
   return text
 }

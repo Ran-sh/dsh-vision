@@ -6,12 +6,13 @@
  * only the returned text crosses into the conversation, so the image never
  * enters the session log.
  *
- * This entry is composition only: it creates the VisionRuntime, registers the
- * provider directory, registers the OpenAI-compatible adapter with its
- * per-call connection resolver, installs the settings section, registers the
- * thin `understand_image` tool, and mounts the attachment routes. Provider
- * selection, HTTP, credential parsing, and configuration validation live in
- * their own layers.
+ * This entry is composition only: it registers the provider directory and the
+ * OpenAI-compatible adapter (with its own per-call provider-option and
+ * credential resolution) into the injected `ctx.vision`, installs the
+ * settings section, registers the thin `understand_image` tool, and mounts
+ * the attachment routes. Provider selection, HTTP, credential parsing, and
+ * configuration validation live in their own layers. The vision service
+ * package owns `ctx.vision`; this plugin only registers into it.
  *
  * Configuration resolution follows the official llm-deepseek last-good
  * pattern: a static composition error fails loud at load; a live settings
@@ -30,7 +31,9 @@ import { installSettingsSection } from '@deepseek-ai/dsh-settings'
 // 'vision' service key —this plugin never constructs it.
 import type {} from '@ran-sh/dsh-vision'
 import { VisionError } from '@ran-sh/dsh-vision'
+import type { VisionRequest } from '@ran-sh/dsh-vision'
 import { OpenAICompatibleVisionAdapter } from './adapters/openai-compatible/index.ts'
+import type { OpenAICompatibleVisionOptions } from './adapters/openai-compatible/types.ts'
 import { resolveApiKey } from './credentials/resolve.ts'
 import { Config, IMAGE_MIND_SETTINGS_NAMESPACE, resolveConfig, type Config as ConfigType, type ResolvedConfig } from './config.ts'
 import { understandImageTool } from './tools/understand-image.ts'
@@ -49,7 +52,7 @@ export const name = 'image-mind'
 export const inject = ['vision', 'tools']
 
 /**
- * Register the vision capability: runtime, adapter, settings, tool, routes.
+ * Register the vision capability: adapter, directory, settings, tool, routes.
  * @param ctx - registrant context carrying the tool registry.
  * @param config - deployment configuration.
  */
@@ -92,23 +95,25 @@ export function apply(ctx: Context, config: ConfigType = {}): void {
   // llm-deepseek injects ['llm'] and registers into ctx.llm. The
   // default-provider decision is runtime-owned, but the ACTIVE provider is
   // this plugin's configuration, so the plugin registers the resolver on the
-  // injected runtime; the tool stays thin and never reads `active` itself.
-  ctx.vision.setDefaultProviderResolver(() => resolved().active)
+  // injected runtime under its own owner id; the tool stays thin and never
+  // reads `active` itself. The registration handle doubles as the fiber
+  // disposer: unloading the plugin withdraws the strategy, so no stale
+  // resolver can outlive its owner.
+  ctx.vision.registerDefaultProviderResolver('image-mind', () => resolved().active)
   // Short-lived semantic cache scoped to this mount: identical provider +
   // model + image + prompt within the TTL reuse the prior answer.
   const cache = createVisionCache()
+  // The adapter owns every provider fact: it resolves the current immutable
+  // endpoint snapshot per call from the last-good configuration (the request's
+  // model override rides along so the snapshot carries it) and the bearer key
+  // from the same snapshot —the endpoint and the secret sent to it can never
+  // come from different configuration generations. The runtime never sees a
+  // baseURL, protocol style, or credential reference.
   const adapter = new OpenAICompatibleVisionAdapter({
-    resolveApiKey: connection => resolveApiKey(ctx, connection),
+    resolveProviderOptions: (provider, request) => connectionSnapshotOf(resolved(), provider, request),
+    resolveApiKey: options => resolveApiKey(ctx, options),
     cache,
   })
-  // Each provider route resolves its own immutable connection snapshot per
-  // call from the current configuration; the adapter never sees a baseURL or
-  // key from a different generation than the one it was dispatched with. The
-  // runtime has already resolved `request.provider` (explicit id, else the
-  // active/single route) before calling this resolver; the request's model
-  // override rides along so the snapshot carries it.
-  const resolveConnection = async (request: { provider?: string; model?: string }): Promise<ReturnType<typeof connectionSnapshotOf>> =>
-    connectionSnapshotOf(resolved(), request.provider, request.model)
 
   // The adapter registration follows the settings section: a section change
   // atomically replaces the route set (including `replace([])` when the user
@@ -131,7 +136,7 @@ export function apply(ctx: Context, config: ConfigType = {}): void {
         registeredRoutes = routes
         return
       }
-      registration = ctx.vision.registerAdapter(routes, adapter, resolveConnection)
+      registration = ctx.vision.registerAdapter(routes, adapter)
     } else {
       // A live registration replaces atomically; `replace([])` is legal.
       registration.replace(routes)
@@ -144,18 +149,16 @@ export function apply(ctx: Context, config: ConfigType = {}): void {
   // (advisory "what can be configured"), a second owns ONLY the user-created
   // providers whose ids are absent from the catalog —a catalog provider the
   // user configures is not re-declared (that would violate registration
-  // ownership), its live baseURL/model/key still come from settings through
-  // the connection resolver. Like the adapter registration, an empty initial
-  // user set registers nothing and `replace([])` stays legal once live.
+  // ownership). Like the adapter registration, an empty initial user set
+  // registers nothing and `replace([])` stays legal once live. Directory
+  // entries carry display metadata only —endpoint, protocol, and credential
+  // facts live in the adapter's own resolution, never in the directory.
   const catalogIds = new Set(VISION_PROVIDER_CATALOG.map(entry => entry.id))
   const catalogDirectory = ctx.vision.registerConfigurableProviders(
     VISION_PROVIDER_CATALOG.map(entry => ({
       id: entry.id,
       displayName: entry.name,
-      adapter: 'openai-compatible',
-      baseURL: entry.baseURL,
-      apiStyle: entry.apiStyle ?? 'chat-completions',
-      ...entry.apiKeyEnv === '' ? {} : { apiKeyEnv: entry.apiKeyEnv },
+      description: `${entry.baseURL} · ${entry.defaultModel}`,
     })),
   )
   let userDirectory: ReturnType<typeof ctx.vision.registerConfigurableProviders> | undefined
@@ -163,7 +166,7 @@ export function apply(ctx: Context, config: ConfigType = {}): void {
   const ensureDirectory = (): void => {
     const entries = Object.keys(resolved().providers)
       .filter(id => !catalogIds.has(id))
-      .map(id => ({ id, displayName: id, adapter: 'openai-compatible', apiStyle: 'chat-completions' as const }))
+      .map(id => ({ id, displayName: id }))
     const ids = entries.map(entry => entry.id)
     if (userDirectory !== undefined && registeredUserEntries !== undefined
       && ids.length === registeredUserEntries.length && ids.every((id, index) => id === registeredUserEntries![index])) {
@@ -232,28 +235,28 @@ export function apply(ctx: Context, config: ConfigType = {}): void {
 }
 
 /**
- * Build the connection snapshot one call holds: the named provider's resolved
- * facts, plus the request's model override. The snapshot is frozen by the
- * runtime before the adapter sees it, so an in-flight request never observes
- * a settings change and the next call re-resolves.
+ * Build the endpoint snapshot one call holds: the named provider's resolved
+ * facts, plus the request's model override. The adapter deep-freezes the
+ * snapshot before the wire layer sees it, so an in-flight request never
+ * observes a settings change and the next call re-resolves.
  * @param resolved - the current last-good resolved configuration.
  * @param requested - the provider id the runtime already selected (always
- *   present on the resolver path; kept optional for direct callers).
- * @param requestedModel - the request's model override; a non-empty trim wins
- *   over the provider's configured default, an empty/absent value keeps the
- *   configured model. Never mutates the provider's own configuration.
+ *   present on the dispatch path; kept optional for direct callers).
+ * @param request - the caller's request; a non-empty `model` override wins
+ *   over the provider's configured default. Never mutates the provider's own
+ *   configuration.
  */
 function connectionSnapshotOf(
   resolved: ResolvedConfig,
   requested?: string,
-  requestedModel?: string,
-): { provider: string; baseURL: string; model: string; apiStyle: 'chat-completions' | 'responses'; maxOutputTokens: number; timeoutMs: number; apiKeyEnv?: string; inlineApiKey?: string } {
+  request?: VisionRequest,
+): OpenAICompatibleVisionOptions {
   const ids = Object.keys(resolved.providers)
   const requestedId = requested !== undefined && requested.trim().length > 0 ? requested.trim() : undefined
   const id = requestedId ?? resolved.active ?? (ids.length === 1 ? ids[0] : undefined)
   if (id === undefined) {
     throw new VisionError(
-      'image-mind: no active vision provider configured; set one in 璁剧疆 鈫?鎻掍欢 鈫?鎻掍欢閰嶇疆 鈫?鍥惧儚鐞嗚В',
+      'image-mind: no active vision provider configured; configure one in the image-mind settings',
       'PROVIDER_NOT_FOUND',
     )
   }
@@ -261,13 +264,15 @@ function connectionSnapshotOf(
   if (spec === undefined) {
     throw new VisionError(`image-mind: provider ${JSON.stringify(id)} is not defined`, 'PROVIDER_NOT_FOUND')
   }
+  const requestedModel = request?.model
   const modelOverride = requestedModel !== undefined && requestedModel.trim().length > 0 ? requestedModel.trim() : undefined
+  const maxOutputTokens = request?.maxOutputTokens ?? spec.maxOutputTokens
   return {
     provider: id,
     baseURL: spec.baseURL,
     model: modelOverride ?? spec.model,
     apiStyle: spec.apiStyle,
-    maxOutputTokens: spec.maxOutputTokens,
+    maxOutputTokens,
     timeoutMs: resolved.timeoutMs,
     ...spec.apiKeyEnv === undefined || spec.apiKeyEnv.length === 0 ? {} : { apiKeyEnv: String(spec.apiKeyEnv) },
     // Host-only legacy fallback: a still-unmigrated inline key resolves in

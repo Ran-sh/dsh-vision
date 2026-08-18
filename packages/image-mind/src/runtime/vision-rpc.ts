@@ -1,8 +1,9 @@
 /**
  * Thin vision-specific Host RPC for the settings card: one real vision call
  * to verify a deployment ("test connection") and one model-list interrogation.
- * Both run through the vision runtime — the runtime builds the immutable
- * snapshot from the draft and the adapter dispatches it — so the key never
+ * Both run through the OpenAI-compatible adapter directly with a draft
+ * snapshot the card is still editing — the provider Editor's own
+ * responsibility, kept out of the generic vision service. The key never
  * crosses to the browser and every transport guarantee of a normal call still
  * applies. This is transport only: settings persistence lives in the official
  * settings seam.
@@ -17,9 +18,10 @@ import {
   type ApiStyle, type ResolvedProvider,
 } from '../config.ts'
 import { VisionError } from '@ran-sh/dsh-vision'
-import type { VisionDraftConnection } from '@ran-sh/dsh-vision'
+import { OpenAICompatibleVisionAdapter } from '../adapters/openai-compatible/index.ts'
+import type { OpenAICompatibleVisionOptions } from '../adapters/openai-compatible/types.ts'
 import { resolveApiKey } from '../credentials/resolve.ts'
-import { resolveDraftConnection } from '@ran-sh/dsh-vision'
+import { deepFreeze } from '@ran-sh/dsh-vision'
 import { discoverEndpointModels, planVisionModels } from '../adapters/openai-compatible/discovery.ts'
 
 /** A tiny embedded 1x1 red PNG (69 bytes) used as the probe image. */
@@ -97,17 +99,18 @@ export function draftProviderForListing(id: string, overrides: TestConnectionOve
   return spec
 }
 
-/** Build a draft connection (the runtime turns it into an immutable snapshot). */
-function draftConnectionOf(provider: string, spec: ResolvedProvider, timeoutMs: number): VisionDraftConnection {
-  return {
+/** Build the immutable endpoint snapshot one probe holds. */
+function snapshotOf(provider: string, spec: ResolvedProvider, timeoutMs: number): OpenAICompatibleVisionOptions {
+  return deepFreeze({
+    provider,
     baseURL: spec.baseURL,
     model: spec.model,
     apiStyle: spec.apiStyle,
-    ...spec.apiKey === undefined || spec.apiKey.length === 0 ? {} : { apiKey: spec.apiKey },
-    ...spec.apiKeyEnv === undefined || spec.apiKeyEnv.length === 0 ? {} : { apiKeyEnv: String(spec.apiKeyEnv) },
-    timeoutMs,
     maxOutputTokens: spec.maxOutputTokens,
-  }
+    timeoutMs,
+    ...spec.apiKey === undefined || spec.apiKey.length === 0 ? {} : { inlineApiKey: spec.apiKey },
+    ...spec.apiKeyEnv === undefined || spec.apiKeyEnv.length === 0 ? {} : { apiKeyEnv: String(spec.apiKeyEnv) },
+  })
 }
 
 /** Read the section's saved connection facts (base URL, model, key seam). */
@@ -123,10 +126,22 @@ function messageOf(error: unknown): string {
   return String(error)
 }
 
+/** The adapter used for draft probes: resolution hooks the card drafts supply. */
+function draftAdapter(ctx: Context, options: OpenAICompatibleVisionOptions): OpenAICompatibleVisionAdapter {
+  return new OpenAICompatibleVisionAdapter({
+    // The draft snapshot is fixed for this probe: never re-resolve from
+    // settings while the probe runs.
+    resolveProviderOptions: () => options,
+    resolveApiKey: snapshot => resolveApiKey(ctx, snapshot),
+    retry: { maxRetries: 0 },
+  })
+}
+
 /**
  * Run one real vision request with the given draft overrides layered over the
  * saved section, and report whether the deployment connects. The request goes
- * out from the host process through the runtime's probe path.
+ * out from the host process through the adapter's probe path with a draft
+ * snapshot the card is still editing.
  * @param ctx - registrant context.
  * @param overrides - draft field values from the card (may be partial).
  * @returns the model's reply on success, or a readable failure reason.
@@ -140,19 +155,16 @@ export async function runConnectionTest(ctx: Context, overrides: TestConnectionO
     return { ok: false, message: messageOf(error) }
   }
   const timeoutMs = Math.max(1, Math.min(Number(overrides.timeoutMs ?? saved.timeoutMs ?? DEFAULT_TIMEOUT_MS), 30_000))
-  const vision = ctx.get('vision')
-  if (vision === undefined) {
-    return { ok: false, message: 'vision runtime is not mounted' }
-  }
+  const options = snapshotOf('test', spec, timeoutMs)
   try {
-    // Probe through the runtime with a throwaway key (the draft carries it);
-    // the adapter resolves it in-process, the key never crosses to the browser.
-    const result = await vision.probe({
-      provider: 'test',
+    // The draft snapshot carries the throwaway key; the adapter resolves it
+    // in-process, the key never crosses to the browser.
+    const adapter = draftAdapter(ctx, options)
+    const result = await adapter.call('test', {
       prompt: 'Reply with exactly one short word: OK',
       images: [{ bytes: Buffer.from(TEST_IMAGE_BASE64, 'base64'), mimeType: 'image/png' }],
       signal: AbortSignal.timeout(timeoutMs),
-    }, draftConnectionOf('test', spec, timeoutMs))
+    })
     return { ok: true, text: result.text.trim() }
   } catch (error) {
     return { ok: false, message: messageOf(error) }
@@ -179,15 +191,15 @@ export async function listEndpointModels(ctx: Context, overrides: TestConnection
   }
   const { baseURL } = spec
   const plan = planVisionModels(baseURL)
-  const connection = resolveDraftConnection('list', draftConnectionOf('list', spec, 15_000))
+  const options = snapshotOf('list', spec, 15_000)
   let apiKey: string
   try {
-    apiKey = await resolveApiKey(ctx, connection)
+    apiKey = await resolveApiKey(ctx, options)
   } catch (error) {
     return { ok: true, models: [...plan], source: 'fallback', reason: messageOf(error) }
   }
   try {
-    const outcome = await discoverEndpointModels(connection, apiKey)
+    const outcome = await discoverEndpointModels(options, apiKey)
     if (outcome.source === 'endpoint') {
       return { ok: true, models: outcome.models.map(model => model.id), source: 'endpoint' }
     }

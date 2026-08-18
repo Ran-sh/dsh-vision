@@ -8,9 +8,9 @@
 import { describe, expect, it } from 'vitest'
 import { createVisionCache } from '../src/cache/vision-cache.ts'
 import { semanticRequestKey } from '../src/adapters/openai-compatible/adapter.ts'
-import type { VisionConnection } from '../src/runtime/types.ts'
+import type { OpenAICompatibleVisionOptions } from '../src/adapters/openai-compatible/types.ts'
 
-function connection(overrides: Partial<VisionConnection> = {}): VisionConnection {
+function connection(overrides: Partial<OpenAICompatibleVisionOptions> = {}): OpenAICompatibleVisionOptions {
   return {
     provider: 'a',
     baseURL: 'https://api.a.example/v1',

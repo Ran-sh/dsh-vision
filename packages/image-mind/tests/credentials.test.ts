@@ -1,6 +1,7 @@
 /**
  * Credential resolution tests: credential store, environment fallback, missing
- * credential, invalid key, and credential collision.
+ * credential, invalid key, and credential collision. The connection type is
+ * the adapter-owned endpoint snapshot.
  * @vitest-environment node
  */
 
@@ -8,10 +9,10 @@ import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import { resolveApiKey, assertUsableApiKey } from '../src/credentials/resolve.ts'
-import { VisionError } from '@ran-sh/dsh-vision'
-import type { VisionConnection } from '@ran-sh/dsh-vision'
+import { ImageMindVisionError } from '../src/adapters/openai-compatible/adapter.ts'
+import type { OpenAICompatibleVisionOptions } from '../src/adapters/openai-compatible/types.ts'
 
-function connection(overrides: Partial<VisionConnection> = {}): VisionConnection {
+function connection(overrides: Partial<OpenAICompatibleVisionOptions> = {}): OpenAICompatibleVisionOptions {
   return {
     provider: 'p',
     baseURL: 'https://api.example.com/v1',
@@ -74,11 +75,11 @@ describe('assertUsableApiKey', () => {
   })
 
   it('rejects an empty value', () => {
-    expect(() => assertUsableApiKey('', 'REF')).toThrow(VisionError)
+    expect(() => assertUsableApiKey('', 'REF')).toThrow(ImageMindVisionError)
   })
 
   it('rejects control characters', () => {
-    expect(() => assertUsableApiKey('sk-a\u0000b', 'REF')).toThrow(VisionError)
+    expect(() => assertUsableApiKey('sk-a\u0000b', 'REF')).toThrow(ImageMindVisionError)
   })
 })
 

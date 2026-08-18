@@ -249,4 +249,53 @@ describe('cross-package composition (service vs provider lifecycle)', () => {
     expect(result.provider).toBe('a')
     await second.dispose()
   })
+
+  it('F: unloading image-mind withdraws the default-provider strategy (no stale resolver)', async () => {
+    vi.stubEnv('KEY_A', 'sk-a')
+    vi.stubGlobal('fetch', vi.fn(async () => okChatResponse()))
+    const { ctx } = await loadComposition([
+      '- id: test-tools',
+      "  name: 'test-tools'",
+      '- id: vision-runtime',
+      "  name: '@ran-sh/dsh-vision'",
+    ])
+    const vision = ctx.get('vision') as Vision.VisionRuntime
+    const provider = await ctx.plugin(ImageMind, {
+      active: 'a',
+      providers: { a: { baseURL: 'https://a.example/v1', model: 'm', apiKeyEnv: 'KEY_A' } },
+    })
+    expect(vision.hasProvider('a')).toBe(true)
+    // The strategy is live: an omitted-provider call routes to the active.
+    const viaActive = await vision.call({ prompt: 'p', images: [LOADED_IMAGE] })
+    expect(viaActive.provider).toBe('a')
+
+    // Unload the provider: routes AND the default-provider strategy go away
+    // together — the runtime must not still be holding image-mind's closure.
+    await provider.dispose().catch(() => undefined)
+    const failure = await vision.call({ prompt: 'p', images: [LOADED_IMAGE] }).then(
+      () => undefined,
+      (error: { code?: string }) => error,
+    )
+    expect(failure?.code).toBe('PROVIDER_NOT_FOUND')
+  })
+
+  it('G: multi-provider routes dispatch through one adapter; a second provider plugin could own other routes', async () => {
+    vi.stubEnv('KEY_A', 'sk-a')
+    vi.stubEnv('KEY_B', 'sk-b')
+    vi.stubGlobal('fetch', vi.fn(async () => okChatResponse()))
+    const { ctx } = await loadComposition(fullCompositionRows({
+      active: 'a',
+      providers: {
+        a: { baseURL: 'https://a.example/v1', model: 'm', apiKeyEnv: 'KEY_A' },
+        b: { baseURL: 'https://b.example/v1', model: 'm2', apiKeyEnv: 'KEY_B' },
+      },
+    }))
+    const vision = ctx.get('vision') as Vision.VisionRuntime
+    // Both routes are live and served by the adapter image-mind registered.
+    expect(vision.hasProvider('a')).toBe(true)
+    expect(vision.hasProvider('b')).toBe(true)
+    const viaB = await vision.call({ provider: 'b', prompt: 'p', images: [LOADED_IMAGE] })
+    expect(viaB.provider).toBe('b')
+    expect(viaB.model).toBe('m2')
+  })
 })

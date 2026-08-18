@@ -1,14 +1,15 @@
 /**
  * Model discovery for OpenAI-compatible endpoints: GET /v1/models with the
- * connection's bearer, plus the known-plan fallback list when the endpoint
+ * endpoint's bearer, plus the known-plan fallback list when the endpoint
  * cannot answer. Discovery is a Host-side operation — the browser never holds
- * a key to interrogate an endpoint itself.
+ * a key to interrogate an endpoint itself. Everything here is owned by this
+ * adapter family; the vision service only routes provider → adapter.
  * @module dsh-plugin-image-mind/adapters/openai-compatible/discovery
  */
 
-import type { VisionConnection, VisionModel } from '@ran-sh/dsh-vision'
-import { VisionError } from '@ran-sh/dsh-vision'
+import type { VisionModel } from '@ran-sh/dsh-vision'
 import { readBoundedBody } from '../../media/load.ts'
+import type { OpenAICompatibleVisionOptions } from './types.ts'
 
 /**
  * Vision models grouped by endpoint, matched on the root hostname. The two
@@ -168,23 +169,23 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
  * endpoint cannot answer (no route, rejected key, non-OpenAI shape), the
  * known-plan fallback list is returned instead — discovery never fails a
  * picker that can still offer candidates.
- * @param connection - immutable connection facts (endpoint + key seam).
+ * @param options - immutable endpoint facts (endpoint + key seam).
  * @param apiKey - resolved bearer token (may be empty for keyless endpoints).
  * @param signal - caller cancellation.
  * @returns endpoint models plus the plan fallback, and whether the endpoint list won.
  */
 export async function discoverEndpointModels(
-  connection: Readonly<VisionConnection>,
+  options: Readonly<OpenAICompatibleVisionOptions>,
   apiKey: string,
   signal?: AbortSignal,
 ): Promise<{ models: VisionModel[]; source: 'endpoint' | 'fallback'; reason?: string }> {
-  const plan = planVisionModels(connection.baseURL)
+  const plan = planVisionModels(options.baseURL)
   const fallback = (reason: string): { models: VisionModel[]; source: 'endpoint' | 'fallback'; reason?: string } =>
     ({ models: plan.map(id => ({ id })), source: 'fallback', reason })
 
   let response: Response
   try {
-    response = await fetch(`${connection.baseURL}/models`, {
+    response = await fetch(`${options.baseURL}/models`, {
       headers: { authorization: `Bearer ${apiKey}` },
       redirect: 'error',
       signal: AbortSignal.any([signal ?? new AbortController().signal, AbortSignal.timeout(15_000)]),
@@ -219,14 +220,4 @@ export async function discoverEndpointModels(
   const planSet = new Set(plan)
   const extras = [...new Set(ids.filter(id => !planSet.has(id)))].sort((a, b) => a.localeCompare(b))
   return { models: [...plan, ...extras].map(id => ({ id })), source: 'endpoint' }
-}
-
-/** Normalize a discovery failure into a typed VisionError for the runtime. */
-export function discoveryFailure(error: unknown): VisionError {
-  if (error instanceof VisionError) return error
-  return new VisionError(
-    `image-mind: model discovery failed: ${(error as Error).message ?? String(error)}`,
-    'NETWORK_ERROR',
-    { cause: error },
-  )
 }

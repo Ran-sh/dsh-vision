@@ -11,8 +11,7 @@ import { Context } from '@deepseek-ai/cordis'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import { resolveConfig } from '../src/config.ts'
 import { resolveApiKey } from '../src/credentials/resolve.ts'
-import { VisionError } from '../src/runtime/errors.ts'
-import type { VisionConnection } from '../src/runtime/types.ts'
+import type { OpenAICompatibleVisionOptions } from '../src/adapters/openai-compatible/types.ts'
 
 function goodRaw() {
   return {
@@ -91,7 +90,7 @@ describe('last-good configuration', () => {
   })
 })
 
-function connection(overrides: Partial<VisionConnection> = {}): VisionConnection {
+function connection(overrides: Partial<OpenAICompatibleVisionOptions> = {}): OpenAICompatibleVisionOptions {
   return {
     provider: 'a',
     baseURL: 'https://a.example/v1',

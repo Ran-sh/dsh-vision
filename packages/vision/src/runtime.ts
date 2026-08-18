@@ -5,20 +5,27 @@
  * `ctx.llm` —a vision model is a perception backend for text-only models,
  * never a main-session model —so this is an independent `ctx.vision` service.
  *
+ * The runtime knows only provider ids, adapter instances, requests, and
+ * results: every provider fact (endpoint, credential, wire protocol, timeout,
+ * retry) lives inside the registered adapter, resolved per call. The runtime
+ * routes `provider → adapter` and nothing else, exactly as `ctx.llm` routes
+ * `provider → LlmAdapter` and `ctx.web` routes capability → provider.
+ *
  * Provider lifecycle mirrors the official `LlmRuntime`:
- * - `registerAdapter(providers, adapter, resolveConnection)` owns a route set
- *   that can be atomically replaced (`handle.replace`, including `replace([])`)
- *   or released by the disposer / fiber teardown; a disposed registration
+ * - `registerAdapter(providers, adapter)` owns a route set that can be
+ *   atomically replaced (`handle.replace`, including `replace([])`) or
+ *   released by the disposer / fiber teardown; a disposed registration
  *   refuses further `replace` with `REGISTRATION_DISPOSED`.
  * - `registerConfigurableProviders` owns a directory entry set through a
  *   `DirectoryRegistrationHandle` (register / replace / dispose), so a
  *   settings change atomically syncs the directory without stranding entries.
+ * - `registerDefaultProviderResolver(owner, resolver)` owns the default-
+ *   provider strategy: exactly one owner at a time (a second owner throws
+ *   `DUPLICATE_DEFAULT_PROVIDER` rather than silently overriding), the
+ *   disposer withdraws the strategy, and fiber teardown withdraws it too — a
+ *   provider plugin unload can never leave a stale resolver behind.
  * - every commit publishes `vision/adapters-updated`; a broken listener is
  *   contained and can never veto the commit.
- *
- * Each call captures an immutable, deep-frozen connection snapshot from the
- * route's connection resolver, so an in-flight request never observes a
- * settings change and the next call re-resolves.
  *
  * This is the Service Definition for the vision capability seam: the package
  * OWNS `ctx.vision`, and provider plugins inject `['vision']` and register
@@ -29,10 +36,8 @@
 import { Service, type Context } from '@deepseek-ai/cordis'
 import type { VisionAdapter } from './adapter.ts'
 import { VisionError } from './errors.ts'
-import { deepFreeze } from './deep-freeze.ts'
 import type {
-  VisionConnection, VisionConnectionResolver, VisionDiscoveryRequest, VisionDraftConnection,
-  VisionModel, VisionProviderDescriptor, VisionRequest, VisionResult,
+  VisionModel, VisionModelDiscoveryRequest, VisionProviderDescriptor, VisionRequest, VisionResult,
 } from './types.ts'
 
 declare module '@deepseek-ai/cordis' {
@@ -57,12 +62,12 @@ export interface VisionAdapterRegistration {
   (): void
   /**
    * Replace this registration's routes with `providers`, keeping the same
-   * adapter instance and connection resolver. Validated in full first —a
-   * conflict with another adapter, an invalid name, or bad provider metadata
-   * throws and leaves the current routes untouched —and the swap is one
-   * synchronous section, so no request can observe a gap. An empty array is
-   * legal here (a settings section that emptied holds zero routes while
-   * staying registered), unlike an empty initial registration.
+   * adapter instance. Validated in full first —a conflict with another
+   * adapter, an invalid name, or bad provider metadata throws and leaves the
+   * current routes untouched —and the swap is one synchronous section, so no
+   * request can observe a gap. An empty array is legal here (a settings
+   * section that emptied holds zero routes while staying registered), unlike
+   * an empty initial registration.
    *
    * Throws `VisionError` with code `REGISTRATION_DISPOSED` once the
    * registration has been released.
@@ -91,30 +96,11 @@ export interface VisionDirectoryRegistration {
   replace(entries: readonly VisionProviderDescriptor[]): void
 }
 
-/** One registered route: adapter + per-call connection resolver. */
+/** One registered route: adapter instance + liveness flag. */
 interface VisionRoute {
   adapter: VisionAdapter
-  resolveConnection: VisionConnectionResolver
   /** Whether the route set still stands; cleared by the registration disposer. */
   active: boolean
-}
-
-/** Runtime construction options: the provider-neutral default-provider seam. */
-export interface VisionRuntimeOptions {
-  /**
-   * Resolve the configured active provider id. The decision belongs to the
-   * runtime, not to callers: when a request names no provider, the runtime
-   * asks this seam for the default before falling back to a single live
-   * route. Absent, no default is declared and only the single-route fallback
-   * (or an explicit request) selects a provider.
-   *
-   * A provider plugin may supply this at construction (when the service is
-   * mounted with provider-specific config) or later through
-   * {@link VisionRuntime.setDefaultProviderResolver} —the active provider
-   * is provider-side configuration, so the owner of the active setting
-   * registers the resolver.
-   */
-  resolveDefaultProvider?: () => string | undefined
 }
 
 /**
@@ -124,22 +110,39 @@ export interface VisionRuntimeOptions {
 export class VisionRuntime extends Service {
   private readonly adapters = new Map<string, VisionRoute>()
   private readonly directory = new Map<string, VisionProviderDescriptor>()
-  private resolveDefaultProvider: (() => string | undefined) | undefined
+  private defaultProvider: { owner: string; resolve: () => string | undefined } | undefined
 
-  constructor(ctx: Context, options?: VisionRuntimeOptions) {
+  constructor(ctx: Context) {
     super(ctx, 'vision')
-    this.resolveDefaultProvider = options?.resolveDefaultProvider
   }
 
   /**
-   * Set (or clear, with `undefined`) the default-provider resolver. The
-   * configured active provider is provider-side configuration, so the plugin
-   * that owns that setting registers the resolver here; the runtime only
-   * consults it when a request names no provider.
-   * @param resolve - the resolver, or `undefined` to clear it.
+   * Register the default-provider strategy for one owner. The configured
+   * active provider is provider-side configuration, so the plugin that owns
+   * that setting registers the resolver here; the runtime only consults it
+   * when a request names no provider. Exactly one owner may hold the
+   * strategy: a second owner throws `DUPLICATE_DEFAULT_PROVIDER` instead of
+   * silently overriding the first. The same owner re-registering replaces
+   * its own strategy (a plugin reload re-registers after its fiber disposed
+   * the old one).
+   * @param owner - stable identity of the registering provider plugin.
+   * @param resolve - resolves the configured active provider id.
+   * @returns the disposer that withdraws this strategy.
    */
-  setDefaultProviderResolver(resolve: (() => string | undefined) | undefined): void {
-    this.resolveDefaultProvider = resolve
+  registerDefaultProviderResolver(owner: string, resolve: () => string | undefined): () => void {
+    if (this.defaultProvider !== undefined && this.defaultProvider.owner !== owner) {
+      throw new VisionError(
+        `a default-provider resolver is already registered by "${this.defaultProvider.owner}"`,
+        'DUPLICATE_DEFAULT_PROVIDER',
+      )
+    }
+    this.defaultProvider = { owner, resolve }
+    this.ctx.effect(() => () => {
+      if (this.defaultProvider?.owner === owner) this.defaultProvider = undefined
+    }, `vision.registerDefaultProviderResolver(${JSON.stringify(owner)})`)
+    return () => {
+      if (this.defaultProvider?.owner === owner) this.defaultProvider = undefined
+    }
   }
 
   /** Notify topology observers without letting one broken listener veto the commit. */
@@ -172,28 +175,23 @@ export class VisionRuntime extends Service {
   }
 
   /**
-   * Register an adapter for the given provider routes, each resolving its
-   * connection facts through `resolveConnection`. Throws `VisionError` with
-   * code `DUPLICATE_ADAPTER` if any provider already has an adapter, or
+   * Register an adapter for the given provider routes. Throws `VisionError`
+   * with code `DUPLICATE_ADAPTER` if any provider already has an adapter, or
    * `INVALID_ADAPTER` for an empty route list (all-or-nothing). Disposed with
-   * the fiber.
+   * the fiber. The adapter owns every provider fact; the runtime only routes
+   * provider ids to it.
    * @param providers - every provider route this adapter should serve.
    * @param adapter - the adapter that serves those providers.
-   * @param resolveConnection - per-call connection resolver for those routes.
    * @returns the disposer, carrying atomic route replacement.
    */
-  registerAdapter(
-    providers: string[],
-    adapter: VisionAdapter,
-    resolveConnection: VisionConnectionResolver = defaultConnectionResolver,
-  ): VisionAdapterRegistration {
+  registerAdapter(providers: string[], adapter: VisionAdapter): VisionAdapterRegistration {
     if (providers.length === 0) {
       throw new VisionError('an adapter must register at least one provider', 'INVALID_ADAPTER')
     }
     this.prepareRoutes(providers, adapter, new Set())
     const routes = new Map<string, VisionRoute>()
     for (const provider of providers) {
-      routes.set(provider, { adapter, resolveConnection, active: true })
+      routes.set(provider, { adapter, active: true })
     }
     // `replace([])` is legal and must not look like a released registration.
     let released = false
@@ -231,7 +229,7 @@ export class VisionRuntime extends Service {
         }
         routes.clear()
         for (const provider of next) {
-          const route = { adapter, resolveConnection, active: true }
+          const route = { adapter, active: true }
           routes.set(provider, route)
           this.adapters.set(provider, route)
         }
@@ -325,7 +323,7 @@ export class VisionRuntime extends Service {
   registerProvider(descriptor: VisionProviderDescriptor): void {
     if (this.directory.has(descriptor.id)) {
       throw new VisionError(
-        `ision: provider "${descriptor.id}" is already in the directory`,
+        `vision: provider "${descriptor.id}" is already in the directory`,
         'DUPLICATE_PROVIDER',
       )
     }
@@ -335,12 +333,7 @@ export class VisionRuntime extends Service {
 
   /** Every registered provider route with its display metadata. */
   listProviders(): VisionProviderDescriptor[] {
-    return [...this.adapters.keys()].map(id => this.directory.get(id) ?? {
-      id,
-      displayName: id,
-      adapter: 'unknown',
-      apiStyle: 'chat-completions',
-    })
+    return [...this.adapters.keys()].map(id => this.directory.get(id) ?? { id, displayName: id })
   }
 
   /** One provider route's display metadata, or undefined. */
@@ -366,7 +359,7 @@ export class VisionRuntime extends Service {
   /**
    * Select the provider one call uses, in order:
    * 1. an explicit `request.provider` id;
-   * 2. the configured active provider (`resolveDefaultProvider`), validated
+   * 2. the default provider (`registerDefaultProviderResolver`), validated
    *    to have a live route;
    * 3. the single live route when exactly one is registered;
    * 4. otherwise `PROVIDER_NOT_FOUND`.
@@ -379,7 +372,7 @@ export class VisionRuntime extends Service {
       this.route(id)
       return id
     }
-    const configured = this.resolveDefaultProvider?.()
+    const configured = this.defaultProvider?.resolve()
     if (configured !== undefined && configured.trim().length > 0) {
       // The configured active must actually have a live route; a stale active
       // (e.g. deleted provider) is a clear failure, never a silent fallback.
@@ -391,7 +384,7 @@ export class VisionRuntime extends Service {
     if (live.length === 1) return live[0]
     if (live.length === 0) {
       throw new VisionError(
-        'vision: no active vision provider configured; add one in 璁剧疆 鈫?鎻掍欢 鈫?鎻掍欢閰嶇疆 鈫?鍥惧儚鐞嗚В',
+        'vision: no active vision provider configured; register a provider plugin or pass a provider id',
         'PROVIDER_NOT_FOUND',
       )
     }
@@ -406,7 +399,7 @@ export class VisionRuntime extends Service {
     const route = this.adapters.get(provider)
     if (route === undefined || !route.active) {
       throw new VisionError(
-        `ision: provider "${provider}" is not registered; add it in 璁剧疆 鈫?鎻掍欢 鈫?鎻掍欢閰嶇疆 鈫?鍥惧儚鐞嗚В`,
+        `vision: provider "${provider}" is not registered; configure it or pass a provider id`,
         'PROVIDER_NOT_FOUND',
       )
     }
@@ -414,107 +407,49 @@ export class VisionRuntime extends Service {
   }
 
   /**
-   * Interrogate one provider endpoint for the models it advertises. The
-   * request names a registered provider route, or a draft connection a
-   * configuration surface is still editing; the runtime resolves the
-   * connection facts and the credential internally.
-   * @param request - provider route or draft connection to interrogate.
+   * Interrogate one registered provider endpoint for the models it
+   * advertises. The provider route selects the adapter, and the adapter
+   * resolves its own endpoint/credential/protocol to answer.
+   * @param request - provider route to interrogate.
    * @returns the advertised models.
    */
-  async discoverModels(request: VisionDiscoveryRequest): Promise<VisionModel[]> {
-    const provider = request.provider
-    if (provider !== undefined && provider.trim().length > 0) {
-      const id = provider.trim()
-      const route = this.route(id)
-      if (route.adapter.discoverModels === undefined) return []
-      // The resolver must see the SAME provider id the route was selected by,
-      // so a discovery for 'b' never resolves 'a''s connection facts.
-      const connection = await route.resolveConnection({ provider: id, prompt: '', images: [] })
-      return route.adapter.discoverModels(deepFreeze(connection))
-    }
-    if (request.draft === undefined) {
-      throw new VisionError('model discovery needs a provider route or a draft connection', 'INVALID_PROVIDER')
-    }
-    // A draft has no registered route, so no adapter family is known; the
-    // registered adapter for the namespace's active route serves the probe.
-    const draft = request.draft
-    if (draft.baseURL === undefined || draft.baseURL.length === 0) {
-      throw new VisionError('model discovery needs a baseURL in the draft connection', 'INVALID_PROVIDER')
-    }
-    const active = this.resolveProviderId(undefined)
-    const route = this.route(active)
+  async discoverModels(request: VisionModelDiscoveryRequest): Promise<readonly VisionModel[]> {
+    const provider = request.provider.trim()
+    const route = this.route(provider)
     if (route.adapter.discoverModels === undefined) return []
-    const connection = await resolveDraftConnection(active, draft)
-    return route.adapter.discoverModels(deepFreeze(connection))
+    return route.adapter.discoverModels(provider, request)
   }
 
   /**
    * Run one vision request. The runtime selects the provider in order:
-   * an explicit `request.provider` id, else the configured active provider
-   * (via the `resolveDefaultProvider` seam, validated to have a live route),
-   * else the single live route when exactly one is registered, else
-   * `PROVIDER_NOT_FOUND`. It then looks up the registered route, captures an
-   * immutable connection snapshot from the route's resolver, and dispatches
-   * to the adapter. Callers never construct a `VisionConnection` themselves.
+   * an explicit `request.provider` id, else the default provider (via the
+   * `registerDefaultProviderResolver` strategy, validated to have a live
+   * route), else the single live route when exactly one is registered, else
+   * `PROVIDER_NOT_FOUND`. It then dispatches provider → adapter; the adapter
+   * resolves its own connection facts per call.
    * @param request - the caller's request (provider/prompt/images/signal).
    * @returns the model's text answer.
    */
   async call(request: VisionRequest): Promise<VisionResult> {
     const provider = this.resolveProviderId(request.provider)
     const route = this.route(provider)
-    const connection = deepFreeze(await route.resolveConnection({ ...request, provider }))
-    return route.adapter.call(request, connection)
+    return route.adapter.call(provider, request)
   }
 
   /**
-   * Run one vision request against a draft connection a configuration surface
-   * is still editing (a "test connection" probe). The draft may name a key
-   * typed but not yet stored; the runtime builds an immutable snapshot and
-   * dispatches through the adapter serving the active provider route (the
-   * family the deployment actually uses). The key never crosses to the
-   * browser.
-   * @param request - the probe request (prompt/images/signal).
-   * @param draft - draft connection facts (endpoint + optional key).
+   * Run one probe request against a registered provider route (a "test
+   * connection" probe). The route selects the adapter; an adapter family
+   * without a probe path reports `PROVIDER_NOT_FOUND` style failure through
+   * `NO_ADAPTER`.
+   * @param provider - the provider route to probe.
+   * @param request - the probe request (prompt/images/cancellation).
    * @returns the model's text answer.
    */
-  async probe(request: VisionRequest, draft: VisionDraftConnection): Promise<VisionResult> {
-    const provider = this.resolveProviderId(undefined)
+  async probe(provider: string, request: VisionRequest): Promise<VisionResult> {
     const route = this.route(provider)
-    const connection = deepFreeze(resolveDraftConnection(provider, draft))
-    return route.adapter.call(request, connection)
+    if (route.adapter.probe === undefined) {
+      throw new VisionError(`vision: provider "${provider}" has no probe support`, 'NO_ADAPTER')
+    }
+    return route.adapter.probe(provider, request)
   }
-}
-
-/** The default connection resolver: refuse a call with no route-provided facts. */
-function defaultConnectionResolver(_request: VisionRequest): VisionConnection {
-  throw new VisionError(
-    'vision: provider route has no connection resolver; register one with the adapter',
-    'INVALID_ADAPTER',
-  )
-}
-
-/** Build an immutable connection snapshot from a draft. */
-export function resolveDraftConnection(provider: string, draft: VisionDraftConnectionLike): VisionConnection {
-  const { baseURL, model, apiStyle, apiKeyEnv, apiKey, timeoutMs, maxOutputTokens } = draft
-  return {
-    provider,
-    baseURL: baseURL ?? '',
-    model: model ?? '',
-    apiStyle: apiStyle ?? 'chat-completions',
-    maxOutputTokens: maxOutputTokens ?? 1024,
-    timeoutMs: timeoutMs ?? 60_000,
-    ...apiKeyEnv === undefined || apiKeyEnv.length === 0 ? {} : { apiKeyEnv },
-    ...apiKey === undefined || apiKey.length === 0 ? {} : { inlineApiKey: apiKey },
-  }
-}
-
-/** The draft fields a connection snapshot needs (subset of {@link VisionDraftConnection}). */
-interface VisionDraftConnectionLike {
-  baseURL?: string
-  model?: string
-  apiStyle?: 'chat-completions' | 'responses'
-  apiKeyEnv?: string
-  apiKey?: string
-  timeoutMs?: number
-  maxOutputTokens?: number
 }

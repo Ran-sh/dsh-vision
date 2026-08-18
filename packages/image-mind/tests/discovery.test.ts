@@ -6,9 +6,9 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { discoverEndpointModels, planVisionModels } from '../src/adapters/openai-compatible/discovery.ts'
-import type { VisionConnection } from '../src/runtime/types.ts'
+import type { OpenAICompatibleVisionOptions } from '../src/adapters/openai-compatible/types.ts'
 
-function connection(overrides: Partial<VisionConnection> = {}): VisionConnection {
+function connection(overrides: Partial<OpenAICompatibleVisionOptions> = {}): OpenAICompatibleVisionOptions {
   return {
     provider: 'p',
     baseURL: 'https://api.example.com/v1',

@@ -1,44 +1,54 @@
 /**
  * The vision adapter contract: one implementation per wire family, serving
  * every provider route that speaks it. The adapter is transport-only —
- * connection facts arrive as a deep-frozen {@link VisionConnection} snapshot
- * and the bearer token through a resolver, so the registering runtime owns
- * validation, layering, and credential policy.
+ * connection facts, credentials, endpoint, and protocol live inside the
+ * implementation, resolved per call from the provider id; the runtime only
+ * routes provider → adapter.
  * @module @ran-sh/dsh-vision/adapter
  */
 
 import type {
-  VisionConnection, VisionDraftConnection, VisionModel, VisionRequest, VisionResult,
+  VisionModel, VisionModelDiscoveryRequest, VisionProbeRequest, VisionRequest, VisionResult,
 } from './types.ts'
 
-/** How the runtime resolves the bearer token for one connection snapshot. */
-export type VisionApiKeyResolver = (connection: Readonly<VisionConnection>) => Promise<string>
-
 /**
- * A vision adapter. `call` is the only required method; `discoverModels` is
- * optional (an adapter family that cannot interrogate endpoints omits it and
- * the runtime reports no discovery).
+ * A vision adapter. `call` is the only required method; `discoverModels` and
+ * `probe` are optional (an adapter family that cannot interrogate endpoints
+ * omits them and the runtime reports no discovery).
  */
 export abstract class VisionAdapter {
   /**
-   * Run one vision request against the connection and read back the text
-   * answer. Implementations must honor `request.signal` and resolve the
-   * bearer through the supplied resolver. The connection is deep-frozen:
-   * implementations must not mutate it.
+   * Run one vision request against the provider this adapter serves and read
+   * back the text answer. Implementations resolve their own connection facts
+   * (endpoint, credential, wire protocol, timeouts) for the provider id and
+   * must honor `request.signal`. The runtime guarantees `provider` names a
+   * route this adapter is registered for.
+   * @param provider - the provider route the runtime selected.
    * @param request - the caller's request (prompt + images + cancellation).
-   * @param connection - immutable connection facts for this one call.
    * @returns the model's text answer plus provider/model identity.
    */
-  abstract call(request: VisionRequest, connection: Readonly<VisionConnection>): Promise<VisionResult>
+  abstract call(provider: string, request: VisionRequest): Promise<VisionResult>
 
   /**
-   * List models this adapter can discover for one draft connection. Optional:
-   * an adapter family that cannot interrogate endpoints leaves it unimplemented.
-   * @param connection - immutable connection facts (endpoint + key seam).
-   * @param signal - caller cancellation.
+   * List models this adapter can discover for one provider route. Optional:
+   * an adapter family that cannot interrogate endpoints leaves it
+   * unimplemented and the runtime reports no discovery.
+   * @param provider - the provider route to interrogate.
+   * @param request - caller cancellation; implementations must honor it.
    * @returns discoverable models in adapter-preferred order.
    */
-  discoverModels?(connection: Readonly<VisionConnection>, signal?: AbortSignal): Promise<VisionModel[]>
+  discoverModels?(provider: string, request?: VisionModelDiscoveryRequest): Promise<readonly VisionModel[]>
+
+  /**
+   * Run one probe request against a provider route (a "test connection"
+   * probe). Optional; the default dispatch reports no probe.
+   * @param provider - the provider route to probe.
+   * @param request - the probe request (prompt/images/cancellation).
+   * @returns the model's text answer plus provider/model identity.
+   */
+  probe?(provider: string, request: VisionRequest): Promise<VisionResult>
 }
 
-export type { VisionConnection, VisionDraftConnection, VisionModel, VisionRequest, VisionResult }
+export type {
+  VisionModel, VisionModelDiscoveryRequest, VisionProbeRequest, VisionRequest, VisionResult,
+} from './types.ts'

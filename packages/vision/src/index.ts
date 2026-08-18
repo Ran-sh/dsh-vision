@@ -9,16 +9,13 @@
  * @module @ran-sh/dsh-vision
  */
 
-export { VisionRuntime, resolveDraftConnection } from './runtime.ts'
-export type { VisionAdapterRegistration, VisionDirectoryRegistration, VisionRuntimeOptions } from './runtime.ts'
+export { VisionRuntime } from './runtime.ts'
+export type { VisionAdapterRegistration, VisionDirectoryRegistration } from './runtime.ts'
 export { VisionAdapter } from './adapter.ts'
-export type { VisionApiKeyResolver } from './adapter.ts'
-export { VisionError, isVisionError, isRetryableVisionCode, visionCodeForStatus } from './errors.ts'
+export { VisionError, isVisionError, deepFreeze } from './errors.ts'
 export type { VisionErrorCode } from './errors.ts'
-export { deepFreeze } from './deep-freeze.ts'
 export type {
-  VisionConnection, VisionConnectionResolver, VisionDraftConnection, VisionDiscoveryRequest,
-  VisionModel, VisionProviderDescriptor, VisionRequest, VisionResult,
-  LoadedImage, VisionApiStyle, VisionImageMimeType,
+  VisionModel, VisionModelDiscoveryRequest, VisionProbeRequest, VisionProviderDescriptor,
+  VisionRequest, VisionResult, LoadedImage, VisionImageMimeType,
 } from './types.ts'
 export { VisionRuntime as default } from './runtime.ts'

@@ -1,8 +1,8 @@
-﻿/**
+/**
  * Real-endpoint connectivity test for the two hosted plans this deployment
  * uses (opencode-go and commandcode-goat). Reads the credentials from the DSH
- * credential document (`~/.dsh/.credentials.yaml`) at runtime 鈥?never from
- * source, never printed 鈥?and resolves them through the same key seam a real
+ * credential document (`~/.dsh/.credentials.yaml`) at runtime — never from
+ * source, never printed — and resolves them through the same key seam a real
  * call uses.
  *
  * Self-skips without `RUN_VISION_E2E=1` so `npm test` stays keyless.
@@ -18,9 +18,9 @@ import { apply } from '../src/index.ts'
 import { resolveConfig } from '../src/config.ts'
 import { resolveApiKey } from '../src/credentials/resolve.ts'
 import { OpenAICompatibleVisionAdapter } from '../src/adapters/openai-compatible/adapter.ts'
+import type { OpenAICompatibleVisionOptions } from '../src/adapters/openai-compatible/types.ts'
 import { createVisionCache } from '../src/cache/vision-cache.ts'
 import { VisionRuntime } from '@ran-sh/dsh-vision'
-import type { VisionConnection } from '@ran-sh/dsh-vision'
 
 const RUN = process.env['RUN_VISION_E2E'] === '1'
 
@@ -58,7 +58,7 @@ function runCase(providerId: string, baseURL: string, model: string, apiKeyEnv: 
       active: providerId,
     })
     const provider = config.providers[providerId]
-    const connection: VisionConnection = {
+    const options: OpenAICompatibleVisionOptions = {
       provider: providerId,
       baseURL: provider.baseURL,
       model: provider.model,
@@ -67,14 +67,17 @@ function runCase(providerId: string, baseURL: string, model: string, apiKeyEnv: 
       timeoutMs: 30_000,
       apiKeyEnv,
     }
-    const apiKey = await resolveApiKey(ctx, connection)
+    const apiKey = await resolveApiKey(ctx, options)
     expect(apiKey.length).toBeGreaterThan(0)
-    const adapter = new OpenAICompatibleVisionAdapter({ resolveApiKey: async () => apiKey, cache: createVisionCache() })
-    const result = await adapter.call({
-      provider: providerId,
+    const adapter = new OpenAICompatibleVisionAdapter({
+      resolveProviderOptions: () => options,
+      resolveApiKey: async () => apiKey,
+      cache: createVisionCache(),
+    })
+    const result = await adapter.call(providerId, {
       prompt: 'Reply with exactly one short word: OK',
       images: [{ bytes: Buffer.from(TEST_IMAGE_BASE64, 'base64'), mimeType: 'image/png' }],
-    }, connection)
+    })
     expect(result.text.trim()).not.toHaveLength(0)
     // The key must never appear in the answer or any thrown message.
     expect(result.text).not.toContain(stored)
@@ -113,7 +116,7 @@ describe.skipIf(!RUN)('real-endpoint composition (apply + runtime)', () => {
 
   const PROBE = { prompt: 'Reply with exactly one short word: OK', images: [{ bytes: Buffer.from(TEST_IMAGE_BASE64, 'base64'), mimeType: 'image/png' as const }] }
 
-  it('active = opencode-go 鈫?omitted provider call goes to opencode-go', async () => {
+  it('active = opencode-go → omitted provider call goes to opencode-go', async () => {
     const { vision } = await mountComposition('opencode-go')
     const result = await vision.call({ ...PROBE, signal: AbortSignal.timeout(30_000) })
     expect(result.provider).toBe('opencode-go')
@@ -121,7 +124,7 @@ describe.skipIf(!RUN)('real-endpoint composition (apply + runtime)', () => {
     expect(result.text.trim()).not.toHaveLength(0)
   }, 40_000)
 
-  it('active = commandcode-goat 鈫?omitted provider call goes to commandcode-goat', async () => {
+  it('active = commandcode-goat → omitted provider call goes to commandcode-goat', async () => {
     const { vision } = await mountComposition('commandcode-goat')
     const result = await vision.call({ ...PROBE, signal: AbortSignal.timeout(30_000) })
     expect(result.provider).toBe('commandcode-goat')
@@ -141,7 +144,7 @@ describe.skipIf(!RUN)('real-endpoint composition (apply + runtime)', () => {
     // kimi-k3 is a second vision-capable model on the same opencode-go plan
     // (both are in the plan's known-vision list), so the override differs
     // from the configured default and the result.model echo proves the
-    // override path reached the wire 鈥?no new/paid model is called.
+    // override path reached the wire — no new/paid model is called.
     const result = await vision.call({ ...PROBE, model: 'kimi-k3', signal: AbortSignal.timeout(30_000) })
     expect(result.model).toBe('kimi-k3')
     expect(result.text.trim()).not.toHaveLength(0)

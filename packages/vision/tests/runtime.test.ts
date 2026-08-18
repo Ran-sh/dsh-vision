@@ -1,7 +1,9 @@
 /**
  * VisionRuntime tests: provider registry lifecycle —register, duplicate,
  * unknown, active override, hot replace, replace([]), removal, disposed
- * rejection, directory dynamic add/remove, and in-flight snapshot isolation.
+ * rejection, directory dynamic add/remove, default-provider strategy
+ * lifecycle (register / use / dispose / conflict), and multi-adapter
+ * dispatch by provider route.
  * @vitest-environment node
  */
 
@@ -10,35 +12,23 @@ import { Context } from '@deepseek-ai/cordis'
 import { VisionRuntime } from '../src/index.ts'
 import { VisionAdapter } from '../src/adapter.ts'
 import { VisionError } from '../src/errors.ts'
-import type { VisionConnection, VisionConnectionResolver, VisionRequest, VisionResult } from '../src/types.ts'
+import type { VisionRequest, VisionResult } from '../src/types.ts'
 
 /** A stub adapter answering with its provider + model identity. */
 function stubAdapter(overrides?: Partial<VisionAdapter>): VisionAdapter {
   const adapter = {
-    async call(request: VisionRequest, connection: Readonly<VisionConnection>): Promise<VisionResult> {
-      return { text: `answer from ${connection.provider}/${connection.model}`, provider: connection.provider, model: connection.model }
+    async call(provider: string, request: VisionRequest): Promise<VisionResult> {
+      return { text: `answer from ${provider}/${request.model ?? 'm'}`, provider, model: request.model ?? 'm' }
     },
   } satisfies VisionAdapter
   return Object.assign(adapter, overrides ?? {})
 }
 
-/** A connection resolver returning fixed facts for any request. */
-function resolver(provider: string, model = 'm'): VisionConnectionResolver {
-  return () => ({
-    provider,
-    baseURL: 'https://api.example.com/v1',
-    model,
-    apiStyle: 'chat-completions',
-    maxOutputTokens: 1024,
-    timeoutMs: 60_000,
-  })
-}
-
 describe('VisionRuntime', () => {
-  it('registers an adapter and calls through it (single-arg call)', async () => {
+  it('registers an adapter and calls through it', async () => {
     const ctx = new Context()
     const runtime = new VisionRuntime(ctx)
-    runtime.registerAdapter(['a'], stubAdapter(), resolver('a'))
+    runtime.registerAdapter(['a'], stubAdapter())
     const result = await runtime.call({ prompt: 'p', images: [] })
     expect(result.text).toBe('answer from a/m')
     expect(result.provider).toBe('a')
@@ -47,10 +37,10 @@ describe('VisionRuntime', () => {
   it('rejects a duplicate adapter route with DUPLICATE_ADAPTER', () => {
     const ctx = new Context()
     const runtime = new VisionRuntime(ctx)
-    runtime.registerAdapter(['a'], stubAdapter(), resolver('a'))
-    expect(() => runtime.registerAdapter(['a'], stubAdapter(), resolver('a'))).toThrow(VisionError)
+    runtime.registerAdapter(['a'], stubAdapter())
+    expect(() => runtime.registerAdapter(['a'], stubAdapter())).toThrow(VisionError)
     try {
-      runtime.registerAdapter(['a'], stubAdapter(), resolver('a'))
+      runtime.registerAdapter(['a'], stubAdapter())
     } catch (error) {
       expect((error as VisionError).code).toBe('DUPLICATE_ADAPTER')
     }
@@ -59,9 +49,9 @@ describe('VisionRuntime', () => {
   it('rejects an empty adapter route list with INVALID_ADAPTER', () => {
     const ctx = new Context()
     const runtime = new VisionRuntime(ctx)
-    expect(() => runtime.registerAdapter([], stubAdapter(), resolver('a'))).toThrow(VisionError)
+    expect(() => runtime.registerAdapter([], stubAdapter())).toThrow(VisionError)
     try {
-      runtime.registerAdapter([], stubAdapter(), resolver('a'))
+      runtime.registerAdapter([], stubAdapter())
     } catch (error) {
       expect((error as VisionError).code).toBe('INVALID_ADAPTER')
     }
@@ -76,27 +66,17 @@ describe('VisionRuntime', () => {
   it('lists providers only after registration', () => {
     const ctx = new Context()
     const runtime = new VisionRuntime(ctx)
-    runtime.registerProvider({ id: 'a', displayName: 'A', adapter: 'openai-compatible', apiStyle: 'chat-completions' })
+    runtime.registerProvider({ id: 'a', displayName: 'A' })
     expect(runtime.getProvider('a')?.displayName).toBe('A')
     expect(runtime.listProviders()).toHaveLength(0)
-    runtime.registerAdapter(['a'], stubAdapter(), resolver('a'))
+    runtime.registerAdapter(['a'], stubAdapter())
     expect(runtime.listProviders().map(p => p.id)).toEqual(['a'])
   })
 
   it('replaces routes atomically (hot change)', async () => {
     const ctx = new Context()
     const runtime = new VisionRuntime(ctx)
-    // The resolver is provider-aware, like the real one (it looks up the
-    // request's provider in the configuration).
-    const providerAware: VisionConnectionResolver = (request) => ({
-      provider: request.provider ?? 'a',
-      baseURL: 'https://api.example.com/v1',
-      model: 'm',
-      apiStyle: 'chat-completions',
-      maxOutputTokens: 1024,
-      timeoutMs: 60_000,
-    })
-    const registration = runtime.registerAdapter(['a'], stubAdapter(), providerAware)
+    const registration = runtime.registerAdapter(['a'], stubAdapter())
     expect(runtime.hasProvider('a')).toBe(true)
     registration.replace(['b'])
     expect(runtime.hasProvider('a')).toBe(false)
@@ -108,7 +88,7 @@ describe('VisionRuntime', () => {
   it('replace([]) atomically removes every route', async () => {
     const ctx = new Context()
     const runtime = new VisionRuntime(ctx)
-    const registration = runtime.registerAdapter(['a', 'b'], stubAdapter(), resolver('a'))
+    const registration = runtime.registerAdapter(['a', 'b'], stubAdapter())
     expect(runtime.hasProvider('a')).toBe(true)
     expect(runtime.hasProvider('b')).toBe(true)
     registration.replace([])
@@ -120,8 +100,8 @@ describe('VisionRuntime', () => {
   it('rejects a replace that collides with another adapter, leaving old routes intact', () => {
     const ctx = new Context()
     const runtime = new VisionRuntime(ctx)
-    const registration = runtime.registerAdapter(['a'], stubAdapter(), resolver('a'))
-    runtime.registerAdapter(['b'], stubAdapter(), resolver('b'))
+    const registration = runtime.registerAdapter(['a'], stubAdapter())
+    runtime.registerAdapter(['b'], stubAdapter())
     expect(() => registration.replace(['a', 'b'])).toThrow(VisionError)
     try {
       registration.replace(['a', 'b'])
@@ -135,7 +115,7 @@ describe('VisionRuntime', () => {
   it('rejects replace on a disposed registration with REGISTRATION_DISPOSED', async () => {
     const ctx = new Context()
     const runtime = new VisionRuntime(ctx)
-    const registration = runtime.registerAdapter(['a'], stubAdapter(), resolver('a'))
+    const registration = runtime.registerAdapter(['a'], stubAdapter())
     registration()
     expect(runtime.hasProvider('a')).toBe(false)
     expect(() => registration.replace(['b'])).toThrow(VisionError)
@@ -149,7 +129,7 @@ describe('VisionRuntime', () => {
   it('stops serving a provider after its registration disposes', async () => {
     const ctx = new Context()
     const runtime = new VisionRuntime(ctx)
-    const registration = runtime.registerAdapter(['a'], stubAdapter(), resolver('a'))
+    const registration = runtime.registerAdapter(['a'], stubAdapter())
     registration()
     expect(runtime.hasProvider('a')).toBe(false)
     await expect(runtime.call({ provider: 'a', prompt: 'p', images: [] })).rejects.toMatchObject({ code: 'PROVIDER_NOT_FOUND' })
@@ -158,7 +138,7 @@ describe('VisionRuntime', () => {
   it('disposes the registry with the fiber', async () => {
     const ctx = new Context()
     const runtime = new VisionRuntime(ctx)
-    runtime.registerAdapter(['a'], stubAdapter(), resolver('a'))
+    runtime.registerAdapter(['a'], stubAdapter())
     expect(runtime.hasProvider('a')).toBe(true)
     await ctx.fiber.dispose()
     expect(runtime.hasProvider('a')).toBe(false)
@@ -168,7 +148,7 @@ describe('VisionRuntime', () => {
     const ctx = new Context()
     const runtime = new VisionRuntime(ctx)
     const discover = vi.fn(async () => [{ id: 'v1', vision: true }])
-    runtime.registerAdapter(['a'], stubAdapter({ discoverModels: discover }), resolver('a'))
+    runtime.registerAdapter(['a'], stubAdapter({ discoverModels: discover }))
     const models = await runtime.discoverModels({ provider: 'a' })
     expect(models).toEqual([{ id: 'v1', vision: true }])
     expect(discover).toHaveBeenCalledOnce()
@@ -177,19 +157,15 @@ describe('VisionRuntime', () => {
   it('returns no models for an adapter without discovery', async () => {
     const ctx = new Context()
     const runtime = new VisionRuntime(ctx)
-    runtime.registerAdapter(['a'], stubAdapter(), resolver('a'))
+    runtime.registerAdapter(['a'], stubAdapter())
     const models = await runtime.discoverModels({ provider: 'a' })
     expect(models).toEqual([])
   })
 
-  it('discovery via a draft connection uses the active route adapter', async () => {
+  it('rejects discovery for an unknown provider with PROVIDER_NOT_FOUND', async () => {
     const ctx = new Context()
     const runtime = new VisionRuntime(ctx)
-    const discover = vi.fn(async () => [{ id: 'v1' }])
-    runtime.registerAdapter(['a'], stubAdapter({ discoverModels: discover }), resolver('a'))
-    const models = await runtime.discoverModels({ draft: { baseURL: 'https://draft.example/v1' } })
-    expect(models).toEqual([{ id: 'v1' }])
-    expect(discover).toHaveBeenCalledOnce()
+    await expect(runtime.discoverModels({ provider: 'nope' })).rejects.toMatchObject({ code: 'PROVIDER_NOT_FOUND' })
   })
 
   it('publishes vision/adapters-updated on registration and replace', async () => {
@@ -197,7 +173,7 @@ describe('VisionRuntime', () => {
     const runtime = new VisionRuntime(ctx)
     const seen: string[] = []
     ctx.on('vision/adapters-updated', () => { seen.push('event') })
-    const registration = runtime.registerAdapter(['a'], stubAdapter(), resolver('a'))
+    const registration = runtime.registerAdapter(['a'], stubAdapter())
     registration.replace(['b'])
     registration()
     expect(seen.length).toBeGreaterThanOrEqual(3)
@@ -207,7 +183,7 @@ describe('VisionRuntime', () => {
     const ctx = new Context()
     const runtime = new VisionRuntime(ctx)
     ctx.on('vision/adapters-updated', () => { throw new Error('listener boom') })
-    const registration = runtime.registerAdapter(['a'], stubAdapter(), resolver('a'))
+    const registration = runtime.registerAdapter(['a'], stubAdapter())
     expect(runtime.hasProvider('a')).toBe(true)
     registration.replace(['b'])
     expect(runtime.hasProvider('b')).toBe(true)
@@ -218,12 +194,12 @@ describe('VisionRuntime', () => {
       const ctx = new Context()
       const runtime = new VisionRuntime(ctx)
       const handle = runtime.registerConfigurableProviders([
-        { id: 'a', displayName: 'A', adapter: 'openai-compatible', apiStyle: 'chat-completions' },
-        { id: 'b', displayName: 'B', adapter: 'openai-compatible', apiStyle: 'chat-completions' },
+        { id: 'a', displayName: 'A' },
+        { id: 'b', displayName: 'B' },
       ])
       expect(runtime.getProvider('a')).toBeDefined()
       expect(runtime.getProvider('b')).toBeDefined()
-      handle.replace([{ id: 'c', displayName: 'C', adapter: 'openai-compatible', apiStyle: 'chat-completions' }])
+      handle.replace([{ id: 'c', displayName: 'C' }])
       expect(runtime.getProvider('a')).toBeUndefined()
       expect(runtime.getProvider('c')).toBeDefined()
     })
@@ -231,14 +207,14 @@ describe('VisionRuntime', () => {
     it('duplicate directory entry rejects with DUPLICATE_PROVIDER', () => {
       const ctx = new Context()
       const runtime = new VisionRuntime(ctx)
-      runtime.registerConfigurableProviders([{ id: 'a', displayName: 'A', adapter: 'x', apiStyle: 'chat-completions' }])
-      expect(() => runtime.registerProvider({ id: 'a', displayName: 'A2', adapter: 'x', apiStyle: 'chat-completions' })).toThrow(VisionError)
+      runtime.registerConfigurableProviders([{ id: 'a', displayName: 'A' }])
+      expect(() => runtime.registerProvider({ id: 'a', displayName: 'A2' })).toThrow(VisionError)
     })
 
     it('directory entries disappear when the registration disposes', () => {
       const ctx = new Context()
       const runtime = new VisionRuntime(ctx)
-      const handle = runtime.registerConfigurableProviders([{ id: 'a', displayName: 'A', adapter: 'x', apiStyle: 'chat-completions' }])
+      const handle = runtime.registerConfigurableProviders([{ id: 'a', displayName: 'A' }])
       expect(runtime.getProvider('a')).toBeDefined()
       handle()
       expect(runtime.getProvider('a')).toBeUndefined()
@@ -247,7 +223,7 @@ describe('VisionRuntime', () => {
     it('replace([]) empties the directory entry set', () => {
       const ctx = new Context()
       const runtime = new VisionRuntime(ctx)
-      const handle = runtime.registerConfigurableProviders([{ id: 'a', displayName: 'A', adapter: 'x', apiStyle: 'chat-completions' }])
+      const handle = runtime.registerConfigurableProviders([{ id: 'a', displayName: 'A' }])
       handle.replace([])
       expect(runtime.getProvider('a')).toBeUndefined()
       expect(runtime.listDirectory()).toHaveLength(0)
@@ -256,119 +232,38 @@ describe('VisionRuntime', () => {
     it('a disposed directory registration rejects replace', () => {
       const ctx = new Context()
       const runtime = new VisionRuntime(ctx)
-      const handle = runtime.registerConfigurableProviders([{ id: 'a', displayName: 'A', adapter: 'x', apiStyle: 'chat-completions' }])
+      const handle = runtime.registerConfigurableProviders([{ id: 'a', displayName: 'A' }])
       handle()
-      expect(() => handle.replace([{ id: 'b', displayName: 'B', adapter: 'x', apiStyle: 'chat-completions' }])).toThrow(VisionError)
+      expect(() => handle.replace([{ id: 'b', displayName: 'B' }])).toThrow(VisionError)
       try {
-        handle.replace([{ id: 'b', displayName: 'B', adapter: 'x', apiStyle: 'chat-completions' }])
+        handle.replace([{ id: 'b', displayName: 'B' }])
       } catch (error) {
         expect((error as VisionError).code).toBe('REGISTRATION_DISPOSED')
       }
     })
   })
 
-  describe('connection snapshot isolation', () => {
-    it('each call captures a fresh snapshot; a settings change affects only the next call', async () => {
-      const ctx = new Context()
-      const runtime = new VisionRuntime(ctx)
-      const seenBaseURLs: string[] = []
-      const mutable = { baseURL: 'https://one.example/v1' }
-      const registration = runtime.registerAdapter(['a'], stubAdapter(), () => ({
-        provider: 'a',
-        baseURL: mutable.baseURL,
-        model: 'm',
-        apiStyle: 'chat-completions' as const,
-        maxOutputTokens: 1024,
-        timeoutMs: 60_000,
-      }))
-      const first = await runtime.call({ prompt: 'p', images: [] })
-      // The in-flight call already resolved; a config change before the next
-      // call must not retroactively change the first result's snapshot.
-      expect(first.text).toBe('answer from a/m')
-      // Change the underlying config, then call again —the next snapshot sees it.
-      mutable.baseURL = 'https://two.example/v1'
-      const adapter = runtime.adapterFor('a') as VisionAdapter & { seen: string[] }
-      // Capture what the adapter saw: override call to record the baseURL.
-      const recorded: string[] = []
-      const spy = stubAdapter()
-      registration.replace([])
-      runtime.registerAdapter(['a'], {
-        async call(request: VisionRequest, connection: Readonly<VisionConnection>): Promise<VisionResult> {
-          recorded.push(connection.baseURL)
-          return { text: `answer from ${connection.baseURL}`, provider: connection.provider, model: connection.model }
-        },
-      }, () => ({
-        provider: 'a',
-        baseURL: mutable.baseURL,
-        model: 'm',
-        apiStyle: 'chat-completions' as const,
-        maxOutputTokens: 1024,
-        timeoutMs: 60_000,
-      }))
-      void spy
-      await runtime.call({ prompt: 'p', images: [] })
-      await runtime.call({ prompt: 'p', images: [] })
-      expect(recorded).toEqual(['https://two.example/v1', 'https://two.example/v1'])
-    })
-
-    it('the connection snapshot is deep-frozen before the adapter sees it', async () => {
-      const ctx = new Context()
-      const runtime = new VisionRuntime(ctx)
-      let frozen = false
-      const adapter = {
-        async call(_request: VisionRequest, connection: Readonly<VisionConnection>): Promise<VisionResult> {
-          frozen = Object.isFrozen(connection)
-          try {
-            // Attempt to mutate must fail (frozen) or be silently ignored.
-            (connection as { baseURL: string }).baseURL = 'https://hacked.example/v1'
-          } catch {
-            frozen = frozen && true
-          }
-          return { text: 'ok', provider: connection.provider, model: connection.model }
-        },
-      } satisfies VisionAdapter
-      runtime.registerAdapter(['a'], adapter, resolver('a'))
-      await runtime.call({ prompt: 'p', images: [] })
-      expect(frozen).toBe(true)
-      // The next call still resolves the original snapshot (not the hack).
-      const second = await runtime.call({ prompt: 'p', images: [] })
-      expect(second.text).toBe('ok')
-    })
-  })
-
-  describe('default-provider seam (resolveDefaultProvider)', () => {
+  describe('default-provider strategy (registerDefaultProviderResolver)', () => {
     /** A runtime with two routes and a mutable active seam. */
     function runtimeWithActive(initialActive: string): { runtime: VisionRuntime; setActive: (id: string) => void } {
       const ctx = new Context()
       let active = initialActive
-      const runtime = new VisionRuntime(ctx, { resolveDefaultProvider: () => active })
-      // The resolver is provider-aware: it serves the connection facts of the
-      // provider the runtime selected, exactly like the composition resolver.
-      const providerAware: VisionConnectionResolver = (request) => {
-        const id = request.provider ?? 'a'
-        return {
-          provider: id,
-          baseURL: `https://${id}.example/v1`,
-          model: request.model ?? `model-${id}`,
-          apiStyle: 'chat-completions',
-          maxOutputTokens: 1024,
-          timeoutMs: 60_000,
-        }
-      }
-      runtime.registerAdapter(['a', 'b'], stubAdapter(), providerAware)
+      const runtime = new VisionRuntime(ctx)
+      runtime.registerDefaultProviderResolver('owner-a', () => active)
+      runtime.registerAdapter(['a', 'b'], stubAdapter())
       return {
         runtime,
         setActive: (id: string) => { active = id },
       }
     }
 
-    it('routes = [a,b], active = a 鈫?omitted provider uses a', async () => {
+    it('routes = [a,b], active = a → omitted provider uses a', async () => {
       const { runtime } = runtimeWithActive('a')
       const result = await runtime.call({ prompt: 'p', images: [] })
       expect(result.provider).toBe('a')
     })
 
-    it('active dynamically changes a 鈫?b 鈫?the next call uses b', async () => {
+    it('active dynamically changes a → b → the next call uses b', async () => {
       const { runtime, setActive } = runtimeWithActive('a')
       const first = await runtime.call({ prompt: 'p', images: [] })
       expect(first.provider).toBe('a')
@@ -383,48 +278,117 @@ describe('VisionRuntime', () => {
       expect(result.provider).toBe('b')
     })
 
-    it('active pointing at a route with no live adapter 鈫?PROVIDER_NOT_FOUND', async () => {
+    it('active pointing at a route with no live adapter → PROVIDER_NOT_FOUND', async () => {
       const { runtime, setActive } = runtimeWithActive('a')
       setActive('gone')
       await expect(runtime.call({ prompt: 'p', images: [] })).rejects.toMatchObject({ code: 'PROVIDER_NOT_FOUND' })
     })
 
-    it('an explicit model override reaches the connection snapshot', async () => {
-      const { runtime } = runtimeWithActive('a')
-      const result = await runtime.call({ model: 'override-model', prompt: 'p', images: [] })
-      expect(result.model).toBe('override-model')
-      const plain = await runtime.call({ prompt: 'p', images: [] })
-      expect(plain.model).toBe('model-a')
+    it('a second owner is refused with DUPLICATE_DEFAULT_PROVIDER (never silent override)', () => {
+      const ctx = new Context()
+      const runtime = new VisionRuntime(ctx)
+      runtime.registerDefaultProviderResolver('owner-a', () => 'a')
+      expect(() => runtime.registerDefaultProviderResolver('owner-b', () => 'b')).toThrow(VisionError)
+      try {
+        runtime.registerDefaultProviderResolver('owner-b', () => 'b')
+      } catch (error) {
+        expect((error as VisionError).code).toBe('DUPLICATE_DEFAULT_PROVIDER')
+      }
+    })
+
+    it('the same owner re-registering replaces its own strategy', async () => {
+      const ctx = new Context()
+      const runtime = new VisionRuntime(ctx)
+      runtime.registerAdapter(['a', 'b'], stubAdapter())
+      runtime.registerDefaultProviderResolver('owner-a', () => 'a')
+      runtime.registerDefaultProviderResolver('owner-a', () => 'b')
+      const result = await runtime.call({ prompt: 'p', images: [] })
+      expect(result.provider).toBe('b')
+    })
+
+    it('disposing the strategy withdraws it (no stale resolver)', async () => {
+      const ctx = new Context()
+      const runtime = new VisionRuntime(ctx)
+      runtime.registerAdapter(['a', 'b'], stubAdapter())
+      const dispose = runtime.registerDefaultProviderResolver('owner-a', () => 'a')
+      dispose()
+      await expect(runtime.call({ prompt: 'p', images: [] })).rejects.toMatchObject({ code: 'PROVIDER_NOT_FOUND' })
+    })
+
+    it('fiber teardown withdraws the strategy (provider unload leaves no stale resolver)', async () => {
+      const ctx = new Context()
+      const runtime = new VisionRuntime(ctx)
+      runtime.registerAdapter(['a', 'b'], stubAdapter())
+      runtime.registerDefaultProviderResolver('owner-a', () => 'a')
+      await ctx.fiber.dispose()
+      await expect(runtime.call({ prompt: 'p', images: [] })).rejects.toMatchObject({ code: 'PROVIDER_NOT_FOUND' })
+    })
+
+    it('a re-registering owner may take over after its own fiber disposed the old strategy', () => {
+      const ctx = new Context()
+      const runtime = new VisionRuntime(ctx)
+      runtime.registerDefaultProviderResolver('owner-a', () => 'a')
+      runtime.registerDefaultProviderResolver('owner-a', () => 'b')
+      expect(() => runtime.registerDefaultProviderResolver('owner-b', () => 'c')).toThrow(VisionError)
     })
   })
 
-  describe('probe (draft connection test)', () => {
-    it('routes = [a,b], active = b 鈫?probe dispatches through b\'s adapter', async () => {
+  describe('multi-adapter dispatch by provider route', () => {
+    it('provider A → adapter A, provider B → adapter B, never a guess', async () => {
       const ctx = new Context()
-      const runtime = new VisionRuntime(ctx, { resolveDefaultProvider: () => 'b' })
-      const probed: string[] = []
-      const adapterA = {
-        async call(request: VisionRequest, connection: Readonly<VisionConnection>): Promise<VisionResult> {
-          probed.push(`a:${connection.provider}`)
-          return { text: 'from a', provider: connection.provider, model: connection.model }
+      const runtime = new VisionRuntime(ctx)
+      const adapterAlpha = {
+        async call(provider: string): Promise<VisionResult> {
+          return { text: `alpha:${provider}`, provider, model: 'm' }
         },
       } satisfies VisionAdapter
-      const adapterB = {
-        async call(request: VisionRequest, connection: Readonly<VisionConnection>): Promise<VisionResult> {
-          probed.push(`b:${connection.provider}`)
-          return { text: 'from b', provider: connection.provider, model: connection.model }
+      const adapterBeta = {
+        async call(provider: string): Promise<VisionResult> {
+          return { text: `beta:${provider}`, provider, model: 'm' }
         },
       } satisfies VisionAdapter
-      // Two adapter families: a and b are served by DIFFERENT adapters.
-      runtime.registerAdapter(['a'], adapterA, resolver('a'))
-      runtime.registerAdapter(['b'], adapterB, resolver('b'))
-      const result = await runtime.probe(
-        { prompt: 'p', images: [] },
-        { baseURL: 'https://draft.example/v1', model: 'draft-model' },
-      )
-      expect(probed).toEqual(['b:b'])
-      expect(result.text).toBe('from b')
-      expect(result.provider).toBe('b')
+      runtime.registerAdapter(['a'], adapterAlpha)
+      runtime.registerAdapter(['b'], adapterBeta)
+      const viaA = await runtime.call({ provider: 'a', prompt: 'p', images: [] })
+      const viaB = await runtime.call({ provider: 'b', prompt: 'p', images: [] })
+      expect(viaA.text).toBe('alpha:a')
+      expect(viaB.text).toBe('beta:b')
+      // With no default and multiple live routes the runtime refuses rather
+      // than guessing across adapter families.
+      await expect(runtime.call({ prompt: 'p', images: [] })).rejects.toMatchObject({ code: 'PROVIDER_NOT_FOUND' })
+    })
+
+    it('discovery dispatches by provider route to the owning adapter', async () => {
+      const ctx = new Context()
+      const runtime = new VisionRuntime(ctx)
+      const discoverA = vi.fn(async () => [{ id: 'a-model' }])
+      const discoverB = vi.fn(async () => [{ id: 'b-model' }])
+      runtime.registerAdapter(['a'], stubAdapter({ discoverModels: discoverA }))
+      runtime.registerAdapter(['b'], stubAdapter({ discoverModels: discoverB }))
+      const modelsB = await runtime.discoverModels({ provider: 'b' })
+      expect(modelsB).toEqual([{ id: 'b-model' }])
+      expect(discoverB).toHaveBeenCalledOnce()
+      expect(discoverA).not.toHaveBeenCalled()
+    })
+
+    it('probe dispatches by provider route to the owning adapter', async () => {
+      const ctx = new Context()
+      const runtime = new VisionRuntime(ctx)
+      const probeA = vi.fn(async () => ({ text: 'probed a', provider: 'a', model: 'm' }))
+      const probeB = vi.fn(async () => ({ text: 'probed b', provider: 'b', model: 'm' }))
+      runtime.registerAdapter(['a'], stubAdapter({ probe: probeA }))
+      runtime.registerAdapter(['b'], stubAdapter({ probe: probeB }))
+      const result = await runtime.probe('a', { prompt: 'p', images: [] })
+      expect(result.text).toBe('probed a')
+      expect(probeA).toHaveBeenCalledOnce()
+      expect(probeB).not.toHaveBeenCalled()
+    })
+
+    it('probe reports NO_ADAPTER when the route adapter has no probe path', async () => {
+      const ctx = new Context()
+      const runtime = new VisionRuntime(ctx)
+      runtime.registerAdapter(['a'], stubAdapter())
+      await expect(runtime.probe('a', { prompt: 'p', images: [] })).rejects.toMatchObject({ code: 'NO_ADAPTER' })
     })
   })
 })

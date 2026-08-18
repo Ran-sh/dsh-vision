@@ -25,12 +25,14 @@
     "test": "vitest run"
   },
   "peerDependencies": {
-    "@deepseek-ai/cordis": "*"
+    "@deepseek-ai/cordis": "*",
+    "@deepseek-ai/dsh-llm": "*"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "file:../../../node_modules/@deepseek-ai/cordis",
     "typescript": "~5.7.2",
-    "vitest": "^2.1.9"
+    "vitest": "^2.1.9",
+    "@deepseek-ai/dsh-llm": "file:../../../node_modules/@deepseek-ai/dsh-llm"
   },
   "license": "MIT"
 }

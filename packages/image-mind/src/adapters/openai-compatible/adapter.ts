@@ -1,30 +1,46 @@
 /**
  * The OpenAI-compatible vision adapter: one instance serves every provider
- * route that speaks chat-completions or responses. The adapter is
- * transport-only — connection facts arrive through an immutable
- * {@link VisionConnection} and the bearer through a resolver. Retry policy
- * lives here (not in the tool): transient failures (429/5xx/network/timeout)
- * retry with exponential backoff and jitter; auth, config, and response-shape
- * failures never repeat; an aborted signal stops the loop immediately.
+ * route that speaks chat-completions or responses. The adapter owns its
+ * provider facts — it resolves the current endpoint/credential snapshot per
+ * call through the constructor hooks, freezes it, and never re-reads live
+ * mutable settings while a request is in flight. Retry policy lives here (not
+ * in the tool): transient failures (429/5xx/network/timeout) retry with
+ * exponential backoff and jitter; auth, config, and response-shape failures
+ * never repeat; an aborted signal stops the loop immediately.
+ *
+ * The vision service routes only `provider → adapter`; everything below this
+ * line (endpoint, credential, protocol, HTTP, retry, model discovery) is
+ * owned by this package.
  * @module dsh-plugin-image-mind/adapters/openai-compatible/adapter
  */
 
-import { VisionAdapter } from '@ran-sh/dsh-vision'
-import { VisionError, visionCodeForStatus } from '@ran-sh/dsh-vision'
-import type { VisionConnection, VisionModel, VisionRequest, VisionResult } from '@ran-sh/dsh-vision'
+import { VisionAdapter, VisionError } from '@ran-sh/dsh-vision'
+import type { VisionErrorCode } from '@ran-sh/dsh-vision'
+import type { VisionModel, VisionModelDiscoveryRequest, VisionRequest, VisionResult } from '@ran-sh/dsh-vision'
+import { deepFreeze } from '@ran-sh/dsh-vision'
+import type { LoadedImage } from '@ran-sh/dsh-vision'
 import { readBoundedBody, readBoundedText } from '../../media/load.ts'
 import { buildVisionRequest, extractChatCompletionsContent, extractResponsesContent } from './parse.ts'
 import { discoverEndpointModels } from './discovery.ts'
 import { resolveBackoff, sleepBackoff, type BackoffConfig } from './retry.ts'
 import type { VisionCache } from '../../cache/vision-cache.ts'
+import type { OpenAICompatibleVisionOptions } from './types.ts'
 
 /** Default retry count after the first request, matching the harness default. */
 const DEFAULT_MAX_RETRIES = 2
 
-/** Constructor options: the operation-local resolution hooks the adapter needs. */
+/** Constructor options: the operation-local resolution hooks the adapter owns. */
 export interface OpenAICompatibleAdapterOptions {
-  /** Resolve the bearer token for one connection snapshot. */
-  resolveApiKey: (connection: Readonly<VisionConnection>) => Promise<string>
+  /**
+   * Resolve the current immutable endpoint snapshot for one provider route.
+   * Called once per operation; the adapter deep-freezes the result before the
+   * wire layer sees it, so an in-flight request never observes a settings
+   * change and the next call re-resolves. The request rides along so a model
+   * override reaches the wire.
+   */
+  resolveProviderOptions: (provider: string, request: VisionRequest) => OpenAICompatibleVisionOptions
+  /** Resolve the bearer token for one endpoint snapshot. */
+  resolveApiKey: (options: Readonly<OpenAICompatibleVisionOptions>) => Promise<string>
   /** Optional semantic cache; absent disables caching. */
   cache?: VisionCache
   /** Retry scheduling; absent uses the default backoff. */
@@ -64,12 +80,69 @@ function responseHint(status: number, retried: boolean, excerpt?: string): strin
 }
 
 /** The semantic identity of one vision request: endpoint fields plus the same image bytes and prompt. */
-export function semanticRequestKey(connection: Readonly<VisionConnection>, prompt: string, image: { bytes: Buffer; mimeType: string }): string {
+export function semanticRequestKey(
+  options: Readonly<OpenAICompatibleVisionOptions>,
+  prompt: string,
+  image: { bytes: Buffer; mimeType: string },
+): string {
   return JSON.stringify([
-    connection.provider, connection.baseURL, connection.model,
-    connection.apiStyle, connection.maxOutputTokens,
+    options.provider, options.baseURL, options.model,
+    options.apiStyle, options.maxOutputTokens,
     image.bytes.toString('base64'), image.mimeType, prompt,
   ])
+}
+
+/** Re-export for the wire-parsing layer. */
+export type { LoadedImage }
+
+/** Classify a non-2xx HTTP status into a stable code. 401/403 are auth failures; 429 is rate-limited; 5xx are provider errors. */
+type ProviderWireCode = 'AUTH_FAILED' | 'RATE_LIMITED' | 'PROVIDER_ERROR' | 'TIMEOUT' | 'NETWORK_ERROR' | 'INVALID_RESPONSE' | 'EMPTY_RESPONSE' | 'INVALID_CREDENTIAL' | 'MISSING_CREDENTIAL'
+
+/** Narrow the adapter-owned wire codes into the seam's stable provider-neutral vocabulary. */
+function toSeamCode(code: ProviderWireCode): VisionErrorCode {
+  switch (code) {
+    case 'AUTH_FAILED':
+    case 'RATE_LIMITED':
+    case 'TIMEOUT':
+    case 'NETWORK_ERROR':
+    case 'EMPTY_RESPONSE':
+    case 'INVALID_RESPONSE':
+      return 'PROVIDER_ERROR'
+    case 'INVALID_CREDENTIAL':
+    case 'MISSING_CREDENTIAL':
+      return 'PROVIDER_ERROR'
+    default:
+      return 'PROVIDER_ERROR'
+  }
+}
+
+/** Adapter-local wire failure: carries the transport detail the seam must not see. */
+export class ImageMindVisionError extends Error {
+  readonly code: ProviderWireCode
+  readonly status?: number
+  readonly retryable: boolean
+
+  constructor(message: string, code: ProviderWireCode, options?: { status?: number; cause?: unknown }) {
+    super(message, options?.cause === undefined ? undefined : { cause: options.cause })
+    this.name = 'ImageMindVisionError'
+    this.code = code
+    this.status = options?.status
+    this.retryable = code === 'RATE_LIMITED' || code === 'PROVIDER_ERROR' || code === 'TIMEOUT' || code === 'NETWORK_ERROR'
+  }
+}
+
+/** Normalize one thrown value into the adapter's wire failure vocabulary. */
+function asWireError(error: unknown): ImageMindVisionError {
+  if (error instanceof ImageMindVisionError) return error
+  if (error instanceof Error && error.name === 'AbortError') return new ImageMindVisionError(error.message, 'NETWORK_ERROR', { cause: error })
+  return new ImageMindVisionError((error as Error).message ?? String(error), 'PROVIDER_ERROR', { cause: error })
+}
+
+/** Classify a non-2xx HTTP status into a stable code. 401/403 are auth failures; 429 is rate-limited; 5xx are provider errors. */
+function visionCodeForStatus(status: number): ProviderWireCode {
+  if (status === 401 || status === 403) return 'AUTH_FAILED'
+  if (status === 429) return 'RATE_LIMITED'
+  return 'PROVIDER_ERROR'
 }
 
 /**
@@ -78,12 +151,11 @@ export function semanticRequestKey(connection: Readonly<VisionConnection>, promp
  */
 async function callVisionOnce(
   request: VisionRequest,
-  connection: Readonly<VisionConnection>,
+  options: Readonly<OpenAICompatibleVisionOptions>,
   apiKey: string,
-  timeoutMs: number,
 ): Promise<VisionResult> {
   const { path, body } = buildVisionRequest(
-    connection.baseURL, connection.model, connection.apiStyle, connection.maxOutputTokens,
+    options.baseURL, options.model, options.apiStyle, options.maxOutputTokens,
     request.prompt, request.images[0],
   )
   let response: Response
@@ -93,7 +165,7 @@ async function callVisionOnce(
       headers: { 'content-type': 'application/json', authorization: `Bearer ${apiKey}` },
       body,
       redirect: 'error',
-      signal: AbortSignal.any([request.signal ?? new AbortController().signal, AbortSignal.timeout(timeoutMs)]),
+      signal: AbortSignal.any([request.signal ?? new AbortController().signal, AbortSignal.timeout(options.timeoutMs)]),
     })
   } catch (error) {
     // A user cancellation must not be replayed; anything else (network
@@ -103,9 +175,9 @@ async function callVisionOnce(
       throw error
     }
     const isTimeout = error instanceof Error && error.name === 'AbortError'
-    throw new VisionError(
+    throw new ImageMindVisionError(
       isTimeout
-        ? `image-mind: vision request timed out after ${timeoutMs}ms`
+        ? `image-mind: vision request timed out after ${options.timeoutMs}ms`
         : `image-mind: vision request failed before a response was received: ${(error as Error).message ?? String(error)}`,
       isTimeout ? 'TIMEOUT' : 'NETWORK_ERROR',
       { cause: error },
@@ -116,19 +188,19 @@ async function callVisionOnce(
     const status = response.status
     const code = visionCodeForStatus(status)
     const message = `image-mind: vision endpoint returned HTTP ${status}${excerpt ? `: ${excerpt}` : ''}${responseHint(status, false, excerpt)}`
-    throw new VisionError(message, code, { status })
+    throw new ImageMindVisionError(message, code, { status })
   }
-  const payloadBytes = await readBoundedBody(response, connection.maxOutputTokens * 8 + 64 * 1024)
+  const payloadBytes = await readBoundedBody(response, options.maxOutputTokens * 8 + 64 * 1024)
   let payload: unknown
   try {
     payload = JSON.parse(payloadBytes.toString('utf8'))
   } catch {
-    throw new VisionError('image-mind: vision endpoint returned invalid JSON', 'INVALID_RESPONSE')
+    throw new ImageMindVisionError('image-mind: vision endpoint returned invalid JSON', 'INVALID_RESPONSE')
   }
-  const text = connection.apiStyle === 'responses'
+  const text = options.apiStyle === 'responses'
     ? extractResponsesContent(payload)
     : extractChatCompletionsContent(payload)
-  return { text, provider: connection.provider, model: connection.model }
+  return { text, provider: options.provider, model: options.model }
 }
 
 /**
@@ -146,40 +218,50 @@ export class OpenAICompatibleVisionAdapter extends VisionAdapter {
     this.backoff = resolveBackoff(options.retry?.backoff)
   }
 
-  override async call(request: VisionRequest, connection: Readonly<VisionConnection>): Promise<VisionResult> {
-    // One resolution per call: the connection snapshot and its key freeze
-    // here and hold for this whole request, so an in-flight request never
-    // observes a configuration change and the next call re-resolves.
-    const apiKey = await this.options.resolveApiKey(connection)
+  /** The immutable endpoint snapshot for one call, deep-frozen before the wire layer sees it. */
+  private snapshot(provider: string, request: VisionRequest): OpenAICompatibleVisionOptions {
+    return deepFreeze(this.options.resolveProviderOptions(provider, request))
+  }
+
+  override async call(provider: string, request: VisionRequest): Promise<VisionResult> {
+    // One resolution per call: the endpoint snapshot and its key freeze here
+    // and hold for this whole request, so an in-flight request never observes
+    // a configuration change and the next call re-resolves.
+    const options = this.snapshot(provider, request)
+    const apiKey = await this.options.resolveApiKey(options)
     const cacheKey = this.options.cache === undefined
       ? undefined
-      : semanticRequestKey(connection, request.prompt, request.images[0])
+      : semanticRequestKey(options, request.prompt, request.images[0])
     if (cacheKey !== undefined) {
       const cached = this.options.cache?.get(cacheKey)
       if (cached !== undefined) {
-        return { text: cached, provider: connection.provider, model: connection.model }
+        return { text: cached, provider: options.provider, model: options.model }
       }
     }
-    let lastError: unknown
     let attempt = 0
     for (;;) {
       try {
-        const result = await callVisionOnce(request, connection, apiKey, connection.timeoutMs)
+        const result = await callVisionOnce(request, options, apiKey)
         if (cacheKey !== undefined) this.options.cache?.set(cacheKey, result.text)
         return result
       } catch (error) {
-        const visionError = error instanceof VisionError ? error : undefined
-        const retryable = visionError?.retryable === true
-          || (request.signal?.aborted !== true && error instanceof Error && error.name === 'AbortError' && visionError === undefined)
+        const wireError = asWireError(error)
+        const retryable = wireError.retryable
+          || (request.signal?.aborted !== true && error instanceof Error && error.name === 'AbortError')
         if (!retryable || attempt >= this.maxRetries) {
-          if (visionError !== undefined && visionError.retryable && attempt > 0 && visionError.status !== undefined) {
+          if (wireError.retryable && attempt > 0 && wireError.status !== undefined) {
             // Rework the message so the model/user sees that a retry already ran.
-            const hint = responseHint(visionError.status, true)
-            visionError.message = visionError.message.replace(responseHint(visionError.status, false), '') + hint
+            const hint = responseHint(wireError.status, true)
+            wireError.message = wireError.message.replace(responseHint(wireError.status, false), '') + hint
           }
-          throw error
+          // Adapter wire failures cross the seam wrapped in the stable
+          // provider-neutral code; the transport detail rides as `cause`.
+          throw new VisionError(
+            wireError.message,
+            toSeamCode(wireError.code),
+            { cause: wireError },
+          )
         }
-        lastError = error
         attempt += 1
         try {
           await sleepBackoff(attempt - 1, this.backoff, request.signal)
@@ -190,12 +272,10 @@ export class OpenAICompatibleVisionAdapter extends VisionAdapter {
     }
   }
 
-  override async discoverModels(connection: Readonly<VisionConnection>, signal?: AbortSignal): Promise<VisionModel[]> {
-    const apiKey = await this.options.resolveApiKey(connection)
-    const outcome = await discoverEndpointModels(connection, apiKey, signal)
+  override async discoverModels(provider: string, request?: VisionModelDiscoveryRequest): Promise<readonly VisionModel[]> {
+    const options = deepFreeze(this.options.resolveProviderOptions(provider, { prompt: '', images: [], signal: request?.signal }))
+    const apiKey = await this.options.resolveApiKey(options)
+    const outcome = await discoverEndpointModels(options, apiKey, request?.signal)
     return outcome.models
   }
 }
-
-export { VisionError }
-export type { VisionResult }

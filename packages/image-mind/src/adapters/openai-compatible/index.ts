@@ -12,3 +12,5 @@ export { buildVisionRequest, extractChatCompletionsContent, extractResponsesCont
 export { discoverEndpointModels, planVisionModels } from './discovery.ts'
 export { resolveBackoff, sleepBackoff } from './retry.ts'
 export type { BackoffConfig } from './retry.ts'
+export { API_STYLES, DEFAULT_API_STYLE } from './types.ts'
+export type { OpenAICompatibleVisionOptions, VisionApiStyle } from './types.ts'
