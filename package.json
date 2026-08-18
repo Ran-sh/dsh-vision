@@ -35,6 +35,7 @@
   "scripts": {
     "build": "node build.mjs",
     "typecheck": "tsc -p tsconfig.host.json --noEmit && tsc -p tsconfig.client.json --noEmit",
+    "test": "vitest run",
     "link-sdk": "node scripts/devhelpers/link-sdk.mjs",
     "unlink-sdk": "node scripts/devhelpers/link-sdk.mjs --remove",
     "dev:verify": "node --no-warnings scripts/e2e-vision.ts",
@@ -49,7 +50,8 @@
     "@types/react": "~18.3.1",
     "esbuild": "^0.25.5",
     "react": "^18.3.1",
-    "typescript": "~5.7.2"
+    "typescript": "~5.7.2",
+    "vitest": "^2.1.9"
   },
   "files": [
     "lib/**/*.js",

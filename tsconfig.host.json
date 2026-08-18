@@ -14,7 +14,7 @@
     "types": ["node"],
     "baseUrl": ".",
     "paths": {
-      "@deepseek-ai/*": ["C:/Users/48376/.dsh/profiles/node_modules/@deepseek-ai/*"]
+      "@deepseek-ai/*": ["node_modules/@deepseek-ai/*"]
     }
   },
   "include": ["src/*.ts"]

@@ -6,12 +6,13 @@
  *    submit time into image-mind references before they reach the model.
  * 2. Conversation preview (installConversationImagePreview): the shell renders
  *    user messages as plain text, so a sent reference is upgraded in place
- *    into an inline thumbnail unless the config turns previews off (read from
- *    the host `/image-mind/config` gateway, not the official settings scope —
- *    its allowlist is hardcoded to product namespaces).
+ *    into an inline thumbnail unless the config turns previews off.
  * 3. Settings card (ImageMindSettingsCardController): a card registered into
  *    the official `settings.plugin.item` slot, so 设置 → 插件 → 插件配置 shows
- *    the endpoint/model/key form, backed by the plugin's own config gateway.
+ *    the endpoint/model/key form. The card reads and writes the `image-mind`
+ *    namespace through the OFFICIAL settings seam (`connection.api.settings`
+ *    describe/mutate), so secrets stay redacted on the wire and typed keys go
+ *    into the credential store — never into `settings.yaml`.
  *
  * Failure policy: every DOM/runtime wiring failure is logged, never thrown —
  * the web shell fails the whole boot when a plugin apply throws.
@@ -25,8 +26,6 @@ import type {} from '@deepseek-ai/dsh-client-locale/client'
 import { installSendHook } from './send-hook.ts'
 import { installConversationImagePreview, type ConversationImagePreview } from './preview.ts'
 import { ImageMindSettingsCard, ImageMindSettingsCardController } from './settings-card.tsx'
-import { RemoteConfigScope } from './remote-scope.ts'
-import { peekConfig, subscribeConfig } from './config-client.ts'
 import { localeDictionaries, mirrorDocumentLanguage, type CardKey } from './locales.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
@@ -39,11 +38,24 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 /** Plugin id; matches the host half and the settings namespace. */
 export const name = 'image-mind'
 
-/** Required services: conversation, slots, locale. */
-export const inject = ['conversation', 'slots', 'locale']
+/** Required services: conversation, slots, locale, connection. */
+export const inject = ['conversation', 'slots', 'locale', 'connection']
 
 /** Locale namespace owned by this client half (card copy lives in our own dictionary). */
 export const NS = 'image-mind'
+
+/** Module-level preview-toggle cache; refreshed by the settings store's loads. */
+let previewToggle = true
+
+/** The current preview-toggle value (read by the conversation enhancer). */
+export function getPreviewToggle(): boolean {
+  return previewToggle
+}
+
+/** Refresh the preview-toggle cache from a settings value. */
+export function setPreviewToggle(enabled: boolean): void {
+  previewToggle = enabled
+}
 
 /**
  * Apply the browser half.
@@ -65,35 +77,29 @@ export function apply(ctx: ClientContext): void {
 
   // The shell renders user messages as plain text, so a sent reference sits
   // in the transcript as raw markdown; upgrade it in place into an inline
-  // thumbnail unless the deployment turns previews off. The toggle reads the
-  // config gateway's cache, refreshed on every card save.
+  // thumbnail unless the deployment turns previews off. The toggle is read
+  // from a module cache refreshed on every settings load, so edits apply
+  // without a reload.
   let previewRef: ConversationImagePreview | undefined
-  const unsubscribeConfig = subscribeConfig(() => previewRef?.refresh())
   ctx.effect(() => {
-    const handle = installConversationImagePreview(() => {
-      const cached = peekConfig()
-      return cached?.value.renderImagePreview !== false
-    })
+    const handle = installConversationImagePreview(() => getPreviewToggle())
     previewRef = handle
     return () => {
-      unsubscribeConfig()
       previewRef = undefined
       handle.dispose()
     }
   }, 'dsh-plugin-image-mind: conversation image preview')
 
-  // Remote scope over the host config gateway; the settings card edits the
-  // same section the host tool reads on every understand_image call.
-  const settingsScope = new RemoteConfigScope()
+  // The settings card: reads and writes the `image-mind` namespace through
+  // the official settings seam.
   ctx.inject(['slots'], (slotsCtx: ClientContext) => {
-    const settingsCard = new ImageMindSettingsCardController(settingsScope)
+    const controller = new ImageMindSettingsCardController(slotsCtx)
     slotsCtx.slots.inject('settings.plugin.item', () =>
       slotsCtx.slots.register({
         name: 'settings.plugin.item',
-        id: 'image-mind',
-        order: 30,
+        key: 'image-mind',
         locale: NS,
-        inject: () => settingsCard.inject(),
+        inject: () => controller.inject(),
       }, ImageMindSettingsCard))
   })
 }

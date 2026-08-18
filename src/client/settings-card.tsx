@@ -7,52 +7,33 @@
  *
  * The status lamp is truthful: it reflects the configuration as stored —
  * green only when the provider is complete AND its key actually resolves
- * (inline or through the env seam); red when the key is missing or the entry
+ * (credential store or env seam); red when the key is missing or the entry
  * is incomplete. A connection test overrides the lamp only while/after it
  * actually runs — an untested provider never shows "已连接".
  *
  * Registers into the official `settings.plugin.item` slot (设置 → 插件 → 插件
- * 配置) and reads/writes the `image-mind` section through the plugin's own
- * `/image-mind/config` gateway.
+ * 配置) and reads/writes the `image-mind` section through the OFFICIAL
+ * settings seam (`connection.api.settings` describe/mutate); typed keys go
+ * into the credential store through `connection.api.credentials.set`, never
+ * into `settings.yaml`.
  * @module dsh-plugin-image-mind/client/settings_card
  */
 
 import type { InjectFace, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 import { useEffect, useState } from 'react'
 import type {} from '@deepseek-ai/dsh-client-ui-settings-plugins/client'
 import { SettingsCard, BooleanField, ChoiceField, ModelField, ValueField, type CardStatus } from './card-ui.tsx'
-import {
-  loadCatalog, listModels, testConnection,
-  type ConfigOp, type ConfigView, type ProviderView, type TestOverrides, type VisionProviderCatalogEntry,
-} from './config-client.ts'
 import type { CardShell } from './card-form.ts'
-import { RemoteConfigScope } from './remote-scope.ts'
 import { showToast } from './toast.ts'
 import { t, type CardKey } from './locales.ts'
-
-/** One provider as the card edits it (all string drafts; secret kept write-only). */
-export interface ProviderDraft {
-  baseURL: string
-  model: string
-  apiKeyEnv: string
-  apiStyle: string
-  maxOutputTokens: string
-  /** The API key input: '' (untouched), a mask, or a newly-typed inline key. */
-  apiKeyText: string
-  apiKeyConfigured: boolean
-  apiKeyMask: string
-}
-
-/** One provider row the renderer consumes. */
-export interface ProviderCardState extends ProviderDraft {
-  id: string
-  /** endpoint+model filled (regardless of key). */
-  complete: boolean
-  /** a key actually resolves today (inline or env seam). */
-  keyReady: boolean
-}
+import { setPreviewToggle } from './index.ts'
+import {
+  ImageMindSettingsStore, deriveKeyRef, normalizeId, topText,
+  type ProviderCardState, type ProviderDraft,
+} from './settings/store.ts'
 
 /** The whole image-mind card state the renderer consumes. */
 export interface ImageMindSettingsCardState {
@@ -63,6 +44,7 @@ export interface ImageMindSettingsCardState {
   maxBytes: string
   timeoutMs: string
   renderImagePreview: string
+  transport: 'official' | 'legacy' | 'unavailable'
 }
 
 /** The registration-side face the card's slot entry injects. */
@@ -79,205 +61,54 @@ export interface ImageMindSettingsCardFace {
   setActive: (id: string) => void
 }
 
-/** A provider id, normalized from a user-entered name (trim, no spaces). */
-function normalizeId(name: string): string {
-  return name.trim().replace(/\s+/g, '-')
-}
-
-/** Read one top-level string field from a config view. */
-function topText(view: ConfigView | undefined, field: string): string {
-  const value = view?.value as Record<string, unknown> | undefined
-  const raw = value?.[field]
-  if (raw === undefined || raw === null) return ''
-  return typeof raw === 'string' ? raw : String(raw)
-}
-
-/** Build a draft provider from a loaded ProviderView (or a blank one). */
-function draftOf(id: string, view: ProviderView | undefined): ProviderDraft {
-  return {
-    baseURL: view?.baseURL ?? '',
-    model: view?.model ?? '',
-    apiKeyEnv: view?.apiKeyEnv ?? '',
-    apiStyle: view?.apiStyle ?? 'chat-completions',
-    maxOutputTokens: view?.maxOutputTokens !== undefined ? String(view.maxOutputTokens) : '1024',
-    apiKeyText: view?.apiKeyMask ?? '',
-    apiKeyConfigured: view?.apiKeyConfigured ?? false,
-    apiKeyMask: view?.apiKeyMask ?? '',
-  }
-}
-
-/** Bridge the config gateway onto a staged multi-provider form. */
+/** Bridge the official settings seam onto a staged multi-provider form. */
 export class ImageMindSettingsCardController {
   private readonly store: SnapshotStore<ImageMindSettingsCardState>
-  private view: ConfigView | undefined
-  private draft = new Map<string, ProviderDraft>()
-  private draftTop = new Map<string, string>()
-  private saving = false
-  private failed = false
-  private failedReason: string | undefined
+  private readonly host: ImageMindSettingsStore | undefined
 
-  /** @param scope - the remote settings scope for the `image-mind` namespace. */
-  constructor(private readonly scope: RemoteConfigScope) {
-    this.store = createSnapshotStore(this.projection())
-    this.scope.subscribe(() => this.onScopeChange())
-    this.onScopeChange()
-  }
-
-  private onScopeChange(): void {
-    const snap = this.scope.getSnapshot()
-    if (snap.status !== 'ready') {
-      this.publish()
-      return
-    }
-    const value = (snap.value ?? {}) as ConfigView['value']
-    this.view = {
-      revision: snap.revision ?? 0,
-      value,
-      base: snap.base,
-      user: snap.user,
-      writable: snap.writable,
-    }
-    const providers = value.providers ?? {}
-    for (const [id, pv] of Object.entries(providers)) {
-      if (!this.draft.has(id)) this.draft.set(id, draftOf(id, pv))
-    }
-    for (const id of [...this.draft.keys()]) {
-      if (!Object.hasOwn(providers, id)) this.draft.delete(id)
-    }
-    this.publish()
-  }
-
-  private topText(field: string): string {
-    return this.draftTop.get(field) ?? topText(this.view, field)
-  }
-
-  private fieldShell(): CardShell {
-    const snap = this.scope.getSnapshot()
-    return {
-      available: snap.status !== 'loading',
-      exposed: snap.status === 'ready',
-      writable: snap.writable,
-      dirty: this.dirty(),
-      invalid: false,
-      saving: this.saving,
-      failed: this.failed,
-      ...this.failedReason === undefined ? {} : { failedReason: this.failedReason },
-    }
-  }
-
-  private dirty(): boolean {
-    if (this.view === undefined) return this.draft.size > 0 || this.draftTop.size > 0
-    const providers = this.view.value.providers ?? {}
-    const ids = new Set([...Object.keys(providers), ...this.draft.keys()])
-    for (const id of ids) {
-      const pv = providers[id]
-      const d = this.draft.get(id)
-      if (d === undefined) {
-        // Deleted a user-owned provider.
-        if (this.view.user !== undefined) {
-          const userProviders = ((this.view.user as Record<string, unknown>)['providers'] ?? {}) as Record<string, unknown>
-          if (Object.hasOwn(userProviders, id)) return true
-        }
-        continue
-      }
-      const original = draftOf(id, pv)
-      if (original.baseURL !== d.baseURL || original.model !== d.model || original.apiKeyEnv !== d.apiKeyEnv
-        || original.apiStyle !== d.apiStyle || original.maxOutputTokens !== d.maxOutputTokens
-        || d.apiKeyText !== original.apiKeyText) return true
-    }
-    for (const id of this.draft.keys()) {
-      if (!Object.hasOwn(providers, id)) return true
-    }
-    for (const [field, text] of this.draftTop) {
-      if (topText(this.view, field) !== text) return true
-    }
-    return false
-  }
-
-  private projection(): ImageMindSettingsCardState {
-    const providers = this.view?.value.providers ?? {}
-    const ids = [...new Set([...Object.keys(providers), ...this.draft.keys()])]
-    const rows: ProviderCardState[] = ids.map(id => {
-      const d = this.draft.get(id) ?? draftOf(id, providers[id])
-      return {
-        id,
-        ...d,
-        complete: d.baseURL.trim().length > 0 && d.model.trim().length > 0,
-        keyReady: d.apiKeyMask.length > 0,
-      }
+  /** @param ctx - the slots-injected client context (carries the connection). */
+  constructor(ctx: ClientContext) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const connection = ctx.get('connection') as any
+    this.store = createSnapshotStore<ImageMindSettingsCardState>({
+      shell: { available: false, exposed: false, writable: false, dirty: false, invalid: false, saving: false, failed: false },
+      providers: [],
+      active: '',
+      defaultPrompt: '',
+      maxBytes: '',
+      timeoutMs: '',
+      renderImagePreview: '',
+      transport: connection !== undefined ? 'official' : 'unavailable',
     })
-    return {
-      shell: this.fieldShell(),
-      providers: rows,
-      active: this.topText('active'),
-      defaultPrompt: this.topText('defaultPrompt'),
-      maxBytes: this.topText('maxBytes'),
-      timeoutMs: this.topText('timeoutMs'),
-      renderImagePreview: this.topText('renderImagePreview'),
+    this.host = connection !== undefined
+      ? new ImageMindSettingsStore(connection)
+      : undefined
+    if (this.host !== undefined) {
+      this.host.store.subscribe(() => {
+        // Mirror the preview toggle into the module cache the enhancer reads.
+        const state = this.host?.store.getSnapshot()
+        if (state !== undefined && state.shell.exposed) {
+          setPreviewToggle(state.renderImagePreview !== 'false')
+        }
+        this.publish()
+      })
     }
   }
 
   private publish(): void {
-    this.store.set(this.projection())
-  }
-
-  /** Stage one provider field. */
-  editProvider(id: string, field: keyof ProviderDraft, text: string): void {
-    const providers = this.view?.value.providers ?? {}
-    const current = this.draft.get(id) ?? draftOf(id, providers[id])
-    this.draft.set(id, { ...current, [field]: text })
-    this.failed = false
-    this.failedReason = undefined
-    this.publish()
-  }
-
-  /** Stage one top-level field. */
-  editTop(field: string, text: string): void {
-    this.draftTop.set(field, text)
-    this.failed = false
-    this.failedReason = undefined
-    this.publish()
-  }
-
-  /** Add a new provider: from the catalog (preset) or a blank custom card. */
-  addProvider(name: string, preset?: { baseURL: string; model: string; apiKeyEnv: string }): boolean {
-    const id = normalizeId(name)
-    if (id.length === 0) {
-      showToast(t('provider.needName'), 'error')
-      return false
+    if (this.host === undefined) return
+    const state = this.host.store.getSnapshot()
+    const card: ImageMindSettingsCardState = {
+      shell: state.shell,
+      providers: state.providers,
+      active: state.active,
+      defaultPrompt: state.defaultPrompt,
+      maxBytes: state.maxBytes,
+      timeoutMs: state.timeoutMs,
+      renderImagePreview: state.renderImagePreview,
+      transport: state.transport,
     }
-    if (this.draft.has(id) || Object.hasOwn(this.view?.value.providers ?? {}, id)) {
-      showToast(t('provider.duplicate'), 'error')
-      return false
-    }
-    const draft = draftOf(id, undefined)
-    if (preset !== undefined) {
-      draft.baseURL = preset.baseURL
-      draft.model = preset.model
-      draft.apiKeyEnv = preset.apiKeyEnv
-    }
-    this.draft.set(id, draft)
-    this.failed = false
-    this.failedReason = undefined
-    this.publish()
-    return true
-  }
-
-  /** Stage a provider for deletion. */
-  deleteProvider(id: string): void {
-    this.draft.delete(id)
-    if (this.topText('active') === id) this.draftTop.set('active', '')
-    this.failed = false
-    this.failedReason = undefined
-    this.publish()
-  }
-
-  /** Stage a provider as the active one. */
-  setActive(id: string): void {
-    this.draftTop.set('active', id)
-    this.failed = false
-    this.failedReason = undefined
-    this.publish()
+    this.store.set(card)
   }
 
   /** Build the write faces the card's slot registration injects. */
@@ -285,112 +116,17 @@ export class ImageMindSettingsCardController {
     return {
       hooks: { imageMindSettingsCard: this.store },
       save: () => { void this.save() },
-      discard: this.discard.bind(this),
-      editProvider: this.editProvider.bind(this),
-      editTop: this.editTop.bind(this),
-      addProvider: this.addProvider.bind(this),
-      deleteProvider: this.deleteProvider.bind(this),
-      setActive: this.setActive.bind(this),
+      discard: () => { this.host?.discard() },
+      editProvider: (id, field, text) => { this.host?.editProvider(id, field, text) },
+      editTop: (field, text) => { this.host?.editTop(field, text) },
+      addProvider: (name, preset) => this.host?.addProvider(name, preset) ?? false,
+      deleteProvider: (id) => { this.host?.deleteProvider(id) },
+      setActive: (id) => { this.host?.setActive(id) },
     }
-  }
-
-  private discard(): void {
-    if (!this.dirty() && !this.failed) return
-    this.draft.clear()
-    this.draftTop.clear()
-    this.failed = false
-    this.failedReason = undefined
-    this.onScopeChange()
-  }
-
-  /** Compute path ops carrying the staged draft over the loaded view. */
-  private planOps(): ConfigOp[] {
-    const ops: ConfigOp[] = []
-    const providers = this.view?.value.providers ?? {}
-    const ids = new Set([...Object.keys(providers), ...this.draft.keys()])
-
-    for (const id of ids) {
-      const pv = providers[id]
-      const d = this.draft.get(id)
-      if (d === undefined) {
-        ops.push({ op: 'unset', path: ['providers', id] })
-        continue
-      }
-      const original = draftOf(id, pv)
-      if (pv === undefined) {
-        ops.push({
-          op: 'set',
-          path: ['providers', id],
-          value: {
-            baseURL: d.baseURL.trim(),
-            model: d.model.trim(),
-            ...d.apiStyle.trim() !== '' ? { apiStyle: d.apiStyle.trim() } : {},
-            ...d.maxOutputTokens.trim() !== '' ? { maxOutputTokens: Number(d.maxOutputTokens.trim()) } : {},
-            ...d.apiKeyEnv.trim() !== '' ? { apiKeyEnv: d.apiKeyEnv.trim() } : {},
-          },
-        })
-        if (d.apiKeyText !== '' && d.apiKeyText !== d.apiKeyMask) {
-          ops.push({ op: 'set', path: ['providers', id, 'apiKey'], value: d.apiKeyText })
-        }
-        continue
-      }
-      const setField = (field: string, value: unknown): void => {
-        ops.push({ op: 'set', path: ['providers', id, field], value })
-      }
-      const unsetField = (field: string): void => {
-        ops.push({ op: 'unset', path: ['providers', id, field] })
-      }
-      if (original.baseURL !== d.baseURL) setField('baseURL', d.baseURL.trim())
-      if (original.model !== d.model) setField('model', d.model.trim())
-      if (original.apiStyle !== d.apiStyle) d.apiStyle.trim() === '' ? unsetField('apiStyle') : setField('apiStyle', d.apiStyle.trim())
-      if (original.maxOutputTokens !== d.maxOutputTokens) {
-        d.maxOutputTokens.trim() === '' ? unsetField('maxOutputTokens') : setField('maxOutputTokens', Number(d.maxOutputTokens.trim()))
-      }
-      if (original.apiKeyEnv !== d.apiKeyEnv) d.apiKeyEnv.trim() === '' ? unsetField('apiKeyEnv') : setField('apiKeyEnv', d.apiKeyEnv.trim())
-      if (d.apiKeyText !== '' && d.apiKeyText !== d.apiKeyMask) {
-        setField('apiKey', d.apiKeyText)
-      } else if (d.apiKeyText === '' && d.apiKeyConfigured) {
-        unsetField('apiKey')
-      }
-    }
-
-    const setTop = (field: string, value: unknown): void => { ops.push({ op: 'set', path: [field], value }) }
-    const unsetTop = (field: string): void => { ops.push({ op: 'unset', path: [field] }) }
-    const activeNow = topText(this.view, 'active')
-    const activeNext = this.topText('active')
-    if (activeNow !== activeNext) activeNext === '' ? unsetTop('active') : setTop('active', activeNext)
-    for (const field of ['defaultPrompt', 'maxBytes', 'timeoutMs', 'renderImagePreview'] as const) {
-      const now = topText(this.view, field)
-      const next = this.topText(field)
-      if (now === next) continue
-      if (next === '') { unsetTop(field); continue }
-      if (field === 'maxBytes' || field === 'timeoutMs') setTop(field, Number(next))
-      else if (field === 'renderImagePreview') setTop(field, next === 'true')
-      else setTop(field, next)
-    }
-    return ops
   }
 
   private async save(): Promise<void> {
-    if (this.saving || !this.dirty()) return
-    const ops = this.planOps()
-    if (ops.length === 0) return
-    this.saving = true
-    this.failed = false
-    this.failedReason = undefined
-    this.publish()
-    try {
-      await this.scope.mutate(ops)
-      this.draft.clear()
-      this.draftTop.clear()
-      this.onScopeChange()
-    } catch (error) {
-      this.failed = true
-      this.failedReason = (error as Error).message
-    } finally {
-      this.saving = false
-      this.publish()
-    }
+    await this.host?.save()
   }
 }
 
@@ -404,6 +140,118 @@ interface ProviderTest {
   status: CardStatus
   label: string
   text?: string
+}
+
+/** Outcome of one connection test against the host vision RPC. */
+type TestOutcome = { ok: true; text: string } | { ok: false; message: string }
+
+/** Outcome of one model-list request against the host vision RPC. */
+type ModelsOutcome = { ok: true; models: string[]; source: 'endpoint' | 'fallback'; reason?: string } | { ok: false; message: string }
+
+/** The vision RPC endpoints (thin transport; the host does the real work). */
+const TEST_ENDPOINT = '/image-mind/test'
+const MODELS_ENDPOINT = '/image-mind/models'
+const CATALOG_ENDPOINT = '/image-mind/catalog'
+
+/** One official vision provider the "添加提供方" flow offers. */
+export interface VisionProviderCatalogEntry {
+  id: string
+  name: string
+  baseURL: string
+  defaultModel: string
+  apiKeyEnv: string
+}
+
+/** Ask the host to run one real vision call with the given draft overrides. */
+async function testConnection(overrides: Record<string, unknown>): Promise<TestOutcome> {
+  let response: Response
+  try {
+    response = await fetch(TEST_ENDPOINT, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(overrides),
+    })
+  } catch {
+    return { ok: false, message: '网络错误：无法连接本机服务' }
+  }
+  let envelope: unknown
+  try {
+    envelope = await response.json()
+  } catch {
+    return { ok: false, message: '本机服务返回了无法解析的响应' }
+  }
+  const record = envelope as { ok?: unknown; value?: { text?: unknown }; error?: { message?: unknown } } | null
+  if (typeof record !== 'object' || record === null) return { ok: false, message: '本机服务响应异常' }
+  if (record.ok === true && typeof record.value?.text === 'string') {
+    return { ok: true, text: record.value.text }
+  }
+  const message = record.error?.message
+  return { ok: false, message: typeof message === 'string' && message !== '' ? message : `测试失败（HTTP ${response.status}）` }
+}
+
+/** Ask the host to list model ids for the current endpoint (draft values may override). */
+async function listModels(overrides: Record<string, unknown>): Promise<ModelsOutcome> {
+  let response: Response
+  try {
+    response = await fetch(MODELS_ENDPOINT, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(overrides),
+    })
+  } catch {
+    return { ok: false, message: '网络错误：无法连接本机服务' }
+  }
+  let envelope: unknown
+  try {
+    envelope = await response.json()
+  } catch {
+    return { ok: false, message: '本机服务返回了无法解析的响应' }
+  }
+  const record = envelope as { ok?: unknown; value?: unknown; error?: { message?: unknown } } | null
+  if (typeof record !== 'object' || record === null) return { ok: false, message: '本机服务响应异常' }
+  if (record.ok === true && typeof record.value === 'object' && record.value !== null) {
+    const value = record.value as { models?: unknown; source?: unknown; reason?: unknown }
+    if (Array.isArray(value.models)) {
+      return {
+        ok: true,
+        models: value.models.filter((m): m is string => typeof m === 'string' && m !== ''),
+        source: value.source === 'endpoint' ? 'endpoint' : 'fallback',
+        ...typeof value.reason === 'string' && value.reason !== '' ? { reason: value.reason } : {},
+      }
+    }
+    return { ok: false, message: '本机服务返回了异常的模型列表' }
+  }
+  const message = record.error?.message
+  return { ok: false, message: typeof message === 'string' && message !== '' ? message : `获取模型列表失败（HTTP ${response.status}）` }
+}
+
+/** Load the official vision-provider directory for the add-provider flow. */
+async function loadCatalog(): Promise<{ ok: true; catalog: VisionProviderCatalogEntry[] } | { ok: false; message: string }> {
+  let response: Response
+  try {
+    response = await fetch(CATALOG_ENDPOINT)
+  } catch {
+    return { ok: false, message: '网络错误：无法连接本机服务' }
+  }
+  let envelope: unknown
+  try {
+    envelope = await response.json()
+  } catch {
+    return { ok: false, message: '本机服务返回了无法解析的响应' }
+  }
+  const record = envelope as { ok?: unknown; value?: { catalog?: unknown }; error?: { message?: unknown } } | null
+  if (typeof record !== 'object' || record === null) return { ok: false, message: '本机服务响应异常' }
+  if (record.ok === true && Array.isArray(record.value?.catalog)) {
+    const catalog = record.value.catalog.filter((item): item is VisionProviderCatalogEntry => {
+      if (typeof item !== 'object' || item === null) return false
+      const e = item as Record<string, unknown>
+      return typeof e.id === 'string' && typeof e.name === 'string' && typeof e.baseURL === 'string'
+        && typeof e.defaultModel === 'string' && typeof e.apiKeyEnv === 'string'
+    })
+    return { ok: true, catalog }
+  }
+  const message = record.error?.message
+  return { ok: false, message: typeof message === 'string' && message !== '' ? message : `获取提供方目录失败（HTTP ${response.status}）` }
 }
 
 /**
@@ -429,7 +277,7 @@ export function ImageMindSettingsCard(props: ImageMindSettingsCardProps) {
     disabled,
   }
 
-  const providerOverrides = (p: ProviderCardState): TestOverrides => ({
+  const providerOverrides = (p: ProviderCardState): Record<string, unknown> => ({
     baseURL: p.baseURL.trim().length > 0 ? p.baseURL.trim() : undefined,
     model: p.model.trim().length > 0 ? p.model.trim() : undefined,
     apiKeyEnv: p.apiKeyEnv.trim().length > 0 ? p.apiKeyEnv.trim() : undefined,
@@ -476,8 +324,7 @@ export function ImageMindSettingsCard(props: ImageMindSettingsCardProps) {
 
   // Auto-load the model list once when an editor opens and the provider can
   // already authenticate (key ready or keyless localhost): the user fills the
-  // key, opens the editor, and the picker is already populated. Only fires on
-  // an editor open with no prior load, so re-renders never refetch.
+  // key, opens the editor, and the picker is already populated.
   useEffect(() => {
     if (editingId === null) return
     const p = state.providers.find(row => row.id === editingId)

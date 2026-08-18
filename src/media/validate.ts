@@ -1,24 +1,11 @@
 /**
- * Image media facts for image-mind: the accepted media types, the magic-byte
- * gate, the strict base64 decoder, and the byte bound both the tool and the
- * attach route enforce. Self-contained so the attach route can import it
- * without a cycle through the plugin entry.
- * @module dsh-plugin-image-mind/media
+ * Image validation: the magic-byte gate and the strict base64 decoder. Pure —
+ * no I/O, no context — so the attach route, the media loader, and tests all
+ * share one gate.
+ * @module dsh-plugin-image-mind/media/validate
  */
 
-/** Image media types the magic-byte gate accepts. */
-export type ImageMimeType = 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp'
-
-/** The accepted image media types, in stable order. */
-export const IMAGE_MEDIA_TYPES: readonly ImageMimeType[] = ['image/png', 'image/jpeg', 'image/gif', 'image/webp']
-
-/** Upper bound on image bytes (local files and downloaded URLs alike). */
-export const DEFAULT_MAX_BYTES = 10 * 1024 * 1024
-
-/** Whether the declared media type is one the plugin accepts. */
-export function isImageMimeType(value: unknown): value is ImageMimeType {
-  return typeof value === 'string' && (IMAGE_MEDIA_TYPES as readonly string[]).includes(value)
-}
+import { isImageMimeType, type ImageMimeType } from './types.ts'
 
 /**
  * Detect the image media type from magic bytes.
@@ -50,3 +37,6 @@ export function decodeBase64(encoded: string): Buffer | undefined {
   if (bytes.toString('base64') !== encoded) return undefined
   return bytes
 }
+
+export { isImageMimeType }
+export type { ImageMimeType }

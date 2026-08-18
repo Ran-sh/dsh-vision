@@ -5,6 +5,11 @@
  * several named vision providers (like the built-in Models page) plus one
  * active provider, so the settings card can render per-provider cards with
  * their own endpoint/model/key and a "set as active" control.
+ *
+ * The resolved snapshot is the single explicit resolve step: every default
+ * and bound is re-judged here, and the runtime captures an immutable
+ * connection snapshot per call from it, so an in-flight request never
+ * observes a settings change and the next call re-resolves.
  * @module dsh-plugin-image-mind/config
  */
 
@@ -12,7 +17,6 @@ import type { Context } from '@deepseek-ai/cordis'
 import z from 'schemastery'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import type { CredentialRef } from '@deepseek-ai/dsh-credentials'
-import { launchEnvironmentOf } from '@deepseek-ai/dsh-launch-environment'
 import { settingsNamespace } from '@deepseek-ai/dsh-settings'
 
 /** Environment-variable name the API key resolves through when no inline key is configured. */
@@ -28,6 +32,8 @@ export type ApiStyle = typeof API_STYLES[number]
 export const DEFAULT_API_STYLE: ApiStyle = 'chat-completions'
 /** Whether conversation image references upgrade into inline thumbnails unless configured otherwise. */
 export const DEFAULT_RENDER_IMAGE_PREVIEW = true
+/** Whether fetching image URLs on private networks is allowed (SSRF guard). */
+export const DEFAULT_ALLOW_PRIVATE_NETWORK = false
 /** Instruction sent when the model does not pass its own prompt. */
 export const DEFAULT_PROMPT =
   'Analyze this image: describe what is visible factually, transcribe legible text verbatim, and call out layout, notable details, or anything anomalous. Answer in Chinese unless the caller asks otherwise.'
@@ -38,7 +44,11 @@ export interface Provider {
   baseURL: string
   /** Vision model id on that endpoint. */
   model: string
-  /** Inline API key; prefer `apiKeyEnv` with the credential seam. */
+  /**
+   * Inline API key. DEPRECATED: prefer `apiKeyEnv` with the credential seam;
+   * the UI no longer creates inline keys and the value never leaves the host.
+   * Kept for backward compatibility with existing settings documents.
+   */
   apiKey?: string
   /** Credential reference (environment-variable name) for the API key; defaults to `VISION_API_KEY`. */
   apiKeyEnv?: string
@@ -67,6 +77,8 @@ export interface Config {
   timeoutMs?: number
   /** Whether image-mind references upgrade into inline thumbnails. Display-only. */
   renderImagePreview?: boolean
+  /** Whether fetching image URLs on private networks is allowed. Defaults to false (SSRF guard). */
+  allowPrivateNetwork?: boolean
 }
 
 /** Schemastery configuration for the image-mind tool; doubles as the settings-section schema. */
@@ -84,6 +96,7 @@ export const Config: z<Config> = z.object({
   maxBytes: z.number().step(1).min(1).default(10 * 1024 * 1024),
   timeoutMs: z.number().min(1).default(DEFAULT_TIMEOUT_MS),
   renderImagePreview: z.boolean().default(DEFAULT_RENDER_IMAGE_PREVIEW),
+  allowPrivateNetwork: z.boolean().default(DEFAULT_ALLOW_PRIVATE_NETWORK),
 })
 
 /** Settings namespace the web GUI's plugin-config card edits. */
@@ -107,6 +120,7 @@ export interface ResolvedConfig {
   maxBytes: number
   timeoutMs: number
   renderImagePreview: boolean
+  allowPrivateNetwork: boolean
 }
 
 /**
@@ -193,6 +207,7 @@ export function resolveConfig(config: Config): ResolvedConfig {
     maxBytes,
     timeoutMs,
     renderImagePreview: config.renderImagePreview ?? DEFAULT_RENDER_IMAGE_PREVIEW,
+    allowPrivateNetwork: config.allowPrivateNetwork ?? DEFAULT_ALLOW_PRIVATE_NETWORK,
   }
 }
 
@@ -208,33 +223,4 @@ export function isKeylessEndpoint(baseURL: string): boolean {
   } catch {
     return false
   }
-}
-
-/**
- * Resolve the API key for one call: an explicit inline key wins; otherwise the
- * credential seam (environment and managed-store layers) resolves the
- * reference; without the seam the launch environment is the whole credential
- * plane. Localhost endpoints (Ollama / LM Studio / vLLM) are keyless and
- * resolve to an empty bearer.
- * @param ctx - registrant context.
- * @param spec - validated provider.
- * @returns the resolved key.
- */
-export async function resolveApiKey(ctx: Context, spec: ResolvedProvider): Promise<string> {
-  if (spec.apiKey !== undefined) return spec.apiKey
-  if (spec.apiKeyEnv !== undefined) {
-    const credentials = ctx.get('credentials')
-    if (credentials !== undefined) {
-      const hit = await credentials.resolve(spec.apiKeyEnv)
-      if (hit !== undefined) return hit.value
-    } else {
-      const ambient = launchEnvironmentOf(ctx).get(spec.apiKeyEnv)
-      if (ambient !== undefined && ambient.value.length > 0) return ambient.value
-    }
-  }
-  if (isKeylessEndpoint(spec.baseURL)) return ''
-  throw new Error(
-    `image-mind: no API key; set apiKey, store ${spec.apiKeyEnv ?? DEFAULT_API_KEY_ENV} through the credentials service,`
-    + ' or export it in the launching environment',
-  )
 }

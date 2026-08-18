@@ -6,73 +6,43 @@
  * only the returned text crosses into the conversation, so the image never
  * enters the session log.
  *
+ * This entry is composition only: it creates the VisionRuntime, registers the
+ * provider directory, registers the OpenAI-compatible adapter, installs the
+ * settings section, registers the thin `understand_image` tool, and mounts
+ * the attachment routes. Provider selection, HTTP, credential parsing, and
+ * configuration validation live in their own layers.
+ *
  * Personal plugin, written from scratch: plugin id `image-mind`, tool name
  * `understand_image`, route prefix /image-mind. The plugin may be mounted
- * without configuration; endpoint and
- * model are validated per call (or eagerly at load when a composition entry
- * actually configures them), and the "image-mind" settings section — rendered
- * by the web GUI's built-in plugin-config page — edits the fields live.
+ * without configuration; endpoint and model are validated per call, and the
+ * "image-mind" settings section — rendered by the web GUI's built-in
+ * plugin-config page — edits the fields live.
  * @module dsh-plugin-image-mind
  */
 
 import type { Context } from '@deepseek-ai/cordis'
 import { installSettingsSection } from '@deepseek-ai/dsh-settings'
-import { defineTool } from '@deepseek-ai/dsh-tools'
-import type { GenericCallView } from '@deepseek-ai/dsh-tools'
-import { registerAttachRoute } from './attach.ts'
-import { DEFAULT_MAX_BYTES } from './media.ts'
-import { Config, IMAGE_MIND_SETTINGS_NAMESPACE, isProviderComplete, resolveApiKey, resolveConfig, type ResolvedConfig, type ResolvedProvider } from './config.ts'
-import { callVision, createVisionCache, loadImage } from './vision.ts'
+import { VisionRuntime } from './runtime/index.ts'
+import { OpenAICompatibleVisionAdapter } from './adapters/openai-compatible/index.ts'
+import { resolveApiKey } from './credentials/resolve.ts'
+import { Config, IMAGE_MIND_SETTINGS_NAMESPACE, resolveConfig, type Config as ConfigType, type ResolvedConfig } from './config.ts'
+import { understandImageTool } from './tools/understand-image.ts'
+import { registerAttachRoute } from './attachments/routes.ts'
+import { readConfigView, writeConfigView } from './attachments/legacy-config.ts'
+import { runConnectionTest, listEndpointModels } from './runtime/vision-rpc.ts'
+import { VISION_PROVIDER_CATALOG } from './providers/catalog.ts'
+import { createVisionCache } from './cache/vision-cache.ts'
+import { DEFAULT_MAX_BYTES } from './media/types.ts'
 
 export const name = 'image-mind'
 export const inject = ['tools', 'webServer']
 
-const DESCRIPTION_HEAD =
-  'Inspect one image — a local absolute path, an http(s) URL, or the JSON of an image attachment '
-  + 'note — and return the text the user needs. Use when the user references an image file or URL, '
-  + 'or when a task needs OCR, chart or diagram reading, screenshot or UI analysis, translation of '
-  + 'image text, or photo understanding. '
-  + 'Always pass an explicit `prompt` with a precise instruction — e.g. "transcribe all text", '
-  + '"extract the table as CSV", "diagnose the UI layout problems", "translate the text into '
-  + 'Chinese" — instead of leaving it to the default description: a targeted instruction produces '
-  + 'a much more useful answer. '
-  + 'When the task involves several images (compare screenshots, diff two versions, batch-read a '
-  + 'page of photos), CALL THIS TOOL ONCE PER IMAGE — give each call its own `image` reference '
-  + 'and the same or tailored `prompt` — then combine the answers in your reply. '
-
-/** The understand_image call's validated arguments. */
-export interface UnderstandImageArgs {
-  image: string
-  prompt?: string
-  provider?: string
-}
-
 /**
- * Pure call view: a generic read card, with a file location for local paths.
- * @param args - the validated call arguments.
- * @returns the pending-state card for one understand_image call.
- */
-export function understandImageCallView(args: UnderstandImageArgs): GenericCallView {
-  return {
-    card: 'generic',
-    title: 'Understand image',
-    kind: 'read',
-    rawInput: args,
-    .../^https?:\/\//i.test(args.image) ? {} : { locations: [{ path: args.image }] },
-  }
-}
-
-/**
- * Register the `understand_image` tool on `ctx.tools`. The image never enters
- * the conversation: the tool returns only the vision model's text answer. The
- * `image-mind` settings section layers over the composition entry and is
- * re-resolved per call, so the Settings card's changes reach the very next
- * invocation. Repeat calls for the same image and prompt reuse a short-lived
- * semantic cache so the endpoint is not called twice in quick succession.
+ * Register the vision capability: runtime, adapter, settings, tool, routes.
  * @param ctx - registrant context carrying the tool registry.
  * @param config - deployment configuration.
  */
-export function apply(ctx: Context, config: Config = {}): void {
+export function apply(ctx: Context, config: ConfigType = {}): void {
   // The loader fills schema defaults before apply, so an unconfigured entry
   // still arrives with default fields set. Only a config that actually names
   // a provider or active is validated eagerly — an unconfigured mount loads
@@ -81,97 +51,108 @@ export function apply(ctx: Context, config: Config = {}): void {
   if (configHasProviders || config.active !== undefined) {
     resolveConfig(config)
   }
-  let current: () => Config = () => config
+  let current: () => ConfigType = () => config
+  // Memoized resolution by raw snapshot identity, like the official llm
+  // plugins: a settings change that resolves to identical facts reuses the
+  // last snapshot instead of rebuilding it.
+  let lastRaw: ConfigType | undefined
+  let memoized: ResolvedConfig | undefined
+  const resolved = (): ResolvedConfig => {
+    const raw = current()
+    if (raw === lastRaw && memoized !== undefined) return memoized
+    const next = resolveConfig(raw)
+    lastRaw = raw
+    memoized = next
+    return next
+  }
+  resolved()
+
+  // The vision runtime: an independent service, NOT ctx.llm — a vision model
+  // is a perception backend for text-only models, never a main-session model.
+  const vision = new VisionRuntime(ctx)
+  // Short-lived semantic cache scoped to this mount: identical provider +
+  // model + image + prompt within the TTL reuse the prior answer.
+  const cache = createVisionCache()
+  const adapter = new OpenAICompatibleVisionAdapter({
+    resolveApiKey: connection => resolveApiKey(ctx, connection),
+    cache,
+  })
+
+  // The OpenAI-compatible adapter serves every configured provider route.
+  // Routes follow the settings section: a section change re-registers the
+  // same adapter instance in place (atomic replace), so no request observes a
+  // gap and the next call uses the new route set.
+  let registration: ReturnType<typeof vision.registerAdapter> | undefined
+  let registeredRoutes: string[] | undefined
+  const ensureRegistration = (): void => {
+    const routes = Object.keys(resolved().providers)
+    if (routes.length === 0) {
+      registeredRoutes = routes
+      return
+    }
+    if (registration !== undefined && registeredRoutes !== undefined
+      && routes.length === registeredRoutes.length && routes.every((route, index) => route === registeredRoutes![index])) {
+      return
+    }
+    if (registration === undefined) {
+      registration = vision.registerAdapter(routes, adapter)
+    } else {
+      registration.replace(routes)
+    }
+    registeredRoutes = routes
+  }
+  ensureRegistration()
+
+  // The provider directory: every catalog entry plus every configured route,
+  // so configuration surfaces can offer the full set.
+  const directory = VISION_PROVIDER_CATALOG.map(entry => ({
+    id: entry.id,
+    displayName: entry.name,
+    adapter: 'openai-compatible',
+    baseURL: entry.baseURL,
+    apiStyle: entry.apiStyle ?? 'chat-completions',
+    ...entry.apiKeyEnv === '' ? {} : { apiKeyEnv: entry.apiKeyEnv },
+  }))
+  for (const descriptor of directory) {
+    vision.registerProvider(descriptor)
+  }
+  for (const id of Object.keys(resolved().providers)) {
+    if (vision.getProvider(id) === undefined) {
+      vision.registerProvider({ id, displayName: id, adapter: 'openai-compatible', apiStyle: 'chat-completions' })
+    }
+  }
+
   installSettingsSection(ctx, IMAGE_MIND_SETTINGS_NAMESPACE, Config, config, {
     setSource: (source) => {
       current = source
     },
-    onChange: () => {},
+    onChange: () => {
+      // A section change re-resolves and atomically re-registers the route set.
+      try {
+        resolved()
+        ensureRegistration()
+      } catch (error) {
+        ctx.logger.error('image-mind: keeping the previously registered vision routes after a refused settings update')
+        ctx.logger.error(error)
+      }
+    },
     validate: (value) => {
       const hasProviders = value.providers !== undefined && Object.keys(value.providers).length > 0
       if (hasProviders || value.active !== undefined) resolveConfig(value)
     },
   })
-  const spec = (): ResolvedConfig => resolveConfig(current())
-  // Short-lived semantic cache scoped to this mount: identical image + prompt
-  // within the TTL reuse the prior answer instead of a second fetch.
-  const visionCache = createVisionCache()
-  // The webserver inject is required by the entry, but the route still probes
-  // per registration so headless mounts keep loading.
-  registerAttachRoute(ctx, () => current().maxBytes ?? DEFAULT_MAX_BYTES)
-  // Pick the provider one call uses: an explicit `provider` argument wins,
-  // else the configured `active`, else the single provider when only one is
-  // defined. Undefined here yields a clear "no provider" failure.
-  const providerFor = (resolved: ResolvedConfig, requested: string | undefined): ResolvedProvider | undefined => {
-    const ids = Object.keys(resolved.providers)
-    if (requested !== undefined) {
-      const hit = resolved.providers[requested.trim()]
-      if (hit === undefined) {
-        throw new Error(`image-mind: provider ${JSON.stringify(requested.trim())} is not defined`)
-      }
-      if (!isProviderComplete(hit)) {
-        throw new Error(`image-mind: provider ${JSON.stringify(requested.trim())} is incomplete; fill its baseURL and model first`)
-      }
-      return hit
-    }
-    if (resolved.active !== undefined) return resolved.providers[resolved.active]
-    if (ids.length === 1) {
-      const only = resolved.providers[ids[0]]
-      return isProviderComplete(only) ? only : undefined
-    }
-    return undefined
-  }
-  ctx.tools.register(defineTool({
-    name: 'understand_image',
-    description: DESCRIPTION_HEAD
-      + 'The image may be a local path, an http(s) URL, the JSON object from an `[image attachment …]` '
-      + "note, or — the common case when the user sent an image through this plugin's input rewriting — a "
-      + 'short markdown image reference like `![图片](/image-mind/raw/sha256:abc…)` pasted into '
-      + 'the conversation. In the markdown form, take the attachment id from the URL and pass that id '
-      + 'as the `image` value (never the whole markdown, and never a made-up path); the tool resolves '
-      + 'the id to the stored image. The image itself never enters the conversation — only the '
-      + 'returned text is shown to you.',
-    parameters: {
-      image: {
-        type: 'string',
-        required: true,
-        description: 'Absolute path to a local image file, an http(s) URL of the image, the JSON object from an [image attachment …] note, or the bare attachment id (e.g. sha256:abc…) taken from the markdown image reference ![图片](/image-mind/raw/<id>) that appeared in the conversation.',
-      },
-      prompt: {
-        type: 'string',
-        description: 'Your precise instruction for the vision model about this image (e.g. "transcribe all text", "extract the table as CSV", "diagnose the UI problems", "translate the text"). Prefer a targeted prompt over the generic default description.',
-      },
-      provider: {
-        type: 'string',
-        description: 'Optional configured vision-provider id to use for this call; defaults to the active provider.',
-      },
-    },
-    output: {
-      schema: {
-        type: 'object',
-        additionalProperties: false,
-        properties: {
-          text: { type: 'string', required: true },
-          model: { type: 'string', required: true },
-          provider: { type: 'string' },
-          image: { type: 'string', required: true },
-          mimeType: { type: 'string', required: true, enum: ['image/png', 'image/jpeg', 'image/gif', 'image/webp'] },
-          bytes: { type: 'integer', required: true },
-        },
-      },
-      render: (_args, value) => [{ type: 'text', text: value.text }],
-    },
-    async execute(args, exec) {
-      const resolved = spec()
-      const provider = providerFor(resolved, args.provider)
-      if (provider === undefined) {
-        throw new Error('image-mind: no active vision provider configured; set one in 设置 → 插件 → 插件配置 → 图像理解')
-      }
-      const apiKey = await resolveApiKey(ctx, provider)
-      const image = await loadImage(ctx, args.image, exec.signal, resolved.maxBytes)
-      const text = await callVision(provider, apiKey, args.prompt ?? resolved.defaultPrompt, image, exec.signal, resolved.timeoutMs, visionCache)
-      return { text, model: provider.model, provider: args.provider ?? resolved.active, image: args.image, mimeType: image.mimeType, bytes: image.bytes.length }
-    },
-    presentCall: understandImageCallView,
-  }))
+
+  // The thin tool: it only loads the image and hands the request to ctx.vision.
+  ctx.tools.register(understandImageTool(ctx, resolved, () => resolved().defaultPrompt))
+
+  // Attachment routes + thin vision RPC; the legacy /image-mind/config
+  // gateway stays as a compatibility transport.
+  registerAttachRoute(ctx, {
+    readMaxBytes: () => current().maxBytes ?? DEFAULT_MAX_BYTES,
+    readConfigView: () => readConfigView(ctx),
+    writeConfigView: (body) => writeConfigView(ctx, body),
+    runConnectionTest: (body) => runConnectionTest(ctx, body as Parameters<typeof runConnectionTest>[1]),
+    listEndpointModels: (body) => listEndpointModels(ctx, body as Parameters<typeof listEndpointModels>[1]),
+    catalog: () => VISION_PROVIDER_CATALOG,
+  })
 }
