@@ -211,4 +211,17 @@ describe('understand_image execute (behavioral)', () => {
     expect(resultJson).toContain('example.com')
     vi.unstubAllGlobals()
   })
+
+  it('a bare sha256 attachment id that is not in the registry fails with a clear message', async () => {
+    const ctx = new Context()
+    ctx.provide('vision', { call: vi.fn(async () => ({ text: 'x', provider: 'a', model: 'm' })) } as never)
+    ctx.provide('attachments', {} as never)
+    const tool = understandImageTool(ctx, () => 'p', () => ({ maxBytes: 10 * 1024 * 1024, allowPrivateNetwork: false }))
+    // No attachment was ever registered; the id must NOT fall through to a
+    // file-stat ("path is not a file: sha256:...") — it is an expired ref.
+    await expect(tool.execute(
+      { image: 'sha256:abc123' },
+      { signal: new AbortController().signal } as never,
+    )).rejects.toThrow(/no longer available|re-send/)
+  })
 })

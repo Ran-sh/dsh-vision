@@ -127,6 +127,16 @@ export async function loadImage(
     assertWithinBound(bytes.length, maxBytes)
     return toImage(bytes, trimmed)
   }
+  // A sha256:… id that is NOT in the registry is an expired or unknown
+  // attachment — never fall through to treating it as a file path (the old
+  // behavior produced "path is not a file: sha256:..." which sent the user
+  // hunting for a file that never existed).
+  if (/^sha256:/i.test(trimmed)) {
+    throw new Error(
+      'image-mind: the image attachment ' + JSON.stringify(trimmed.slice(0, 64))
+      + ' is no longer available (attachments are process-lifetime); ask the user to re-send the image',
+    )
+  }
   const info = await stat(trimmed, { bigint: false })
   if (!info.isFile()) throw new Error(`image-mind: image path is not a file: ${trimmed}`)
   assertWithinBound(info.size, maxBytes)

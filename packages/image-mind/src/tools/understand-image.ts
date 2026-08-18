@@ -43,19 +43,38 @@ async function loadImagesConcurrent(
   const images: LoadedImage[] = new Array(refs.length)
   let total = 0
   let cursor = 0
+  // A failure in one worker (size bound, missing file, abort) must stop the
+  // others from continuing pointless network/file work: chain an internal
+  // abort onto the caller's signal and reject on the first error.
+  const internal = new AbortController()
+  const onCallerAbort = (): void => { internal.abort() }
+  if (signal.aborted) internal.abort()
+  else signal.addEventListener('abort', onCallerAbort, { once: true })
+  const failures: unknown[] = []
   const workers = Array.from({ length: 2 }, async () => {
     for (;;) {
       const index = cursor++
       if (index >= refs.length) return
-      const image = await loadImage(ctx, refs[index], signal, maxBytes, { allowPrivateNetwork })
-      total += image.bytes.length
-      if (total > totalCap) {
-        throw new Error(`image-mind: combined image size exceeds the ${totalCap}-byte bound`)
+      try {
+        const image = await loadImage(ctx, refs[index], internal.signal, maxBytes, { allowPrivateNetwork })
+        total += image.bytes.length
+        if (total > totalCap) {
+          throw new Error(`image-mind: combined image size exceeds the ${totalCap}-byte bound`)
+        }
+        images[index] = image
+      } catch (error) {
+        failures.push(error)
+        internal.abort() // Stop the sibling worker's in-flight load.
+        throw error
       }
-      images[index] = image
     }
   })
-  await Promise.all(workers)
+  try {
+    await Promise.all(workers)
+  } finally {
+    signal.removeEventListener('abort', onCallerAbort)
+  }
+  if (failures.length > 0) throw failures[0]
   return images
 }
 
@@ -116,7 +135,8 @@ export function understandImageTool(
 ): ReturnType<typeof defineTool> {
   const DESCRIPTION_HEAD =
     'Inspect one or more images — local absolute paths, http(s) URLs, or the JSON of image attachment '
-    + 'notes — and return the text the user needs. Call this when the user references an image file or URL, '
+    + 'notes — and return the text the user needs. YOU MUST pass either `image` (single) or `images` '
+    + '(array) — never call with neither. Call this when the user references an image file or URL, '
     + 'or when a task needs OCR, chart or diagram reading, screenshot or UI analysis, translation of '
     + 'image text, or photo understanding. '
     + 'Always pass an explicit `prompt` with a precise instruction — e.g. "transcribe all text", '
@@ -141,12 +161,12 @@ export function understandImageTool(
     parameters: {
       image: {
         type: 'string',
-        description: 'Absolute path to a local image file, an http(s) URL of the image, the JSON object from an [image attachment …] note, or the bare attachment id (e.g. sha256:abc…) taken from the markdown image reference ![图片](/image-mind/raw/<id>) that appeared in the conversation. Use this for a single image; for several images pass `images` instead.',
+        description: 'REQUIRED unless `images` is passed. Absolute path to a local image file, an http(s) URL of the image, the JSON object from an [image attachment …] note, or the bare attachment id (e.g. sha256:abc…) taken from the markdown image reference ![图片](/image-mind/raw/<id>) that appeared in the conversation. Use this for a single image; for several images pass `images` instead.',
       },
       images: {
         type: 'array',
         items: { type: 'string' },
-        description: `Several image references (local paths, http(s) URLs, attachment ids) to analyze together — for comparing screenshots, diffing before/after, or batch-reading a page of photos. At most ${MAX_IMAGES_PER_REQUEST}. Mutually exclusive with \`image\`.`,
+        description: `REQUIRED unless \`image\` is passed. Several image references (local paths, http(s) URLs, attachment ids) to analyze together — for comparing screenshots, diffing before/after, or batch-reading a page of photos. At most ${MAX_IMAGES_PER_REQUEST}. Mutually exclusive with \`image\`.`,
       },
       prompt: {
         type: 'string',
