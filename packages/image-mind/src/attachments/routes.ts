@@ -95,6 +95,55 @@ async function serveRawImage(ctx: Context, req: IncomingMessage, res: ServerResp
   }
 }
 
+/** Loopback socket addresses the web shell serves on. */
+const LOOPBACK_ADDRESSES = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1'])
+
+/** Whether one request's socket is loopback. */
+function isLoopbackSocket(req: IncomingMessage): boolean {
+  const address = req.socket.remoteAddress
+  return address !== undefined && LOOPBACK_ADDRESSES.has(address)
+}
+
+/** Loopback Host names (what a browser on this machine sends). */
+const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]', '::1'])
+
+/** Whether the request Host names a loopback authority. */
+function isLoopbackHost(req: IncomingMessage): boolean {
+  const host = req.headers['host']
+  if (typeof host !== 'string' || host.length === 0) return false
+  try {
+    // new URL handles bracketed IPv6 hosts and port stripping correctly.
+    const name = new URL(`http://${host}`).hostname
+    return LOOPBACK_HOSTS.has(name)
+  } catch {
+    return false
+  }
+}
+
+/** Whether a browser Origin (if any) is same-origin with the loopback host. */
+function isSameOrigin(req: IncomingMessage): boolean {
+  const origin = req.headers['origin']
+  if (origin === undefined) return true // Non-browser client (no Origin header).
+  try {
+    const host = new URL(origin).hostname
+    return LOOPBACK_HOSTS.has(host)
+  } catch {
+    return false
+  }
+}
+
+/**
+ * The local trust fence for secret-bearing RPC (`/test`, `/models`, config
+ * POST): the request must arrive on a loopback socket, name a loopback Host,
+ * and carry no cross-origin browser marker. CORS alone is not a
+ * local-privileged-API boundary — a malicious page must not be able to POST a
+ * draft key into a probe. Non-loopback (remote) deployments refuse these
+ * routes, matching the official settings seam's own remote restrictions.
+ */
+export function isTrustedLocalRequest(req: IncomingMessage): boolean {
+  return isLoopbackSocket(req) && isLoopbackHost(req) && isSameOrigin(req)
+}
+
 /**
  * Register the /image-mind prefix route on the shared webserver: POST
  * /image-mind/attach uploads, GET /image-mind/raw/<id> serves stored bytes,
@@ -133,6 +182,10 @@ export function registerAttachRoute(
         return
       }
       if (req.method === 'POST' && pathname === `${ROUTE_PREFIX}/config`) {
+        if (!isTrustedLocalRequest(req)) {
+          json(res, { ok: false, error: { code: 'rejected', message: 'untrusted origin' } }, 403)
+          return
+        }
         const body = await readJsonBody(req, 64 * 1024)
         if (body === null) {
           json(res, { ok: false, error: { code: 'internal', message: 'request body must be JSON' } }, 400)
@@ -148,6 +201,10 @@ export function registerAttachRoute(
       }
       // Thin vision RPC: one real vision call to verify the deployment.
       if (req.method === 'POST' && pathname === `${ROUTE_PREFIX}/test`) {
+        if (!isTrustedLocalRequest(req)) {
+          json(res, { ok: false, error: { code: 'rejected', message: 'untrusted origin' } }, 403)
+          return
+        }
         const body = await readJsonBody(req, 64 * 1024)
         if (body === null) {
           json(res, { ok: false, error: { code: 'internal', message: 'request body must be JSON' } }, 400)
@@ -163,6 +220,10 @@ export function registerAttachRoute(
       }
       // Thin vision RPC: list model ids for the current endpoint.
       if (req.method === 'POST' && pathname === `${ROUTE_PREFIX}/models`) {
+        if (!isTrustedLocalRequest(req)) {
+          json(res, { ok: false, error: { code: 'rejected', message: 'untrusted origin' } }, 403)
+          return
+        }
         const body = await readJsonBody(req, 64 * 1024)
         if (body === null) {
           json(res, { ok: false, error: { code: 'internal', message: 'request body must be JSON' } }, 400)

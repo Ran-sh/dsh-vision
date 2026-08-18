@@ -12,6 +12,9 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
+import { readFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import {
   DEFAULT_API_STYLE, DEFAULT_MAX_OUTPUT_TOKENS, DEFAULT_TIMEOUT_MS,
   IMAGE_MIND_SETTINGS_NAMESPACE, resolveProvider,
@@ -24,11 +27,54 @@ import { resolveApiKey } from '../credentials/resolve.ts'
 import { deepFreeze } from '@ran-sh/dsh-vision'
 import { discoverEndpointModels, planVisionModels } from '../adapters/openai-compatible/discovery.ts'
 
-/** A tiny embedded 1x1 red PNG (69 bytes) used as the probe image. */
-const TEST_IMAGE_BASE64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC'
+/**
+ * Visual-challenge fixtures: tiny self-generated 32x32 solid-color PNGs the
+ * host sends during a connection test. The model must NAME the color it
+ * actually sees — a text-only model or a broken image path fails the probe
+ * even when the endpoint answers HTTP 200. The fixtures are shipped with the
+ * plugin (tests/fixtures), never fetched from the network.
+ */
+const FIXTURE_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'tests', 'fixtures')
+
+interface VisualFixture {
+  color: string
+  bytes: Buffer
+}
+
+function loadFixtures(): VisualFixture[] {
+  const colors = ['red', 'blue', 'green']
+  return colors.map(color => ({
+    color,
+    bytes: readFileSync(join(FIXTURE_DIR, color + '.png')),
+  }))
+}
+
+/** Pick one fixture at random so a guessing model cannot pre-answer. */
+function pickFixture(): VisualFixture {
+  const fixtures = loadFixtures()
+  return fixtures[Math.floor(Math.random() * fixtures.length)]
+}
+
+/** Whether the model's reply names the fixture color (loose match). */
+function answerMatches(reply: string, color: string): boolean {
+  return reply.trim().toLowerCase().includes(color)
+}
+
+/** Redact secrets from any diagnostic text before it crosses to the UI. */
+export function redactSecrets(text: string, secrets: readonly string[]): string {
+  let out = text
+  for (const secret of secrets) {
+    if (secret !== undefined && secret.length >= 4) out = out.split(secret).join('[REDACTED]')
+  }
+  out = out.replace(/(authorization\s*:\s*)bearer\s+[^\s,;]+/gi, '$1[REDACTED]')
+  out = out.replace(/(api[_-]?key[=:]\s*)[^\s,;&]+/gi, '$1[REDACTED]')
+  return out
+}
 
 /** Deployment fields the card may override for one test run (draft values). */
 export interface TestConnectionOverrides {
+  /** Which provider is being edited; the host overlays its SAVED record. */
+  providerId?: string
   baseURL?: string
   model?: string
   /** Only sent when the user edited the field (never the `********` mask). */
@@ -37,6 +83,10 @@ export interface TestConnectionOverrides {
   apiStyle?: 'chat-completions' | 'responses'
   maxOutputTokens?: number
   timeoutMs?: number
+  /** Draft-declared keyless fact (host confirms against the endpoint root). */
+  keyless?: boolean
+  /** Test hook: pin the visual-challenge color (never sent by the card). */
+  _fixtureColor?: 'red' | 'blue' | 'green'
 }
 
 /** The mask value the browser shows for a configured key; an untouched field never travels. */
@@ -120,6 +170,25 @@ function savedSection(ctx: Context): Record<string, unknown> {
   return (settings.get(IMAGE_MIND_SETTINGS_NAMESPACE) ?? {}) as Record<string, unknown>
 }
 
+/**
+ * The saved record ONE provider test overlays: when the card names a
+ * providerId, the saved fields come from `providers[providerId]` — never the
+ * whole section treated as one provider record. Global `timeoutMs` still
+ * comes from the section top level.
+ */
+function savedProviderRecord(ctx: Context, overrides: TestConnectionOverrides): Record<string, unknown> {
+  const section = savedSection(ctx)
+  const providerId = overrides.providerId?.trim()
+  if (providerId === undefined || providerId.length === 0) return section
+  const providers = (section['providers'] ?? {}) as Record<string, unknown>
+  const record = providers[providerId]
+  return {
+    ...section,
+    ...typeof record === 'object' && record !== null && !Array.isArray(record) ? record as Record<string, unknown> : {},
+    timeoutMs: section['timeoutMs'],
+  }
+}
+
 /** Error text stripped of the plugin prefix for the card. */
 function messageOf(error: unknown): string {
   if (error instanceof Error) return error.message.replace(/^image-mind: /, '')
@@ -146,28 +215,55 @@ function draftAdapter(ctx: Context, options: OpenAICompatibleVisionOptions): Ope
  * @param overrides - draft field values from the card (may be partial).
  * @returns the model's reply on success, or a readable failure reason.
  */
-export async function runConnectionTest(ctx: Context, overrides: TestConnectionOverrides): Promise<{ ok: true; text: string } | { ok: false; message: string }> {
-  const saved = savedSection(ctx)
+export async function runConnectionTest(
+  ctx: Context,
+  overrides: TestConnectionOverrides,
+): Promise<
+  | { ok: true; text: string; provider: string; model: string; latencyMs: number; visualVerified: true }
+  | { ok: false; message: string; visualFailed?: true }
+> {
+  // The probe overlays the SAVED record of the provider being edited, so a
+  // test never mixes provider A's facts into provider B's draft.
+  const saved = savedProviderRecord(ctx, overrides)
   let spec: ResolvedProvider
   try {
     spec = draftProvider('test', overrides, saved)
   } catch (error) {
-    return { ok: false, message: messageOf(error) }
+    return { ok: false, message: redactSecrets(messageOf(error), [String(overrides.apiKey ?? '')]) }
   }
   const timeoutMs = Math.max(1, Math.min(Number(overrides.timeoutMs ?? saved.timeoutMs ?? DEFAULT_TIMEOUT_MS), 30_000))
   const options = snapshotOf('test', spec, timeoutMs)
+  // One random fixture per probe (or a pinned one in tests): the prompt never
+  // names the color, so a text-only model or a broken image path cannot pass
+  // by guessing.
+  const fixture = overrides._fixtureColor !== undefined
+    ? loadFixtures().find(f => f.color === overrides._fixtureColor) ?? pickFixture()
+    : pickFixture()
+  const started = Date.now()
   try {
     // The draft snapshot carries the throwaway key; the adapter resolves it
     // in-process, the key never crosses to the browser.
     const adapter = draftAdapter(ctx, options)
     const result = await adapter.call('test', {
-      prompt: 'Reply with exactly one short word: OK',
-      images: [{ bytes: Buffer.from(TEST_IMAGE_BASE64, 'base64'), mimeType: 'image/png' }],
+      prompt: 'Look at the image. Reply with only the COLOR of the visible shape: red, blue, or green.',
+      images: [{ bytes: fixture.bytes, mimeType: 'image/png' }],
       signal: AbortSignal.timeout(timeoutMs),
     })
-    return { ok: true, text: result.text.trim() }
+    const latencyMs = Date.now() - started
+    if (!answerMatches(result.text, fixture.color)) {
+      // The endpoint answered, but the model did not see the image content.
+      return {
+        ok: false,
+        visualFailed: true,
+        message: redactSecrets(
+          '端点可连接，但视觉验证失败（模型回复 "' + result.text.trim().slice(0, 40) + '"，预期颜色 ' + fixture.color + '）。当前模型可能不支持图片输入。',
+          [String(overrides.apiKey ?? '')],
+        ),
+      }
+    }
+    return { ok: true, text: fixture.color, provider: 'test', model: spec.model, latencyMs, visualVerified: true }
   } catch (error) {
-    return { ok: false, message: messageOf(error) }
+    return { ok: false, message: redactSecrets(messageOf(error), [String(overrides.apiKey ?? '')]) }
   }
 }
 

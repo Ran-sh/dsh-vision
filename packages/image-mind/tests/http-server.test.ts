@@ -156,18 +156,63 @@ describe('OpenAICompatibleVisionAdapter over a real HTTP server', () => {
 })
 
 describe('settings card host RPC over a real HTTP server', () => {
-  it('runConnectionTest succeeds and echoes the model answer', async () => {
+  it('runConnectionTest succeeds only when the model names the fixture color (visual proof)', async () => {
     const { baseURL, seen } = await fakeEndpoint(() => ({
+      // A REAL vision model answers the color it sees; the mock pins the
+      // probe's fixture color so the test is deterministic.
       status: 200,
-      json: { choices: [{ message: { content: 'OK' } }] },
+      json: { choices: [{ message: { content: 'red' } }] },
     }))
     const ctx = new Context()
-    const outcome = await runConnectionTest(ctx, { baseURL, model: 'm', apiKey: 'sk-test' })
-    expect(outcome).toEqual({ ok: true, text: 'OK' })
+    const outcome = await runConnectionTest(ctx, { baseURL, model: 'm', apiKey: 'sk-test', _fixtureColor: 'red' })
+    expect(outcome.ok).toBe(true)
+    if (outcome.ok) {
+      expect(outcome.visualVerified).toBe(true)
+      expect(typeof outcome.latencyMs).toBe('number')
+      expect(outcome.text).toBe('red')
+    }
     expect(seen[0].authorization).toBe('Bearer sk-test')
     // The draft key travels host-side only: it appears in the wire request,
     // never in the returned outcome.
     expect(JSON.stringify(outcome)).not.toContain('sk-test')
+  })
+
+  it('a text-only model (wrong color) fails with visualFailed, not a network error', async () => {
+    const { baseURL } = await fakeEndpoint(() => ({
+      status: 200,
+      json: { choices: [{ message: { content: 'I cannot see any image' } }] },
+    }))
+    const ctx = new Context()
+    const outcome = await runConnectionTest(ctx, { baseURL, model: 'm', apiKey: 'sk-test', _fixtureColor: 'blue' })
+    expect(outcome.ok).toBe(false)
+    if (!outcome.ok) {
+      expect(outcome.visualFailed).toBe(true)
+      expect(outcome.message).toMatch(/视觉验证失败|visual/)
+    }
+  })
+
+  it('the probe overlays the SAVED record of the named provider only', async () => {
+    const { baseURL, seen } = await fakeEndpoint((_req, body) => {
+      const model = (body as { model?: string })?.model
+      return { status: 200, json: { choices: [{ message: { content: model === 'model-b' ? 'green' : 'red' } }] } }
+    })
+    const ctx = new Context()
+    ctx.provide('settings', {
+      get: () => ({
+        providers: {
+          a: { baseURL: 'https://a.example/v1', model: 'model-a', apiKeyEnv: 'KEY_A' },
+          b: { baseURL, model: 'model-b', apiKeyEnv: 'KEY_B' },
+        },
+        timeoutMs: 10_000,
+      }),
+    } as never)
+    // Editing provider B with only a partial draft: the probe must use B's
+    // saved baseURL/model, never A's or the section top level.
+    const outcome = await runConnectionTest(ctx, { providerId: 'b', apiKey: 'sk-b', _fixtureColor: 'green' })
+    expect(outcome.ok).toBe(true)
+    const body = seen[0].body as { model: string }
+    expect(body.model).toBe('model-b')
+    expect(JSON.stringify(outcome)).not.toContain('sk-b')
   })
 
   it('runConnectionTest reports a readable failure for an auth rejection', async () => {
