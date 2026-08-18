@@ -69,10 +69,11 @@ export function normalizeId(name: string): string {
   return name.trim().replace(/\s+/g, '-')
 }
 
-/** Derive the conventional credential reference for a provider route. */
-export function deriveKeyRef(provider: string): string {
-  return `${provider.toUpperCase().replace(/[^A-Z0-9]+/g, '_')}_API_KEY`
-}
+// The conventional credential reference for a provider route is owned by the
+// host credential layer (shared with the legacy-key migration); the card
+// re-exports it so the browser never keeps a second definition.
+import { deriveKeyRef } from '../../credentials/migrate.ts'
+export { deriveKeyRef }
 
 /** Read one top-level string field from a snapshot value. */
 export function topText(value: Record<string, unknown> | undefined, field: string): string {
