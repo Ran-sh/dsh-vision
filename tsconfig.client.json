@@ -1,0 +1,28 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "jsx": "react-jsx",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "strict": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "noEmit": true,
+    "types": ["react"],
+    "baseUrl": ".",
+    "paths": {
+      "@deepseek-ai/dsh-client-runtime/client": ["C:/Users/48376/.dsh/profiles/node_modules/@deepseek-ai/dsh-client-runtime/lib/types/client/index.d.ts"],
+      "@deepseek-ai/dsh-client-locale/client": ["C:/Users/48376/.dsh/profiles/node_modules/@deepseek-ai/dsh-client-locale/lib/types/client/index.d.ts"],
+      "@deepseek-ai/dsh-client-ui-conversation/client": ["C:/Users/48376/.dsh/profiles/node_modules/@deepseek-ai/dsh-client-ui-conversation/lib/types/client/index.d.ts"],
+      "@deepseek-ai/dsh-client-ui-settings/client": ["C:/Users/48376/.dsh/profiles/node_modules/@deepseek-ai/dsh-client-ui-settings/lib/types/client/index.d.ts"],
+      "@deepseek-ai/dsh-client-ui-settings-plugins/client": ["C:/Users/48376/.dsh/profiles/node_modules/@deepseek-ai/dsh-client-ui-settings-plugins/lib/types/client/index.d.ts"],
+      "@deepseek-ai/dsh-client-ui-slots": ["C:/Users/48376/.dsh/profiles/node_modules/@deepseek-ai/dsh-client-ui-slots/lib/types/index.d.ts"],
+      "@deepseek-ai/*": ["C:/Users/48376/.dsh/profiles/node_modules/@deepseek-ai/*"]
+    }
+  },
+  "include": ["src/client/**/*.ts", "src/client/**/*.tsx"]
+}
