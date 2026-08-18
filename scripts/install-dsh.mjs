@@ -3,37 +3,46 @@
  *
  * What it does (idempotent, safe, reversible):
  *   1. Resolves DSH_HOME (env override; else `~/.dsh`).
- *   2. Links the two packages into `<DSH_HOME>/profiles/node_modules`:
- *        @ran-sh/dsh-vision        -> packages/vision
- *        dsh-plugin-image-mind     -> packages/image-mind
- *      A junction on Windows (works without admin rights), a symlink
- *      elsewhere. Existing links are replaced; the link target is ALWAYS the
- *      current project path, so moving the project needs a re-run.
- *   3. Inserts the two profile rows (`vision-runtime` + `image-mind`) into
- *      `<DSH_HOME>/profiles/<profile>/cordis.patch.yml` — or the first
- *      profile found when none is named — without duplicating rows.
- *   4. Backs up any modified patch file to `<file>.bak-<timestamp>`.
+ *   2. Ensures the built artifacts exist (lib/index.js in both packages);
+ *      a missing build fails loudly with the exact command to run (the
+ *      installer never runs npm inside the DSH profile).
+ *   3. Links the two packages into `<DSH_HOME>/profiles/node_modules`,
+ *      creating the `@ran-sh` parent directory itself (junction on Windows,
+ *      symlink elsewhere). Existing links are re-pointed at the CURRENT
+ *      project path; real directories are left alone.
+ *   4. Inserts the two profile rows into the chosen profile's
+ *      cordis.patch.yml — with an ATOMIC write (temp file + rename) that
+ *      preserves the file's existing newline style (CRLF stays CRLF), and a
+ *      backup only when a mutation actually happens.
  *
- * It NEVER touches: the user's settings.yaml (provider/key configuration),
- * the credential store, other plugins, or `<DSH_HOME>/profiles/node_modules`
- * beyond the two links it owns.
+ * YAML safety: the profile template ships a top-level `[]` (empty array).
+ * A YAML document cannot mix a flow-style `[]` with block-style `- insert:`
+ * entries, so the installer REMOVES a bare top-level `[]` (and its comment
+ * lines) before appending the `- insert:` rows — the result is a pure
+ * top-level block array that the loader parses.
  *
- * Safety: no npm install / prune runs here, and the two links point at this
- * project's own packages — `npm install` in the workspace never follows them
- * (the SDK is now a registry dependency, not a junction).
+ * Profile selection: `--profile` wins; else `web`; else the single
+ * candidate; MULTIPLE candidates without `--profile` are refused with the
+ * list — the installer never silently modifies the wrong profile.
  *
- * Usage:
- *   npm run install:dsh                # profile auto-detected (web first)
- *   npm run install:dsh -- --profile web
- *   DSH_HOME=... npm run install:dsh
+ * `--dry-run` prints the exact plan with zero mutations.
+ *
+ * It NEVER touches: settings.yaml, the credential store, other plugins, or
+ * anything beyond the two links and the two patch rows it owns. No npm
+ * install/prune ever runs inside the profile.
  */
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync, lstatSync, unlinkSync, renameSync } from 'node:fs'
+import {
+  existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync,
+  lstatSync, unlinkSync, renameSync, copyFileSync,
+} from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join, basename, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+const dryRun = process.argv.includes('--dry-run')
+
 const dshHome = process.env.DSH_HOME !== undefined && process.env.DSH_HOME.length > 0
   ? process.env.DSH_HOME
   : join(process.env.USERPROFILE ?? homedir(), '.dsh')
@@ -61,7 +70,7 @@ function profileArg() {
   return undefined
 }
 
-/** Pick the profile to patch: the named one, else `web` if present, else the first. */
+/** Pick the profile to patch: named > web > single candidate; ambiguity refused. */
 function pickProfile() {
   const named = profileArg()
   if (named !== undefined) {
@@ -80,24 +89,57 @@ function pickProfile() {
     }
   }).sort()
   if (candidates.includes('web')) return 'web'
+  if (candidates.length === 1) return candidates[0]
   if (candidates.length === 0) {
     console.error(`no profile with cordis.patch.yml found under ${profilesRoot}`)
     process.exit(1)
   }
-  return candidates[0]
+  // Multiple candidates and no explicit choice: never silently modify the
+  // wrong profile — list them and require --profile.
+  console.error(`multiple profiles found under ${profilesRoot}: ${candidates.join(', ')}`)
+  console.error('refusing to guess; re-run with --profile <name>')
+  process.exit(1)
+}
+
+/** Ensure the built artifacts exist; the installer never builds inside DSH. */
+function checkBuilds() {
+  for (const { name, target } of LINKS) {
+    const built = join(target, 'lib', 'index.js')
+    if (!existsSync(built)) {
+      console.error(`${name} has no built artifact at ${built}`)
+      console.error('run `npm install && npm run build` in the project first (the installer never runs npm inside DSH)')
+      process.exit(1)
+    }
+  }
+}
+
+/** Whether the file uses CRLF line endings. */
+function usesCrlf(text) {
+  return text.includes('\r\n')
+}
+
+/** Atomic write: temp file + rename, preserving newline style. */
+function atomicWrite(path, text, newline) {
+  const tmp = `${path}.tmp-${process.pid}`
+  writeFileSync(tmp, newline === 'crlf' ? text.replace(/\n/g, '\r\n') : text)
+  renameSync(tmp, path)
 }
 
 /** Create a junction (Windows, no admin needed) or a symlink (POSIX). */
 function linkPackage(name, target) {
   const linkPath = join(modulesRoot, name)
-  mkdirSync(modulesRoot, { recursive: true })
+  // The scoped parent (`@ran-sh`) may not exist on a fresh profile; the
+  // installer creates it — never relies on the test fixture having done so.
+  mkdirSync(dirname(linkPath), { recursive: true })
+  if (dryRun) {
+    console.log(`[dry-run] would link ${name} -> ${target}`)
+    return
+  }
   try {
     const st = lstatSync(linkPath)
     if (st.isSymbolicLink()) {
-      // Re-point an existing link to the current project path.
       unlinkSync(linkPath)
     } else if (st.isDirectory()) {
-      // A real directory would be a user's own package; leave it alone.
       console.log(`skip ${name}: ${linkPath} exists as a real directory (not ours)`)
       return
     }
@@ -116,16 +158,40 @@ function linkPackage(name, target) {
   console.log(`linked ${name} -> ${target}`)
 }
 
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
 /** Whether the patch file already carries the two rows (idempotence check). */
 function rowsPresent(patchText) {
   return ROWS.every(row => new RegExp(`-\\s*id:\\s*${row.id}[\\s\\S]{0,80}?name:\\s*['"]?${escapeRegExp(row.name)}`).test(patchText))
 }
 
-function escapeRegExp(value) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+/**
+ * Remove a bare top-level `[]` (and any comment lines directly above it) so
+ * the resulting document is ONE block-style top-level array. YAML cannot mix
+ * a flow-style `[]` with block-style `- insert:` entries in the same
+ * document — this was the startup-breaking bug.
+ */
+function stripEmptyArray(text) {
+  const lines = text.split('\n')
+  const kept = []
+  let removed = false
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+    if (/^\s*\[\]\s*$/.test(line)) {
+      // Drop the bare empty array line AND any comment lines that sit
+      // directly above it (the template's own header comments).
+      while (kept.length > 0 && /^\s*#/.test(kept[kept.length - 1])) kept.pop()
+      removed = true
+      continue
+    }
+    kept.push(line)
+  }
+  return { text: kept.join('\n'), removed }
 }
 
-/** Insert the two rows into the patch file (backing it up first). */
+/** Insert the two rows atomically, preserving newline style and backing up only on mutation. */
 function patchProfile(profile) {
   const patchPath = join(profilesRoot, profile, 'cordis.patch.yml')
   let text = ''
@@ -138,24 +204,34 @@ function patchProfile(profile) {
     console.log(`patch already present in ${patchPath}; nothing to add`)
     return
   }
-  // Backup the current content before touching it.
-  const backup = `${patchPath}.bak-${new Date().toISOString().replace(/[:.]/g, '-')}`
-  renameSync(patchPath, backup)
-  console.log(`backed up ${patchPath} -> ${basename(backup)}`)
+  const newline = usesCrlf(text) ? 'crlf' : 'lf'
+  // Remove a template `[]` so the document stays a single block array.
+  const stripped = stripEmptyArray(text)
+  text = stripped.text
   const trimmed = text.trimEnd()
   const block = ROWS.map(row => `    - id: ${row.id}\n      name: ${JSON.stringify(row.name)}`).join('\n')
   const next = trimmed.length === 0
     ? `# dsh-vision plugin rows (installed by \`npm run install:dsh\`)\n- insert:\n${block}\n`
     : `${trimmed}\n\n# dsh-vision plugin rows (installed by \`npm run install:dsh\`)\n- insert:\n${block}\n`
-  writeFileSync(patchPath, next)
-  console.log(`added dsh-vision rows to ${patchPath}`)
+  if (dryRun) {
+    console.log(`[dry-run] would add dsh-vision rows to ${patchPath} (${newline}${stripped.removed ? ', removing bare []' : ''})`)
+    return
+  }
+  // Backup only when a mutation is about to happen; then write atomically.
+  const backup = `${patchPath}.bak-${new Date().toISOString().replace(/[:.]/g, '-')}`
+  copyFileSync(patchPath, backup)
+  console.log(`backed up ${patchPath} -> ${basename(backup)}`)
+  atomicWrite(patchPath, next, newline)
+  console.log(`added dsh-vision rows to ${patchPath} (${newline}${stripped.removed ? ', removed bare []' : ''})`)
 }
 
-console.log(`DSH_HOME: ${dshHome}`)
+console.log(`DSH_HOME: ${dshHome}${dryRun ? ' [dry-run]' : ''}`)
 if (!existsSync(profilesRoot)) {
   console.error(`no Harness profiles found under ${profilesRoot}; is DeepSeek Harness installed? (set DSH_HOME to override)`)
   process.exit(1)
 }
+
+checkBuilds()
 
 for (const { name, target } of LINKS) {
   if (!existsSync(join(target, 'package.json'))) {
