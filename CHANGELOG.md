@@ -22,6 +22,48 @@ minor version). Package names: `@ran-sh/dsh-vision` (Service) and
 - Provider list ordering (active first) and an advanced-settings disclosure
   in the settings card.
 
+### Fixed
+
+- **Client bundle no longer ships server-only packages**: the browser
+  settings store imported `deriveKeyRef` from `credentials/migrate.ts`,
+  which imports `@deepseek-ai/dsh-credentials`; esbuild bundled that
+  server dependency into `lib/client.js` and the web shell refused the
+  plugin, breaking DSH web startup. The identity helpers now live in
+  `client/settings/identity.ts` with zero imports (both halves use it).
+- **Installer YAML safety**: a profile template's bare top-level `[]`
+  could not coexist with `- insert:` rows in one YAML document; the
+  installer now strips it before appending (pure block-style array).
+- **Provider settings workflow**: React hooks moved out of a conditional
+  into a real `ProviderEditor` component; catalog providers keep their
+  stable `entry.id` (display names never generate route ids); custom ids
+  are validated up front; keyless local providers work without a key;
+  status lamps only turn green after a real visual test on the current
+  connection fingerprint; typed keys debounce before discovery and stale
+  discovery responses are suppressed.
+- **Visual test connection**: the probe now sends a random 32x32
+  solid-color fixture and requires the model to name the color — a
+  text-only model fails with `visualFailed` instead of passing on HTTP
+  200. The probe overlays the saved record of the named provider only.
+- **Secret-bearing RPC fence**: /test, /models, and the legacy config
+  POST require a loopback socket + loopback Host + same-origin markers;
+  cross-origin or remote requests are refused 403. RPC errors are
+  redacted (keys, Authorization, api_key).
+- **Multi-image hardening**: `image` + `images` together fail loudly;
+  empty strings rejected; combined byte bound enforced before any
+  provider request; bounded-concurrency loading preserves order; the
+  result carries safe identities (basename / host) — never full paths or
+  URL queries.
+- **URL/SSRF hardening**: node:net-based IP classification (IPv4/IPv6/
+  IPv4-mapped private ranges), DNS pre-resolution rejecting private
+  A/AAAA, embedded URL credentials refused, error excerpts strip query
+  strings.
+- **Adapter hardening**: cache keys are fixed-length SHA-256 digests
+  (no image bytes in the map); caller abort is distinguished from
+  timeout; provider error excerpts are redacted.
+- **Installer polish**: `--dry-run`, `diagnose:dsh`, atomic patch writes
+  preserving CRLF, empty-scope cleanup, ambiguity refusal, build
+  artifact gate, uninstall dry-run.
+
 ### Changed
 
 - SDK dependencies moved from profile junctions to pinned registry

@@ -87,7 +87,7 @@ Vision API                ← 真实视觉端点（Opencode Go / Command Code Go
 | 两种协议 | `apiStyle: chat-completions`（默认，`/chat/completions`）或 `responses`（OpenAI Responses API），由 adapter 内部分发 |
 | 图片预览 | 对话里的引用自动渲染成缩略图，点击看大图（可在设置卡片里关掉） |
 | 瞬时错误自动重试 | 网络失败 / 超时 / HTTP 429 / 5xx 自动重试（指数退避 + 抖动）；认证与请求格式错误（4xx）不重试并附带修复提示 |
-| 多图场景 | 工具按模型需要一次调用一张图；Runtime 请求结构已允许 `images[]`，未来可平滑支持多图 |
+| 多图场景 | `images[]` 一次调用（最多 4 张），保持输入顺序；单图 `image` 兼容 |
 | 密钥解析 | 凭证缝 `apiKeyEnv`（默认 `VISION_API_KEY`）存在时由它全权负责；无凭证缝时才用启动环境变量；本地端点 keyless。卡片以「已配置」形式显示，真实值永不出进程 |
 | 安全 | 所有请求拒绝重定向；`maxBytes`/`maxOutputTokens`/`timeoutMs` 上限；魔数类型校验；私有网络 URL 默认拒绝（`allowPrivateNetwork` 可开）；错误摘录限 200 字符；密钥不落日志、不外传浏览器 |
 
@@ -130,7 +130,7 @@ dsh-vision/                        ← npm workspace 根
 ### 分层职责
 
 - **`understand_image` 是薄工具**：只负责加载图片（media 层）和把请求交给 `ctx.vision.call(request)`——一个参数，只表达「哪个 provider/model、对这个 prompt、这些图片」。它不 import `ResolvedProvider` / `ResolvedConfig`，不构造 `VisionConnection`，不接触 baseURL、API Key、协议、超时、模型发现或重试策略。
-- **VisionRuntime 是独立服务（`ctx.vision`）**：不注册进 `ctx.llm`。视觉模型是 DeepSeek 的感知后端，不是主会话模型。每次调用由 Runtime 完成：provider selection → route lookup → connection snapshot → adapter.call。注册与路由替换是原子的（`registerAdapter` 返回 handle，`replace()` 含 `replace([])` 原子撤销；`REGISTRATION_DISPOSED` 后拒绝再 replace）。
+- **VisionRuntime 是独立服务（`ctx.vision`）**：不注册进 `ctx.llm`。视觉模型是 DeepSeek 的感知后端，不是主会话模型。每次调用由 Runtime 完成 provider selection → route lookup → adapter dispatch；连接快照（endpoint/credential/协议）由 Adapter 在调用时自行解析并深度冻结，Runtime 永远看不到。注册与路由替换是原子的（`registerAdapter` 返回 handle，`replace()` 含 `replace([])` 原子撤销；`REGISTRATION_DISPOSED` 后拒绝再 replace）。
 - **Adapter 自持 provider 事实**：`registerAdapter(providers, adapter)` 只关联 provider 路由与 adapter 实例（官方 LlmRuntime 两参形状）。OpenAICompatibleVisionAdapter 在构造时接收 `resolveProviderOptions` / `resolveApiKey` 钩子，每次调用从 last-good 配置解析并**深度冻结**一个不可变端点快照（baseURL/model/apiStyle/maxOutputTokens/timeoutMs/apiKeyEnv 同一 generation）——在途请求不受设置修改影响，下次调用重新解析。Core 永远看不到这些字段。
 - **last-good 配置**：静态启动配置错误 fail loud；运行期间新设置超出 schema 的进一步校验失败时，记录错误并保留上一个 good 快照，配置恢复正确后自动切换（官方 llm-deepseek 模式）。
 - **Provider Catalog 与 Adapter 分离**：`providers/catalog.ts` 只描述厂商；目录注册（`registerConfigurableProviders`）与路由注册（`registerAdapter`）分开——目录回答「可以配置哪些」，注册表回答「当前哪些可调用」。每次提交发布 `vision/adapters-updated` 事件（listener 失败被包含，不 veto 提交）。
@@ -146,6 +146,7 @@ dsh-vision/                        ← npm workspace 根
 git clone <your-fork-or-release-url> dsh-vision
 cd dsh-vision
 npm install
+npm run build              # 生成插件产物（install:dsh 会检查，缺失则提示）
 npm run install:dsh        # 链接两个包 + 写入 profile 的 cordis.patch.yml（幂等）
 ```
 
@@ -164,6 +165,15 @@ npm run uninstall:dsh                     # 移除链接与补丁行，保留设
 npm run uninstall:dsh -- --purge-settings # 同时删除 settings.yaml 的 image-mind 节（先备份）
 ```
 
+## URL 安全说明
+
+图片 URL 抓取有 SSRF 防护，但**不是网络沙箱**：
+
+- 显式私网地址（IPv4/IPv6/IPv4-mapped）默认拒绝，`allowPrivateNetwork` 显式开启才放行；
+- 主机名会做 DNS 预解析，任一 A/AAAA 落在私网即拒绝；
+- redirect 始终拒绝；URL 内嵌凭据拒绝；错误信息剥离 query 参数，避免 token 泄露；
+- 无法 pin 连接到预解析地址，因此对 DNS rebinding 只能做到预解析层防御，不能提供沙箱级绝对保证。
+
 ## 使用
 
 在对话里：
@@ -181,7 +191,7 @@ npm run uninstall:dsh -- --purge-settings # 同时删除 settings.yaml 的 image
 
 **填 Key 即出模型**：从目录添加提供方后，编辑器会打开；在「API Key」里粘贴密钥（或端点本身 keyless）后，模型列表会自动从该端点的 `/models` 拉取并填进下拉。模型发现由 Host 完成，浏览器不直接拿 Key 请求 Provider。默认只显示 API Key 与模型两个字段；端点、协议、输出上限等折叠在「高级设置」里。
 
-**状态灯是真实的**：绿 = 配置完整且密钥确实可解析（凭据存储或环境变量）；红 = 未配置密钥或配置不完整；黄闪 = 测试连接中；测试失败转红并显示原因。「测试连接」发送一张内置极小图片做真实视觉请求，不是只查 `/models`。默认提供方由 `active` 决定；`understand_image` 也可用 `provider` 参数临时指定。
+**状态灯是真实的**：灰 = 未配置；中性 = 已配置未测试；绿 = 最近一次视觉测试通过（同一连接指纹）；红 = 测试失败或密钥缺失。密钥存在只证明「已配置」，不证明「已连接」——只有真正通过视觉测试（发送内置纯色图片并验证模型答对颜色）才显示绿色。「测试连接」不是只查 `/models`。默认提供方由 `active` 决定；`understand_image` 也可用 `provider` 参数临时指定。
 
 **密钥安全**：键入的 API Key 通过官方 `credentials.set` 存入 DSH 凭据存储，`settings.yaml` 只保存引用名；界面始终以掩码显示，浏览器永远拿不到明文。旧版文档里的 legacy inline `apiKey` 会在启动时自动迁移到凭据存储（失败则保留 host-only fallback，绝不丢配置）。
 
