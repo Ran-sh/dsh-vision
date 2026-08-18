@@ -3,18 +3,36 @@
  * status, mirroring the harness `LlmError` taxonomy without importing LLM
  * business semantics. Tool results and the settings card route on `code`,
  * never by parsing `message`.
+ *
+ * Registration lifecycle failures carry their own codes — `DUPLICATE_ADAPTER`,
+ * `INVALID_ADAPTER`, `REGISTRATION_DISPOSED`, `DUPLICATE_PROVIDER`,
+ * `INVALID_PROVIDER` — so a registry conflict is never mistaken for a plain
+ * provider lookup miss (`PROVIDER_NOT_FOUND`).
  * @module dsh-plugin-image-mind/runtime/errors
  */
 
-/** Stable provider-neutral failure classes for one vision request. */
+/** Stable provider-neutral failure classes for one vision operation. */
 export type VisionErrorCode =
-  | 'MISSING_CREDENTIAL'
-  | 'INVALID_CREDENTIAL'
+  // Request / provider lookup.
   | 'PROVIDER_NOT_FOUND'
+  | 'NO_ADAPTER'
   | 'MODEL_NOT_FOUND'
   | 'UNSUPPORTED_PROTOCOL'
+  // Registration lifecycle.
+  | 'DUPLICATE_ADAPTER'
+  | 'INVALID_ADAPTER'
+  | 'REGISTRATION_DISPOSED'
+  | 'DUPLICATE_PROVIDER'
+  | 'INVALID_PROVIDER'
+  | 'DUPLICATE_DIRECTORY'
+  | 'INVALID_DIRECTORY'
+  // Credentials.
+  | 'MISSING_CREDENTIAL'
+  | 'INVALID_CREDENTIAL'
+  // Media.
   | 'IMAGE_TOO_LARGE'
   | 'UNSUPPORTED_IMAGE_TYPE'
+  // Provider wire.
   | 'AUTH_FAILED'
   | 'RATE_LIMITED'
   | 'PROVIDER_ERROR'
@@ -78,6 +96,5 @@ export function isVisionError(value: unknown): value is VisionError {
 export function visionCodeForStatus(status: number): VisionErrorCode {
   if (status === 401 || status === 403) return 'AUTH_FAILED'
   if (status === 429) return 'RATE_LIMITED'
-  if (status >= 500) return 'PROVIDER_ERROR'
   return 'PROVIDER_ERROR'
 }

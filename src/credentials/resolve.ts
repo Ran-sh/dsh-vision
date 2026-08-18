@@ -1,10 +1,11 @@
 /**
  * Credential resolution for one vision connection. Mirrors the official
- * `assertUsableApiKey` contract: a stored key arrives from the credentials
- * seam or the launch environment, both of which pick up surrounding
- * whitespace, so trimming is silent. Resolution order: credential seam →
- * launch environment → missing-credential error. The key never enters a
- * message: the reference names where to fix it.
+ * llm-deepseek precedence: when the credentials seam is mounted it owns the
+ * whole credential plane (a miss there is a miss — the launch environment is
+ * not consulted); only a deployment without the seam falls back to the
+ * launch environment. A probe/draft connection may carry a one-shot
+ * `inlineApiKey`, which wins over the seam for that call alone. The key never
+ * enters a message: the reference names where to fix it.
  * @module dsh-plugin-image-mind/credentials/resolve
  */
 
@@ -44,14 +45,24 @@ export function assertUsableApiKey(raw: string, ref: string): string {
  * @returns the resolved bearer token.
  */
 export async function resolveApiKey(ctx: Context, connection: VisionConnection): Promise<string> {
+  // A one-shot draft/probe key wins for this call alone; it lives only in the
+  // in-memory snapshot and is never persisted or sent to the browser.
+  if (connection.inlineApiKey !== undefined) {
+    return assertUsableApiKey(connection.inlineApiKey, connection.provider)
+  }
   const ref = connection.apiKeyEnv
   if (ref !== undefined) {
     const credentials = ctx.get('credentials')
-    const hit = credentials !== undefined
-      ? (await credentials.resolve(credentialRef(ref)))?.value
+    if (credentials !== undefined) {
+      // The managed credential plane owns resolution when mounted: a miss
+      // here is authoritative, and the launch environment is not consulted.
+      const hit = await credentials.resolve(credentialRef(ref))
+      if (hit !== undefined && hit.value.length > 0) return assertUsableApiKey(hit.value, ref)
+    } else {
       // Without the seam the environment is the whole credential plane.
-      : launchEnvironmentOf(ctx).get(ref)?.value
-    if (hit !== undefined && hit.length > 0) return assertUsableApiKey(hit, ref)
+      const ambient = launchEnvironmentOf(ctx).get(ref)
+      if (ambient !== undefined && ambient.value.length > 0) return assertUsableApiKey(ambient.value, ref)
+    }
   }
   if (isKeylessEndpoint(connection.baseURL)) return ''
   throw new VisionError(

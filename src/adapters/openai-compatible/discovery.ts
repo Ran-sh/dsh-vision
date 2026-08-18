@@ -174,7 +174,7 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
  * @returns endpoint models plus the plan fallback, and whether the endpoint list won.
  */
 export async function discoverEndpointModels(
-  connection: VisionConnection,
+  connection: Readonly<VisionConnection>,
   apiKey: string,
   signal?: AbortSignal,
 ): Promise<{ models: VisionModel[]; source: 'endpoint' | 'fallback'; reason?: string }> {

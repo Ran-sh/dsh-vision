@@ -24,7 +24,7 @@ const DEFAULT_MAX_RETRIES = 2
 /** Constructor options: the operation-local resolution hooks the adapter needs. */
 export interface OpenAICompatibleAdapterOptions {
   /** Resolve the bearer token for one connection snapshot. */
-  resolveApiKey: (connection: VisionConnection) => Promise<string>
+  resolveApiKey: (connection: Readonly<VisionConnection>) => Promise<string>
   /** Optional semantic cache; absent disables caching. */
   cache?: VisionCache
   /** Retry scheduling; absent uses the default backoff. */
@@ -64,7 +64,7 @@ function responseHint(status: number, retried: boolean, excerpt?: string): strin
 }
 
 /** The semantic identity of one vision request: endpoint fields plus the same image bytes and prompt. */
-export function semanticRequestKey(connection: VisionConnection, prompt: string, image: { bytes: Buffer; mimeType: string }): string {
+export function semanticRequestKey(connection: Readonly<VisionConnection>, prompt: string, image: { bytes: Buffer; mimeType: string }): string {
   return JSON.stringify([
     connection.provider, connection.baseURL, connection.model,
     connection.apiStyle, connection.maxOutputTokens,
@@ -78,7 +78,7 @@ export function semanticRequestKey(connection: VisionConnection, prompt: string,
  */
 async function callVisionOnce(
   request: VisionRequest,
-  connection: VisionConnection,
+  connection: Readonly<VisionConnection>,
   apiKey: string,
   timeoutMs: number,
 ): Promise<VisionResult> {
@@ -146,7 +146,7 @@ export class OpenAICompatibleVisionAdapter extends VisionAdapter {
     this.backoff = resolveBackoff(options.retry?.backoff)
   }
 
-  override async call(request: VisionRequest, connection: VisionConnection): Promise<VisionResult> {
+  override async call(request: VisionRequest, connection: Readonly<VisionConnection>): Promise<VisionResult> {
     // One resolution per call: the connection snapshot and its key freeze
     // here and hold for this whole request, so an in-flight request never
     // observes a configuration change and the next call re-resolves.
@@ -190,7 +190,7 @@ export class OpenAICompatibleVisionAdapter extends VisionAdapter {
     }
   }
 
-  override async discoverModels(connection: VisionConnection, signal?: AbortSignal): Promise<VisionModel[]> {
+  override async discoverModels(connection: Readonly<VisionConnection>, signal?: AbortSignal): Promise<VisionModel[]> {
     const apiKey = await this.options.resolveApiKey(connection)
     const outcome = await discoverEndpointModels(connection, apiKey, signal)
     return outcome.models

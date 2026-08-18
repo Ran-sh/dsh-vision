@@ -1,21 +1,16 @@
 /**
  * The `understand_image` tool: a thin consumer of `ctx.vision`. It loads one
- * image (media layer), builds an immutable connection snapshot from the
- * resolved configuration (config layer), and hands both to the runtime — it
- * never touches baseURL, apiKey, fetch, protocol selection, model discovery,
- * or retry policy. The image never enters the conversation: only the returned
- * text crosses.
+ * image (media layer) and hands the request to the runtime — it never touches
+ * baseURL, apiKey, apiStyle, timeout, fetch, protocol selection, model
+ * discovery, or retry policy. Provider and model defaults are resolved by the
+ * runtime from its own provider registration. The image never enters the
+ * conversation: only the returned text crosses.
  * @module dsh-plugin-image-mind/tools/understand-image
  */
 
 import type { Context } from '@deepseek-ai/cordis'
 import { defineTool, type GenericCallView } from '@deepseek-ai/dsh-tools'
-import type { ResolvedConfig, ResolvedProvider } from '../config.ts'
-import { isProviderComplete } from '../config.ts'
-import { VisionError } from '../runtime/errors.ts'
-import type { VisionConnection } from '../runtime/types.ts'
 import { loadImage } from '../media/load.ts'
-import { isKeylessEndpoint } from '../config.ts'
 // The `ctx.vision` Context augmentation.
 import type {} from '../runtime/index.ts'
 
@@ -24,6 +19,8 @@ export interface UnderstandImageArgs {
   image: string
   prompt?: string
   provider?: string
+  /** Model id override; absent uses the provider's configured default. */
+  model?: string
 }
 
 /**
@@ -41,52 +38,12 @@ export function understandImageCallView(args: UnderstandImageArgs): GenericCallV
   }
 }
 
-/**
- * Pick the provider one call uses: an explicit `provider` argument wins, else
- * the configured `active`, else the single provider when only one is defined.
- * Undefined here yields a clear "no provider" failure.
- */
-export function providerFor(resolved: ResolvedConfig, requested: string | undefined): ResolvedProvider | undefined {
-  const ids = Object.keys(resolved.providers)
-  if (requested !== undefined) {
-    const hit = resolved.providers[requested.trim()]
-    if (hit === undefined) {
-      throw new VisionError(`image-mind: provider ${JSON.stringify(requested.trim())} is not defined`, 'PROVIDER_NOT_FOUND')
-    }
-    if (!isProviderComplete(hit)) {
-      throw new VisionError(
-        `image-mind: provider ${JSON.stringify(requested.trim())} is incomplete; fill its baseURL and model first`,
-        'PROVIDER_NOT_FOUND',
-      )
-    }
-    return hit
-  }
-  if (resolved.active !== undefined) return resolved.providers[resolved.active]
-  if (ids.length === 1) {
-    const only = resolved.providers[ids[0]]
-    return isProviderComplete(only) ? only : undefined
-  }
-  return undefined
-}
-
-/** Build the immutable connection snapshot one call holds. */
-export function connectionFor(provider: string, spec: ResolvedProvider, resolved: ResolvedConfig, model?: string): VisionConnection {
-  return {
-    provider,
-    baseURL: spec.baseURL,
-    model: model ?? spec.model,
-    apiStyle: spec.apiStyle,
-    maxOutputTokens: spec.maxOutputTokens,
-    timeoutMs: resolved.timeoutMs,
-    // An empty seam means "no credential needed" (keyless localhost); only an
-    // absent field falls back to the default ref.
-    ...spec.apiKeyEnv === undefined || spec.apiKeyEnv.length === 0 ? {} : { apiKeyEnv: String(spec.apiKeyEnv) },
-    ...isKeylessEndpoint(spec.baseURL) ? {} : {},
-  }
-}
-
 /** The `understand_image` tool definition. */
-export function understandImageTool(ctx: Context, spec: () => ResolvedConfig, defaultPrompt: () => string): ReturnType<typeof defineTool> {
+export function understandImageTool(
+  ctx: Context,
+  defaultPrompt: () => string,
+  mediaOptions: () => { maxBytes: number; allowPrivateNetwork: boolean },
+): ReturnType<typeof defineTool> {
   const DESCRIPTION_HEAD =
     'Inspect one image — a local absolute path, an http(s) URL, or the JSON of an image attachment '
     + 'note — and return the text the user needs. Use when the user references an image file or URL, '
@@ -124,6 +81,10 @@ export function understandImageTool(ctx: Context, spec: () => ResolvedConfig, de
         type: 'string',
         description: 'Optional configured vision-provider id to use for this call; defaults to the active provider.',
       },
+      model: {
+        type: 'string',
+        description: 'Optional model id override for this call; absent uses the provider\'s configured default model.',
+      },
     },
     output: {
       schema: {
@@ -141,24 +102,17 @@ export function understandImageTool(ctx: Context, spec: () => ResolvedConfig, de
       render: (_args, value) => [{ type: 'text', text: value.text }],
     },
     async execute(args, exec) {
-      const resolved = spec()
-      const provider = providerFor(resolved, args.provider)
-      if (provider === undefined) {
-        throw new VisionError(
-          'image-mind: no active vision provider configured; set one in 设置 → 插件 → 插件配置 → 图像理解',
-          'PROVIDER_NOT_FOUND',
-        )
-      }
-      const providerId = args.provider?.trim() ?? resolved.active ?? Object.keys(resolved.providers)[0]
-      const connection = connectionFor(providerId, provider, resolved)
-      const image = await loadImage(ctx, args.image, exec.signal, resolved.maxBytes, { allowPrivateNetwork: resolved.allowPrivateNetwork })
+      const { maxBytes, allowPrivateNetwork } = mediaOptions()
+      const image = await loadImage(ctx, args.image, exec.signal, maxBytes, { allowPrivateNetwork })
+      // The runtime selects the provider (explicit `provider`, else active),
+      // resolves the connection snapshot, and dispatches to the adapter.
       const result = await ctx.vision.call({
-        provider: providerId,
-        model: connection.model,
+        provider: args.provider,
+        model: args.model,
         prompt: args.prompt ?? defaultPrompt(),
         images: [image],
         signal: exec.signal,
-      }, connection)
+      })
       return {
         text: result.text,
         model: result.model,

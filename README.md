@@ -14,10 +14,11 @@ DeepSeek V4
 understand_image          ← 薄工具（只加载图片 + 调 ctx.vision）
       │
       ▼
-VisionRuntime             ← ctx.vision 服务（Provider Registry + Adapter 分发）
+VisionRuntime             ← ctx.vision 服务（Provider Registry + Connection Resolver + Adapter 分发）
       │
-      ├── Provider Registry    注册表（目录 + 路由，原子热替换）
-      ├── Credentials          凭证缝（DSH 凭据存储 / 环境变量，key 不进配置）
+      ├── Provider Registry    注册表（目录 + 路由，原子热替换，含 replace([])）
+      ├── Connection Resolver  每调用解析不可变快照（baseURL/model/密钥引用/协议/超时同代）
+      ├── Credentials          凭证缝（DSH 凭据存储，key 不进配置）
       └── Adapter              OpenAICompatibleVisionAdapter（chat-completions / responses）
       │
       ▼
@@ -39,21 +40,23 @@ Vision API                ← 真实视觉端点（Opencode Go / Command Code Go
 | 图片预览 | 对话里的引用自动渲染成缩略图，点击看大图（可在设置卡片里关掉） |
 | 瞬时错误自动重试 | 网络失败 / 超时 / HTTP 429 / 5xx 自动重试（指数退避 + 抖动）；认证与请求格式错误（4xx）不重试并附带修复提示 |
 | 多图场景 | 工具按模型需要一次调用一张图；Runtime 请求结构已允许 `images[]`，未来可平滑支持多图 |
-| 密钥三级解析 | 凭证缝 `apiKeyEnv`（默认 `VISION_API_KEY`）→ 启动环境变量 → 本地端点 keyless；卡片以「已配置」形式显示，真实值永不出进程 |
+| 密钥解析 | 凭证缝 `apiKeyEnv`（默认 `VISION_API_KEY`）存在时由它全权负责；无凭证缝时才用启动环境变量；本地端点 keyless。卡片以「已配置」形式显示，真实值永不出进程 |
 | 安全 | 所有请求拒绝重定向；`maxBytes`/`maxOutputTokens`/`timeoutMs` 上限；魔数类型校验；私有网络 URL 默认拒绝（`allowPrivateNetwork` 可开）；错误摘录限 200 字符；密钥不落日志、不外传浏览器 |
 
 ## 架构
 
 ```
 src/
-  index.ts                  组合根：创建 VisionRuntime / 注册目录 / 注册 adapter / 装 settings / 注册工具 / 挂路由
+  index.ts                  组合根：创建 VisionRuntime / 注册目录 / 注册 adapter（带 connection resolver）/ 装 settings / 注册工具 / 挂路由；last-good 配置解析
   config.ts                 Config schema（schemastery）+ resolveVisionConfig()（官方 resolve 模式）
   runtime/
     index.ts                VisionRuntime（ctx.vision 服务）
-    types.ts                VisionRequest / VisionResult / VisionConnection / VisionModel
-    adapter.ts              abstract VisionAdapter（call + discoverModels）
-    errors.ts               VisionError + 稳定错误码（MISSING_CREDENTIAL / AUTH_FAILED / RATE_LIMITED / ...）
-    vision-rpc.ts           薄 Host RPC（测试连接 / 模型列表）
+    runtime.ts              注册表：registerAdapter(providers, adapter, resolveConnection) / registerConfigurableProviders / call(request) 单参 / discoverModels({provider|draft}) / replace([]) / vision/adapters-updated 事件
+    types.ts                VisionRequest / VisionResult / VisionConnection / VisionModel / VisionDraftConnection / VisionDiscoveryRequest
+    adapter.ts              abstract VisionAdapter（call + discoverModels，connection 深度冻结）
+    errors.ts               VisionError + 稳定错误码（含 DUPLICATE_ADAPTER / INVALID_ADAPTER / REGISTRATION_DISPOSED / DUPLICATE_PROVIDER / ...）
+    deep-freeze.ts          运行时快照深度冻结
+    vision-rpc.ts           薄 Host RPC（测试连接 / 模型列表，走 runtime.probe）
   providers/
     catalog.ts              官方视觉端点目录（纯数据，23 条）
   adapters/
@@ -64,7 +67,8 @@ src/
       discovery.ts          /models 拉取 + 已知计划回落
       retry.ts              backoff/jitter
   credentials/
-    resolve.ts              密钥解析（官方 assertUsableApiKey 风格）
+    resolve.ts              密钥解析（官方 seam 优先；无 seam 才用 launch environment）
+    migrate.ts              legacy inline apiKey → 凭证存储的安全迁移
   media/
     load.ts                 图片加载（路径/URL/附件引用 + 私有网络策略）
     validate.ts             魔数校验 + 严格 base64
@@ -72,7 +76,7 @@ src/
   cache/
     vision-cache.ts         短时语义缓存（key 含 provider/model/baseURL/apiStyle/图片/prompt）
   tools/
-    understand-image.ts     薄工具（只加载图片 + 调 ctx.vision.call）
+    understand-image.ts     薄工具（只加载图片 + 调 ctx.vision.call(request) 单参）
   attachments/
     routes.ts               /image-mind 路由（attach / raw / 薄 RPC）
     store.ts                附件引用注册表 + markdown/note
@@ -85,12 +89,14 @@ src/
 
 ### 分层职责
 
-- **`understand_image` 是薄工具**：只负责加载图片（media 层）和把请求交给 `ctx.vision`。它不接触 baseURL、API Key、fetch、协议选择、模型发现或重试策略——这些全部由 Runtime / Adapter 层负责。
-- **VisionRuntime 是独立服务（`ctx.vision`）**：不注册进 `ctx.llm`。视觉模型是 DeepSeek 的感知后端，不是主会话模型，所以它拥有自己的 Provider Registry（`registerAdapter` / `registerProvider` / `listProviders` / `discoverModels` / `call`），注册与路由替换都是原子的（配置热更新不制造 provider 消失、不影响在途请求）。
-- **Provider Catalog 与 Adapter 分离**：`providers/catalog.ts` 只描述厂商（id/名称/端点/默认模型/密钥缝），`adapters/openai-compatible/` 一个 adapter 服务全部 OpenAI 兼容端点——OpenAI、OpenRouter、Command Code、OpenCode、SiliconFlow、Groq 等共享同一份 fetch 代码，协议（chat-completions / responses）由内部统一分派。
-- **请求持有 immutable connection snapshot**：一次请求开始后，baseURL / model / 密钥引用 / 协议 / 超时全部冻结；用户中途改设置不影响在途请求，下一次调用才读新配置。
-- **Credentials 走官方 seam**：卡片键入的 API Key 通过 `credentials.set` 存入 DSH 凭据存储，settings.yaml 只保存 `apiKeyEnv` 引用；内联 `apiKey` 标记为 deprecated（旧文档兼容，不新建、不回读、不写日志）。
-- **Settings 走官方 settingsScope**：卡片通过 `connection.api.settings.describe/mutate` 读写 `image-mind` 命名空间（官方 seam 对第三方命名空间开放）；`/image-mind/config` 网关保留为**兼容层**，仅在没有官方通道的旧客户端下兜底。
+- **`understand_image` 是薄工具**：只负责加载图片（media 层）和把请求交给 `ctx.vision.call(request)`——一个参数，只表达「哪个 provider/model、对这个 prompt、这些图片」。它不 import `ResolvedProvider` / `ResolvedConfig`，不构造 `VisionConnection`，不接触 baseURL、API Key、协议、超时、模型发现或重试策略。
+- **VisionRuntime 是独立服务（`ctx.vision`）**：不注册进 `ctx.llm`。视觉模型是 DeepSeek 的感知后端，不是主会话模型。每次调用由 Runtime 完成：provider selection → route lookup → connection snapshot → adapter.call。注册与路由替换是原子的（`registerAdapter` 返回 handle，`replace()` 含 `replace([])` 原子撤销；`REGISTRATION_DISPOSED` 后拒绝再 replace）。
+- **Connection Resolver 属于注册**：`registerAdapter(providers, adapter, resolveConnection)` 把「每个 provider 的连接事实」关联到路由——调用者不再传 connection。Resolver 每次调用从配置解析一个**深度冻结**的不可变快照（baseURL/model/apiStyle/maxOutputTokens/timeoutMs/apiKeyEnv 同一 generation），在途请求不受设置修改影响。
+- **last-good 配置**：静态启动配置错误 fail loud；运行期间新设置超出 schema 的进一步校验失败时，记录错误并保留上一个 good 快照，配置恢复正确后自动切换（官方 llm-deepseek 模式）。
+- **Provider Catalog 与 Adapter 分离**：`providers/catalog.ts` 只描述厂商；目录注册（`registerConfigurableProviders`）与路由注册（`registerAdapter`）分开——目录回答「可以配置哪些」，注册表回答「当前哪些可调用」。每次提交发布 `vision/adapters-updated` 事件（listener 失败被包含，不 veto 提交）。
+- **Credentials 走官方 seam**：卡片键入的 API Key 通过 `credentials.set` 存入 DSH 凭据存储，settings.yaml 只保存 `apiKeyEnv` 引用。解析顺序与官方一致：**凭证缝存在时由它全权负责**（miss 即 miss，不回退环境变量）；没有凭证缝时才用 launch environment。legacy inline `apiKey` 在启动时自动迁移到凭证存储并清空配置（失败则保留 host-only fallback，绝不丢配置）。
+- **Settings 走官方 settingsScope**：卡片通过 `connection.api.settings.describe/mutate` 读写 `image-mind` 命名空间（官方 seam 对第三方命名空间开放）；`/image-mind/config` 网关保留为**兼容层**，仅在没有官方通道的旧客户端下兜底。**TODO（移除条件）**：当最低支持的 DSH 版本全部具备官方 settings wire 后，可删除 legacy transport。
+
 
 ## 已安装
 
@@ -118,6 +124,8 @@ image-mind:
 ```
 
 密钥从 DSH 的凭据存储（`~/.dsh/.credentials.yaml`）解析，不在任何配置里明文保存。
+
+> **⚠️ legacy inline `apiKey`（已废弃，自动迁移）**：旧版文档可能写有 `providers.<id>.apiKey`。插件启动时会把这些值安全迁移到 DSH 凭据存储（目标引用为 `apiKeyEnv` 或由 provider id 派生的 `<ID>_API_KEY`），成功后自动从 settings 文档清除 inline 字段；迁移失败（如无凭证缝或只读层）则保留 inline 字段作为 **host-only fallback**——密钥只在宿主进程内解析，绝不发给浏览器，也绝不让你的配置丢失。UI 不再创建新的 inline key。手动迁移路径：在设置卡片里把密钥粘贴到「API Key」输入框（会写入凭据存储）并把「API Key 环境变量名」填为目标引用，保存后删除 `settings.yaml` 里的 `apiKey` 行。
 
 ## 使用
 

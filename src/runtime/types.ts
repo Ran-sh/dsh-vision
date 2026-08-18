@@ -24,11 +24,16 @@ export interface VisionModel {
 /**
  * One vision request. `images` is a list so the adapter API can grow to
  * multi-image naturally; the tool consumer still passes one image today.
+ *
+ * The request names only what the caller wants — which provider/model, what
+ * prompt over which images, and cancellation. It carries NO connection facts
+ * (baseURL, apiKeyEnv, apiStyle, timeout): those belong to the provider's
+ * registration and are resolved by the runtime into an immutable snapshot.
  */
 export interface VisionRequest {
-  /** Explicit provider id; absent selects the active provider. */
+  /** Provider id to use; absent selects the runtime's active provider. */
   provider?: string
-  /** Model override; absent uses the provider's configured default. */
+  /** Model id override; absent uses the provider's configured default. */
   model?: string
   /** The caller's instruction over the image(s). */
   prompt: string
@@ -54,29 +59,37 @@ export interface VisionResult {
 }
 
 /**
- * Immutable connection facts one request holds. Captured once at call time:
- * an in-flight request never observes a configuration change, and the next
- * call re-resolves. The API key is deliberately absent — it resolves through
- * {@link VisionConnectionOptions.resolveApiKey} against this snapshot so the
- * endpoint and the secret sent to it can never come from different
- * configuration generations.
+ * Immutable connection facts one request holds. Captured by the runtime at
+ * call time and deep-frozen before the adapter sees it: an in-flight request
+ * never observes a configuration change, and the next call re-resolves. The
+ * API key is deliberately absent — it resolves through the registration's
+ * key resolver against this snapshot so the endpoint and the secret sent to
+ * it can never come from different configuration generations.
  */
 export interface VisionConnection {
   /** Provider route id. */
-  provider: string
+  readonly provider: string
   /** Endpoint root; protocol paths append below it. */
-  baseURL: string
+  readonly baseURL: string
   /** Model id to request. */
-  model: string
+  readonly model: string
   /** Wire protocol the endpoint speaks. */
-  apiStyle: ApiStyle
+  readonly apiStyle: ApiStyle
   /** Output-token cap sent to the model. */
-  maxOutputTokens: number
+  readonly maxOutputTokens: number
   /** Per-call request timeout in milliseconds. */
-  timeoutMs: number
+  readonly timeoutMs: number
   /** Credential reference resolving the bearer token, when one is named. */
-  apiKeyEnv?: string
+  readonly apiKeyEnv?: string
+  /**
+   * One-shot credential for a probe/draft connection only. Never persisted,
+   * never crosses to the browser; resolution prefers it over `apiKeyEnv`.
+   */
+  readonly inlineApiKey?: string
 }
+
+/** How one provider route resolves its connection facts for each call. */
+export type VisionConnectionResolver = (request: VisionRequest) => Promise<VisionConnection> | VisionConnection
 
 /** The provider-side facts a registered adapter serves. */
 export interface VisionProviderDescriptor {
@@ -99,7 +112,9 @@ export interface VisionProviderDescriptor {
 /**
  * One draft connection a configuration surface is still editing. The draft
  * carries its own credential so an interrogation never depends on a stored
- * key; a key typed but not yet stored travels here once.
+ * key; a key typed but not yet stored travels here once. The runtime turns a
+ * draft into a connection snapshot internally — consumers never construct a
+ * full `VisionConnection` by hand for discovery.
  */
 export interface VisionDraftConnection {
   /** Endpoint root to interrogate. */
@@ -112,6 +127,22 @@ export interface VisionDraftConnection {
   apiKey?: string
   /** Credential reference the draft resolves through, when one stands. */
   apiKeyEnv?: string
+  /** Per-call request timeout for the probe, in milliseconds. */
+  timeoutMs?: number
+  /** Output-token cap for the probe. */
+  maxOutputTokens?: number
   /** Caller cancellation. */
   signal?: AbortSignal
+}
+
+/**
+ * Discovery request: a registered provider route to interrogate, or — when a
+ * configuration surface is still editing — a draft connection to ask instead.
+ * Consumers never construct a full `VisionConnection` for discovery.
+ */
+export interface VisionDiscoveryRequest {
+  /** Provider route to interrogate; absent uses `draft`. */
+  provider?: string
+  /** Draft connection to interrogate when the route is not yet stored. */
+  draft?: VisionDraftConnection
 }

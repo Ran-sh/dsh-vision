@@ -1,10 +1,11 @@
 /**
  * Thin vision-specific Host RPC for the settings card: one real vision call
  * to verify a deployment ("test connection") and one model-list interrogation.
- * Both resolve the draft over the saved section and run through the vision
- * runtime, so the key never crosses to the browser and every transport
- * guarantee of a normal call still applies. This is transport only — settings
- * persistence lives in the official settings seam.
+ * Both run through the vision runtime — the runtime builds the immutable
+ * snapshot from the draft and the adapter dispatches it — so the key never
+ * crosses to the browser and every transport guarantee of a normal call still
+ * applies. This is transport only: settings persistence lives in the official
+ * settings seam.
  * @module dsh-plugin-image-mind/runtime/vision-rpc
  */
 
@@ -12,14 +13,14 @@ import type { Context } from '@deepseek-ai/cordis'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import {
   DEFAULT_API_STYLE, DEFAULT_MAX_OUTPUT_TOKENS, DEFAULT_TIMEOUT_MS,
-  IMAGE_MIND_SETTINGS_NAMESPACE, isKeylessEndpoint, resolveProvider,
+  IMAGE_MIND_SETTINGS_NAMESPACE, resolveProvider,
   type ApiStyle, type ResolvedProvider,
 } from '../config.ts'
-import { VisionError, isVisionError } from '../runtime/errors.ts'
-import type { VisionConnection, VisionDraftConnection } from '../runtime/types.ts'
+import { VisionError } from '../runtime/errors.ts'
+import type { VisionDraftConnection } from '../runtime/types.ts'
 import { resolveApiKey } from '../credentials/resolve.ts'
+import { resolveDraftConnection } from '../runtime/index.ts'
 import { discoverEndpointModels, planVisionModels } from '../adapters/openai-compatible/discovery.ts'
-import { createVisionCache } from '../cache/vision-cache.ts'
 
 /** A tiny embedded 1x1 red PNG (69 bytes) used as the probe image. */
 const TEST_IMAGE_BASE64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC'
@@ -96,16 +97,16 @@ export function draftProviderForListing(id: string, overrides: TestConnectionOve
   return spec
 }
 
-/** Build a VisionConnection from a resolved provider draft. */
-function connectionOf(provider: string, spec: ResolvedProvider, timeoutMs: number): VisionConnection {
+/** Build a draft connection (the runtime turns it into an immutable snapshot). */
+function draftConnectionOf(provider: string, spec: ResolvedProvider, timeoutMs: number): VisionDraftConnection {
   return {
-    provider,
     baseURL: spec.baseURL,
     model: spec.model,
     apiStyle: spec.apiStyle,
-    maxOutputTokens: spec.maxOutputTokens,
-    timeoutMs,
+    ...spec.apiKey === undefined || spec.apiKey.length === 0 ? {} : { apiKey: spec.apiKey },
     ...spec.apiKeyEnv === undefined || spec.apiKeyEnv.length === 0 ? {} : { apiKeyEnv: String(spec.apiKeyEnv) },
+    timeoutMs,
+    maxOutputTokens: spec.maxOutputTokens,
   }
 }
 
@@ -124,8 +125,8 @@ function messageOf(error: unknown): string {
 
 /**
  * Run one real vision request with the given draft overrides layered over the
- * saved section, and report whether the deployment connects. The request
- * goes out from the host process through the adapter's normal transport.
+ * saved section, and report whether the deployment connects. The request goes
+ * out from the host process through the runtime's probe path.
  * @param ctx - registrant context.
  * @param overrides - draft field values from the card (may be partial).
  * @returns the model's reply on success, or a readable failure reason.
@@ -139,20 +140,19 @@ export async function runConnectionTest(ctx: Context, overrides: TestConnectionO
     return { ok: false, message: messageOf(error) }
   }
   const timeoutMs = Math.max(1, Math.min(Number(overrides.timeoutMs ?? saved.timeoutMs ?? DEFAULT_TIMEOUT_MS), 30_000))
-  const connection = connectionOf('test', spec, timeoutMs)
   const vision = ctx.get('vision')
   if (vision === undefined) {
     return { ok: false, message: 'vision runtime is not mounted' }
   }
   try {
-    // Run the probe through the runtime's registered adapter, with a
-    // throwaway cache so repeats in the same session still probe fresh.
-    const result = await vision.call({
+    // Probe through the runtime with a throwaway key (the draft carries it);
+    // the adapter resolves it in-process, the key never crosses to the browser.
+    const result = await vision.probe({
       provider: 'test',
       prompt: 'Reply with exactly one short word: OK',
       images: [{ bytes: Buffer.from(TEST_IMAGE_BASE64, 'base64'), mimeType: 'image/png' }],
       signal: AbortSignal.timeout(timeoutMs),
-    }, { ...connection, timeoutMs })
+    }, draftConnectionOf('test', spec, timeoutMs))
     return { ok: true, text: result.text.trim() }
   } catch (error) {
     return { ok: false, message: messageOf(error) }
@@ -179,7 +179,7 @@ export async function listEndpointModels(ctx: Context, overrides: TestConnection
   }
   const { baseURL } = spec
   const plan = planVisionModels(baseURL)
-  const connection = connectionOf('list', spec, 15_000)
+  const connection = resolveDraftConnection('list', draftConnectionOf('list', spec, 15_000))
   let apiKey: string
   try {
     apiKey = await resolveApiKey(ctx, connection)
@@ -196,5 +196,3 @@ export async function listEndpointModels(ctx: Context, overrides: TestConnection
     return { ok: true, models: [...plan], source: 'fallback', reason: messageOf(error) }
   }
 }
-
-export { VisionError, isVisionError, createVisionCache, isKeylessEndpoint }

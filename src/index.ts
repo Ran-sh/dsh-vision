@@ -7,16 +7,19 @@
  * enters the session log.
  *
  * This entry is composition only: it creates the VisionRuntime, registers the
- * provider directory, registers the OpenAI-compatible adapter, installs the
- * settings section, registers the thin `understand_image` tool, and mounts
- * the attachment routes. Provider selection, HTTP, credential parsing, and
- * configuration validation live in their own layers.
+ * provider directory, registers the OpenAI-compatible adapter with its
+ * per-call connection resolver, installs the settings section, registers the
+ * thin `understand_image` tool, and mounts the attachment routes. Provider
+ * selection, HTTP, credential parsing, and configuration validation live in
+ * their own layers.
+ *
+ * Configuration resolution follows the official llm-deepseek last-good
+ * pattern: a static composition error fails loud at load; a live settings
+ * snapshot that fails beyond the schema keeps serving the last good snapshot
+ * (logged once per bad snapshot) and recovers when the settings turn good.
  *
  * Personal plugin, written from scratch: plugin id `image-mind`, tool name
- * `understand_image`, route prefix /image-mind. The plugin may be mounted
- * without configuration; endpoint and model are validated per call, and the
- * "image-mind" settings section — rendered by the web GUI's built-in
- * plugin-config page — edits the fields live.
+ * `understand_image`, route prefix /image-mind.
  * @module dsh-plugin-image-mind
  */
 
@@ -27,6 +30,7 @@ import { OpenAICompatibleVisionAdapter } from './adapters/openai-compatible/inde
 import { resolveApiKey } from './credentials/resolve.ts'
 import { Config, IMAGE_MIND_SETTINGS_NAMESPACE, resolveConfig, type Config as ConfigType, type ResolvedConfig } from './config.ts'
 import { understandImageTool } from './tools/understand-image.ts'
+import { migrateLegacyInlineKeys } from './credentials/migrate.ts'
 import { registerAttachRoute } from './attachments/routes.ts'
 import { readConfigView, writeConfigView } from './attachments/legacy-config.ts'
 import { runConnectionTest, listEndpointModels } from './runtime/vision-rpc.ts'
@@ -52,18 +56,27 @@ export function apply(ctx: Context, config: ConfigType = {}): void {
     resolveConfig(config)
   }
   let current: () => ConfigType = () => config
-  // Memoized resolution by raw snapshot identity, like the official llm
-  // plugins: a settings change that resolves to identical facts reuses the
-  // last snapshot instead of rebuilding it.
+  // Official last-good pattern: a live settings snapshot that fails beyond
+  // the schema keeps serving the last good snapshot (logged once per bad
+  // snapshot) and recovers when the settings turn good. A static composition
+  // error has no last good yet, so it fails loud at load.
   let lastRaw: ConfigType | undefined
-  let memoized: ResolvedConfig | undefined
+  let lastGood: ResolvedConfig | undefined
   const resolved = (): ResolvedConfig => {
     const raw = current()
-    if (raw === lastRaw && memoized !== undefined) return memoized
-    const next = resolveConfig(raw)
-    lastRaw = raw
-    memoized = next
-    return next
+    if (raw === lastRaw && lastGood !== undefined) return lastGood
+    try {
+      const next = resolveConfig(raw)
+      lastRaw = raw
+      lastGood = next
+      return next
+    } catch (error) {
+      if (lastGood === undefined) throw error
+      lastRaw = raw
+      ctx.logger.error('image-mind: keeping the last good configuration after an invalid settings section')
+      ctx.logger.error(error)
+      return lastGood
+    }
   }
   resolved()
 
@@ -77,25 +90,28 @@ export function apply(ctx: Context, config: ConfigType = {}): void {
     resolveApiKey: connection => resolveApiKey(ctx, connection),
     cache,
   })
+  // Each provider route resolves its own immutable connection snapshot per
+  // call from the current configuration; the adapter never sees a baseURL or
+  // key from a different generation than the one it was dispatched with. The
+  // runtime has already resolved `request.provider` (explicit id, else the
+  // active/single route) before calling this resolver.
+  const resolveConnection = async (request: { provider?: string }): Promise<ReturnType<typeof connectionSnapshotOf>> =>
+    connectionSnapshotOf(resolved(), request.provider)
 
-  // The OpenAI-compatible adapter serves every configured provider route.
-  // Routes follow the settings section: a section change re-registers the
-  // same adapter instance in place (atomic replace), so no request observes a
-  // gap and the next call uses the new route set.
+  // The adapter registration follows the settings section: a section change
+  // atomically replaces the route set (including `replace([])` when the user
+  // removes every provider), so no request observes a gap and stale routes
+  // never survive.
   let registration: ReturnType<typeof vision.registerAdapter> | undefined
   let registeredRoutes: string[] | undefined
   const ensureRegistration = (): void => {
     const routes = Object.keys(resolved().providers)
-    if (routes.length === 0) {
-      registeredRoutes = routes
-      return
-    }
     if (registration !== undefined && registeredRoutes !== undefined
       && routes.length === registeredRoutes.length && routes.every((route, index) => route === registeredRoutes![index])) {
       return
     }
     if (registration === undefined) {
-      registration = vision.registerAdapter(routes, adapter)
+      registration = vision.registerAdapter(routes, adapter, resolveConnection)
     } else {
       registration.replace(routes)
     }
@@ -103,34 +119,52 @@ export function apply(ctx: Context, config: ConfigType = {}): void {
   }
   ensureRegistration()
 
-  // The provider directory: every catalog entry plus every configured route,
-  // so configuration surfaces can offer the full set.
-  const directory = VISION_PROVIDER_CATALOG.map(entry => ({
-    id: entry.id,
-    displayName: entry.name,
-    adapter: 'openai-compatible',
-    baseURL: entry.baseURL,
-    apiStyle: entry.apiStyle ?? 'chat-completions',
-    ...entry.apiKeyEnv === '' ? {} : { apiKeyEnv: entry.apiKeyEnv },
-  }))
-  for (const descriptor of directory) {
-    vision.registerProvider(descriptor)
-  }
-  for (const id of Object.keys(resolved().providers)) {
-    if (vision.getProvider(id) === undefined) {
-      vision.registerProvider({ id, displayName: id, adapter: 'openai-compatible', apiStyle: 'chat-completions' })
+  // The provider directory: one registration owns every catalog entry
+  // (advisory "what can be configured"), a second owns the user-configured
+  // provider entries, so a settings change atomically syncs the directory
+  // without stranding entries.
+  const catalogDirectory = vision.registerConfigurableProviders(
+    VISION_PROVIDER_CATALOG.map(entry => ({
+      id: entry.id,
+      displayName: entry.name,
+      adapter: 'openai-compatible',
+      baseURL: entry.baseURL,
+      apiStyle: entry.apiStyle ?? 'chat-completions',
+      ...entry.apiKeyEnv === '' ? {} : { apiKeyEnv: entry.apiKeyEnv },
+    })),
+  )
+  let userDirectory: ReturnType<typeof vision.registerConfigurableProviders> | undefined
+  let registeredUserEntries: string[] | undefined
+  const ensureDirectory = (): void => {
+    const entries = Object.keys(resolved().providers).map(id => {
+      const existing = vision.getProvider(id)
+      return existing ?? { id, displayName: id, adapter: 'openai-compatible', apiStyle: 'chat-completions' as const }
+    })
+    const ids = entries.map(entry => entry.id)
+    if (userDirectory !== undefined && registeredUserEntries !== undefined
+      && ids.length === registeredUserEntries.length && ids.every((id, index) => id === registeredUserEntries![index])) {
+      return
     }
+    if (userDirectory === undefined) {
+      userDirectory = vision.registerConfigurableProviders(entries)
+    } else {
+      userDirectory.replace(entries)
+    }
+    registeredUserEntries = ids
   }
+  ensureDirectory()
 
   installSettingsSection(ctx, IMAGE_MIND_SETTINGS_NAMESPACE, Config, config, {
     setSource: (source) => {
       current = source
     },
     onChange: () => {
-      // A section change re-resolves and atomically re-registers the route set.
+      // A section change re-resolves (last-good keeps the previous snapshot
+      // on a bad one) and atomically re-registers the route + directory sets.
       try {
         resolved()
         ensureRegistration()
+        ensureDirectory()
       } catch (error) {
         ctx.logger.error('image-mind: keeping the previously registered vision routes after a refused settings update')
         ctx.logger.error(error)
@@ -142,8 +176,18 @@ export function apply(ctx: Context, config: ConfigType = {}): void {
     },
   })
 
+  // Legacy inline apiKey migration: move any stored `providers.<id>.apiKey`
+  // into the credential store and clear the inline field (idempotent,
+  // best-effort, never drops the user's configuration). Runs once against the
+  // stored section; the settings card never creates inline keys.
+  void migrateLegacyInlineKeys(ctx, current().providers)
+
   // The thin tool: it only loads the image and hands the request to ctx.vision.
-  ctx.tools.register(understandImageTool(ctx, resolved, () => resolved().defaultPrompt))
+  ctx.tools.register(understandImageTool(
+    ctx,
+    () => resolved().defaultPrompt,
+    () => ({ maxBytes: resolved().maxBytes, allowPrivateNetwork: resolved().allowPrivateNetwork }),
+  ))
 
   // Attachment routes + thin vision RPC; the legacy /image-mind/config
   // gateway stays as a compatibility transport.
@@ -155,4 +199,38 @@ export function apply(ctx: Context, config: ConfigType = {}): void {
     listEndpointModels: (body) => listEndpointModels(ctx, body as Parameters<typeof listEndpointModels>[1]),
     catalog: () => VISION_PROVIDER_CATALOG,
   })
+}
+
+/**
+ * Build the connection snapshot one call holds: the named provider's resolved
+ * facts, plus the request's model override. The snapshot is frozen by the
+ * runtime before the adapter sees it, so an in-flight request never observes
+ * a settings change and the next call re-resolves.
+ */
+function connectionSnapshotOf(
+  resolved: ResolvedConfig,
+  requested?: string,
+): { provider: string; baseURL: string; model: string; apiStyle: 'chat-completions' | 'responses'; maxOutputTokens: number; timeoutMs: number; apiKeyEnv?: string; inlineApiKey?: string } {
+  const ids = Object.keys(resolved.providers)
+  const requestedId = requested !== undefined && requested.trim().length > 0 ? requested.trim() : undefined
+  const id = requestedId ?? resolved.active ?? (ids.length === 1 ? ids[0] : undefined)
+  if (id === undefined) {
+    throw new Error('image-mind: no active vision provider configured; set one in 设置 → 插件 → 插件配置 → 图像理解')
+  }
+  const spec = resolved.providers[id]
+  if (spec === undefined) {
+    throw new Error(`image-mind: provider ${JSON.stringify(id)} is not defined`)
+  }
+  return {
+    provider: id,
+    baseURL: spec.baseURL,
+    model: spec.model,
+    apiStyle: spec.apiStyle,
+    maxOutputTokens: spec.maxOutputTokens,
+    timeoutMs: resolved.timeoutMs,
+    ...spec.apiKeyEnv === undefined || spec.apiKeyEnv.length === 0 ? {} : { apiKeyEnv: String(spec.apiKeyEnv) },
+    // Host-only legacy fallback: a still-unmigrated inline key resolves in
+    // the host process, never reaching the browser.
+    ...spec.apiKey === undefined || spec.apiKey.length === 0 ? {} : { inlineApiKey: spec.apiKey },
+  }
 }
