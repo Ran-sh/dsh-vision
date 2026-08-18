@@ -58,7 +58,7 @@
     "cordis.patch.yml",
     "README.md"
   ],
-  "license": "Apache-2.0",
+  "license": "MIT",
   "allowScripts": {
     "esbuild@0.25.12": true
   }

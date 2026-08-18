@@ -4,7 +4,7 @@
 
 给 DeepSeek Harness（DSH）Web UI 用的图像理解工具。纯文本模型（如 DeepSeek V4）天生看不懂图片，本插件注册一个 **`understand_image`** 工具：模型调用它时，插件在后台把图片（本地路径 / http(s) URL / 对话里的附件引用）发给一个 OpenAI 兼容的视觉模型（Qwen-VL、GLM-4V、GPT-4o、本地 Ollama……），**只把视觉模型返回的文字带回对话**——图片字节永远不会进入会话日志。
 
-参考 `zhu1090093659/dsh-web-ui` 全家桶里的 `dsh-tool-describe-image`（Apache-2.0）而做，但是自己独立的实现：插件 id `image-mind`、工具名 `understand_image`、路由前缀 `/image-mind`。
+插件 id `image-mind`、工具名 `understand_image`、路由前缀 `/image-mind`，实现与文档均为自行编写。
 
 ## 功能
 
@@ -117,4 +117,4 @@ rmdir C:\Users\48376\.dsh\profiles\node_modules\dsh-plugin-image-mind
 - `src/client/` — 浏览器侧：发送改写钩子、上传客户端、对话内缩略图、设置卡片（表单 + 卡片 UI + 配置客户端）
 - `scripts/e2e-vision.ts` — 真实端点端到端自检
 
-插件按 Apache-2.0 许可；参考实现 `dsh-tool-describe-image`（Apache-2.0，作者 linxin666 / deepseek-ai / whitelonng），本仓库的实现与文档为自行编写。
+插件按 MIT 许可开源。

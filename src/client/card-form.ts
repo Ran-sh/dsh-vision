@@ -2,8 +2,7 @@
  * Staged form model behind the image-mind settings card. A card stages what
  * the user types and writes it only when they save — the settings write is a
  * durable, revision-fenced document mutation, so staging keeps what is on
- * screen exactly what a save would store. Ported from the dsh-tool-describe-
- * image settings-form slice (Apache-2.0), adapted to the official settings
+ * screen exactly what a save would store. Written for the image-mind settings
  * scope (per-field set/unset; no family batch surface).
  * @module dsh-plugin-image-mind/client/card_form
  */

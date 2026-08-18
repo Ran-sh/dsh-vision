@@ -6,10 +6,9 @@
  * only the returned text crosses into the conversation, so the image never
  * enters the session log.
  *
- * Personal plugin built after zhu1090093659/dsh-web-ui's
- * dsh-tool-describe-image (Apache-2.0): same architecture, own identity —
- * plugin id `image-mind`, tool name `understand_image`, route prefix
- * /image-mind. The plugin may be mounted without configuration; endpoint and
+ * Personal plugin, written from scratch: plugin id `image-mind`, tool name
+ * `understand_image`, route prefix /image-mind. The plugin may be mounted
+ * without configuration; endpoint and
  * model are validated per call (or eagerly at load when a composition entry
  * actually configures them), and the "image-mind" settings section — rendered
  * by the web GUI's built-in plugin-config page — edits the fields live.
