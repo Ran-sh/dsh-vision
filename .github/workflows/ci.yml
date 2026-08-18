@@ -41,10 +41,29 @@ jobs:
           cache: npm
       - name: Install
         run: npm ci
+      - name: Build artifacts (installer requires them)
+        run: npm run build
       - name: Install / uninstall round trip against a temp DSH_HOME
-        run: npm test -- --run tests/install.test.ts
+        run: npm run test:install
         env:
           DSH_HOME: /tmp/dsh-vision-ci-home
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: Build
+        run: npm run build
+      - name: Installer round trip (Windows junctions)
+        run: npm run test:install
+        env:
+          DSH_HOME: ${{ runner.temp }}/dsh-vision-ci-home
 
   secret-scan:
     runs-on: ubuntu-latest
