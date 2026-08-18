@@ -428,11 +428,13 @@ export class VisionRuntime extends Service {
   }
 
   /**
-   * Run one vision request. The runtime selects the provider (explicit
-   * `request.provider`, else the single live route), looks up the registered
-   * route, captures an immutable connection snapshot from the route's
-   * resolver, and dispatches to the adapter. Callers never construct a
-   * `VisionConnection` themselves.
+   * Run one vision request. The runtime selects the provider in order:
+   * an explicit `request.provider` id, else the configured active provider
+   * (via the `resolveDefaultProvider` seam, validated to have a live route),
+   * else the single live route when exactly one is registered, else
+   * `PROVIDER_NOT_FOUND`. It then looks up the registered route, captures an
+   * immutable connection snapshot from the route's resolver, and dispatches
+   * to the adapter. Callers never construct a `VisionConnection` themselves.
    * @param request - the caller's request (provider/prompt/images/signal).
    * @returns the model's text answer.
    */

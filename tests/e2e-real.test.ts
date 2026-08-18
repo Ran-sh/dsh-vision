@@ -136,10 +136,12 @@ describe.skipIf(!RUN)('real-endpoint composition (apply + runtime)', () => {
 
   it('model override actually reaches the endpoint', async () => {
     const { vision } = mountComposition('opencode-go')
-    // mimo-v2.5 is the vision-capable model on opencode-go; overriding to the
-    // same id proves the override path (the adapter echoes the model it sent).
-    const result = await vision.call({ ...PROBE, model: 'mimo-v2.5', signal: AbortSignal.timeout(30_000) })
-    expect(result.model).toBe('mimo-v2.5')
+    // kimi-k3 is a second vision-capable model on the same opencode-go plan
+    // (both are in the plan's known-vision list), so the override differs
+    // from the configured default and the result.model echo proves the
+    // override path reached the wire — no new/paid model is called.
+    const result = await vision.call({ ...PROBE, model: 'kimi-k3', signal: AbortSignal.timeout(30_000) })
+    expect(result.model).toBe('kimi-k3')
     expect(result.text.trim()).not.toHaveLength(0)
   }, 40_000)
 })

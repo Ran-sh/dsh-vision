@@ -95,14 +95,14 @@ src/
 - **last-good 配置**：静态启动配置错误 fail loud；运行期间新设置超出 schema 的进一步校验失败时，记录错误并保留上一个 good 快照，配置恢复正确后自动切换（官方 llm-deepseek 模式）。
 - **Provider Catalog 与 Adapter 分离**：`providers/catalog.ts` 只描述厂商；目录注册（`registerConfigurableProviders`）与路由注册（`registerAdapter`）分开——目录回答「可以配置哪些」，注册表回答「当前哪些可调用」。每次提交发布 `vision/adapters-updated` 事件（listener 失败被包含，不 veto 提交）。
 - **Credentials 走官方 seam**：卡片键入的 API Key 通过 `credentials.set` 存入 DSH 凭据存储，settings.yaml 只保存 `apiKeyEnv` 引用。解析顺序与官方一致：**凭证缝存在时由它全权负责**（miss 即 miss，不回退环境变量）；没有凭证缝时才用 launch environment。legacy inline `apiKey` 在启动时自动迁移到凭证存储并清空配置（失败则保留 host-only fallback，绝不丢配置）。
-- **Settings 走官方 settingsScope**：卡片通过 `connection.api.settings.describe/mutate` 读写 `image-mind` 命名空间（官方 seam 对第三方命名空间开放）；`/image-mind/config` 网关保留为**兼容层**，仅在没有官方通道的旧客户端下兜底。**TODO（移除条件）**：当最低支持的 DSH 版本全部具备官方 settings wire 后，可删除 legacy transport。
+- **Settings 走官方 wire**：卡片通过 `connection.api.settings.describe/mutate` 读写 `image-mind` 命名空间（官方 settings seam 对第三方命名空间开放）；`/image-mind/config` 网关保留为**兼容层**，仅在没有官方通道的旧客户端下兜底。**TODO（移除条件）**：当最低支持的 DSH 版本全部具备官方 settings wire 后，可删除 legacy transport。
 
 
 ## 已安装
 
-- **项目**：`D:\Users\48376\Desktop\dsh\dsh-plugin-image-mind`
-- **挂载**：junction `C:\Users\48376\.dsh\profiles\node_modules\dsh-plugin-image-mind` → 项目目录
-- **配置**：`C:\Users\48376\.dsh\profiles\web\cordis.patch.yml` 里插入了 `/image-mind` 一行；`~/.dsh/settings.yaml` 里加了 `image-mind` 节（多视觉提供方：opencode-go / commandcode-goat，各自端点/模型/密钥缝）
+- **项目**：`<PROJECT_DIR>`（本仓库克隆/解压位置，例如 `D:\path\to\dsh-vision`）
+- **挂载**：junction `%USERPROFILE%\.dsh\profiles\node_modules\dsh-plugin-image-mind` → 项目目录
+- **配置**：`%USERPROFILE%\.dsh\profiles\web\cordis.patch.yml` 里插入了 `/image-mind` 一行；`~/.dsh/settings.yaml` 里加了 `image-mind` 节（多视觉提供方：opencode-go / commandcode-goat，各自端点/模型/密钥缝）
 
 当前配置（settings.yaml）：
 
@@ -132,7 +132,7 @@ image-mind:
 在对话里：
 
 - 直接拖一张图片到输入框发送 → 自动变成引用，模型会用 `understand_image` 分析；
-- 或者直接说「分析 D:\xxx\截图.png 里的表格并转成 CSV」——模型自己会去调用工具；
+- 或者直接说「分析 `/path/to/截图.png` 里的表格并转成 CSV」——模型自己会去调用工具；
 - 或者粘贴一个图片 URL 让模型分析。
 
 ## 在界面里配置
@@ -150,10 +150,10 @@ image-mind:
 ## 开发
 
 ```sh
-cd D:\Users\48376\Desktop\dsh\dsh-plugin-image-mind
+cd <PROJECT_DIR>
 npm install          # esbuild/typescript/react/vitest；SDK 类型来自 node_modules/@deepseek-ai junction（DSH profile 树）
 npm run typecheck    # tsc 检查 host + client 两侧
-npm test             # vitest 分层单测（runtime/credentials/adapter/discovery/media/cache，无需网络）
+npm test             # vitest 分层单测（runtime/credentials/adapter/discovery/media/cache/integration，无需网络）
 npm run build        # esbuild 产出 lib/index.js（node 侧）+ lib/client.js（浏览器侧）
 RUN_VISION_E2E=1 npm test   # 额外跑真实视觉端点 e2e（读 ~/.dsh/.credentials.yaml，不打印 key）
 ```
@@ -181,7 +181,7 @@ cp -r <项目>/node_modules/schemastery/. "$HOME/.dsh/profiles/node_modules/sche
 ```sh
 # 1. 从 profile patch 里删掉 image-mind 段（或整行 insert）
 # 2. 删 junction
-rmdir C:\Users\48376\.dsh\profiles\node_modules\dsh-plugin-image-mind
+rmdir %USERPROFILE%\.dsh\profiles\node_modules\dsh-plugin-image-mind
 # 3. 重启 DSH web
 ```
 

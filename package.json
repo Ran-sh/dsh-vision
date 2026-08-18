@@ -1,6 +1,6 @@
 {
   "name": "dsh-plugin-image-mind",
-  "description": "Personal image-understanding plugin for the DeepSeek Harness (DSH) web UI: the understand_image tool lets a text-only model ask an OpenAI-compatible vision endpoint (Qwen-VL, GLM-4V, GPT-4o, local Ollama...) about one image; only the returned text enters the conversation. Dragged/pasted images are rewritten into image-mind references at send time.",
+  "description": "Image-understanding plugin for the DeepSeek Harness (DSH) web UI: the understand_image tool lets a text-only model ask an OpenAI-compatible vision endpoint (Qwen-VL, GLM-4V, GPT-4o, local Ollama...) about one image; only the returned text enters the conversation. Dragged/pasted images are rewritten into image-mind references at send time.",
   "version": "0.1.0",
   "type": "module",
   "engines": {
@@ -26,8 +26,9 @@
         "@deepseek-ai/dsh-client-locale",
         "@deepseek-ai/dsh-client-runtime",
         "@deepseek-ai/dsh-client-ui-conversation",
-        "@deepseek-ai/dsh-client-ui-settings",
-        "@deepseek-ai/dsh-client-ui-slots"
+        "@deepseek-ai/dsh-client-ui-slots",
+        "@deepseek-ai/dsh-client-ui-settings-plugins",
+        "@deepseek-ai/dsh-client-connection"
       ],
       "platform": "web"
     }

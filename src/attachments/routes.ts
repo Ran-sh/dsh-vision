@@ -9,9 +9,10 @@
  * attachment store.
  *
  * Settings persistence lives in the official settings seam (the card reads
- * and writes through `ctx.settingsScope`); the legacy `/image-mind/config`
- * GET/POST routes remain only as a compatibility transport for older
- * clients, served from the same in-process settings provider.
+ * and writes through `connection.api.settings` describe/mutate); the legacy
+ * `/image-mind/config` GET/POST routes remain only as a compatibility
+ * transport for older clients, served from the same in-process settings
+ * provider.
  * @module dsh-plugin-image-mind/attachments/routes
  */
 
