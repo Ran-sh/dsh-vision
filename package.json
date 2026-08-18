@@ -12,6 +12,7 @@
     "typecheck": "npm -ws run typecheck",
     "test": "npm -ws run test && vitest run --config vitest.config.ts",
     "build": "npm -ws run build",
+    "test:e2e": "RUN_VISION_E2E=1 npx vitest run --config packages/image-mind/vitest.config.ts tests/e2e-real.test.ts",
     "install:dsh": "node scripts/install-dsh.mjs",
     "uninstall:dsh": "node scripts/uninstall-dsh.mjs"
   },

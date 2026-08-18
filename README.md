@@ -1,6 +1,9 @@
-# dsh-vision — 图像理解插件（dsh 前缀）
+# dsh-vision — 给 DeepSeek Harness 增加图像理解能力
 
-> Vision for text-only DSH agents: the `understand_image` tool reads any image via an OpenAI-compatible vision endpoint.
+> This is an **independent community plugin** for DeepSeek Harness and is **not an official DeepSeek package**.
+> 本项目是独立第三方插件，与 DeepSeek 官方无隶属关系；架构设计参考 DeepSeek Harness 的 capability/provider 模式。
+
+Vision for text-only DSH agents: the `understand_image` tool reads any image via an OpenAI-compatible vision endpoint.
 
 给 DeepSeek Harness（DSH）Web UI 用的图像理解工具。纯文本模型（如 DeepSeek V4）天生看不懂图片，本插件注册一个 **`understand_image`** 工具：模型调用它时，插件在后台把图片（本地路径 / http(s) URL / 对话里的附件引用）发给一个 OpenAI 兼容的视觉模型（Qwen-VL、GLM-4V、GPT-4o、本地 Ollama……），**只把视觉模型返回的文字带回对话**——图片字节永远不会进入会话日志。
 
@@ -109,7 +112,7 @@ dsh-vision/                        ← npm workspace 根
 │   │   │   ├── index.ts           组合根：inject ['vision','tools']，ctx.vision.registerAdapter / registerConfigurableProviders / registerDefaultProviderResolver，装 settings / 注册工具 / 挂路由；last-good 配置
 │       │   ├── config.ts          Config schema（schemastery）+ resolveVisionConfig()
 │   │   │   ├── runtime/vision-rpc.ts   薄 Host RPC（测试连接 / 模型列表，draft 快照直接走 adapter，不进 Core）
-│       │   ├── providers/         catalog.ts 官方视觉端点目录（纯数据，23 条）
+│       │   ├── providers/         catalog.ts 内置提供方模板（纯数据，23 条）
 │   │   │   ├── adapters/openai-compatible/  OpenAICompatibleVisionAdapter（自持 options/credential 解析 + chat-completions / responses / discovery / retry）
 │       │   ├── credentials/       resolve.ts（凭证缝解析）+ migrate.ts（legacy inline key 迁移）
 │       │   ├── media/             图片加载（路径/URL/附件引用 + 私有网络策略）+ 魔数校验
@@ -135,34 +138,31 @@ dsh-vision/                        ← npm workspace 根
 - **Settings 走官方 wire**：卡片通过 `connection.api.settings.describe/mutate` 读写 `image-mind` 命名空间（官方 settings seam 对第三方命名空间开放）；`/image-mind/config` 网关保留为**兼容层**，仅在没有官方通道的旧客户端下兜底。**TODO（移除条件）**：当最低支持的 DSH 版本全部具备官方 settings wire 后，可删除 legacy transport。
 
 
-## 已安装
+## 安装（独立第三方插件）
 
-- **项目**：`<PROJECT_DIR>`（本仓库克隆/解压位置，例如 `D:\path\to\dsh-vision`）
-- **挂载**：junction `%USERPROFILE%\.dsh\profiles\node_modules\dsh-plugin-image-mind` → `<PROJECT_DIR>\packages\image-mind`；`%USERPROFILE%\.dsh\profiles\node_modules\@ran-sh\dsh-vision` → `<PROJECT_DIR>\packages\vision`
-- **配置**：`%USERPROFILE%\.dsh\profiles\web\cordis.patch.yml` 里插入了**两行**：`vision-runtime`（`@ran-sh/dsh-vision` 服务 entry）+ `image-mind`（`dsh-plugin-image-mind` provider entry）；`~/.dsh/settings.yaml` 里加了 `image-mind` 节（多视觉提供方：opencode-go / commandcode-goat，各自端点/模型/密钥缝）。两行的加载顺序由 `inject ['vision']` 自动保证，无需手工排序。
+要求：DeepSeek Harness 已安装（检测 `%USERPROFILE%\.dsh`，可用 `DSH_HOME` 覆盖），Node.js 22+。
 
-当前配置（settings.yaml）：
-
-```yaml
-image-mind:
-  providers:
-    opencode-go:
-      baseURL: https://opencode.ai/zen/go/v1
-      model: mimo-v2.5
-      apiKeyEnv: OPENCODE_GO_API_KEY
-      apiStyle: chat-completions
-    commandcode-goat:
-      baseURL: https://api.commandcode.ai/provider/v1
-      model: xiaomi/mimo-v2.5
-      apiKeyEnv: COMMANDCODE_API_KEY
-      apiStyle: chat-completions
-  active: opencode-go
-  renderImagePreview: true
+```sh
+git clone <your-fork-or-release-url> dsh-vision
+cd dsh-vision
+npm install
+npm run install:dsh        # 链接两个包 + 写入 profile 的 cordis.patch.yml（幂等）
 ```
 
-密钥从 DSH 的凭据存储（`~/.dsh/.credentials.yaml`）解析，不在任何配置里明文保存。
+然后重启 web profile（或触发其 HMR 刷新）。
 
-> **⚠️ legacy inline `apiKey`（已废弃，自动迁移）**：旧版文档可能写有 `providers.<id>.apiKey`。插件启动时会把这些值安全迁移到 DSH 凭据存储（目标引用为 `apiKeyEnv` 或由 provider id 派生的 `<ID>_API_KEY`），成功后自动从 settings 文档清除 inline 字段；迁移失败（如无凭证缝或只读层）则保留 inline 字段作为 **host-only fallback**——密钥只在宿主进程内解析，绝不发给浏览器，也绝不让你的配置丢失。UI 不再创建新的 inline key。手动迁移路径：在设置卡片里把密钥粘贴到「API Key」输入框（会写入凭据存储）并把「API Key 环境变量名」填为目标引用，保存后删除 `settings.yaml` 里的 `apiKey` 行。
+`install:dsh` 做什么（可重复执行，不会重复插入）：
+
+1. 在 `<DSH_HOME>/profiles/node_modules` 下链接本项目两个包（Windows 用 junction，免管理员权限；POSIX 用 symlink）；
+2. 在 profile 的 `cordis.patch.yml` 里插入两行（`vision-runtime` + `image-mind`），插入前自动备份原文件；
+3. 绝不触碰：你的 `settings.yaml`（提供方/密钥配置）、凭据存储、其他插件。
+
+卸载：
+
+```sh
+npm run uninstall:dsh                     # 移除链接与补丁行，保留设置
+npm run uninstall:dsh -- --purge-settings # 同时删除 settings.yaml 的 image-mind 节（先备份）
+```
 
 ## 使用
 
@@ -170,60 +170,58 @@ image-mind:
 
 - 直接拖一张图片到输入框发送 → 自动变成引用，模型会用 `understand_image` 分析；
 - 或者直接说「分析 `/path/to/截图.png` 里的表格并转成 CSV」——模型自己会去调用工具；
-- 或者粘贴一个图片 URL 让模型分析。
+- 或者粘贴一个图片 URL 让模型分析；
+- 多图比较（改前改后、两张截图）：把多张图一起发给模型，一次 `images` 数组调用（最多 4 张）。
 
 ## 在界面里配置
 
-设置 → 插件 → 插件配置 → **图像理解**卡片。卡片布局与内置「模型」页一致：顶部「+ 添加提供方」（从官方视觉端点目录选择，自动填端点/默认模型/密钥环境变量名）与「+ 添加自定义提供方」（空白卡片），下面是提供方行列表（名称 + 状态灯 + 编辑/删除/设为默认），点「编辑」一次打开一个提供方编辑器（端点/模型/密钥/协议/输出上限）。
+设置 → 插件 → 插件配置 → **图像理解**卡片。卡片布局与内置「模型」页一致：顶部「+ 添加提供方」（从内置提供方模板选择，自动填端点/默认模型/密钥环境变量名）与「+ 添加自定义提供方」（空白卡片），下面是提供方行列表（名称 + 状态灯 + 编辑/删除/设为默认），点「编辑」一次打开一个提供方编辑器。
 
-「+ 添加提供方」目录内置以下官方视觉端点：Opencode Go、Command Code Goat、阿里云百炼 DashScope、智谱 BigModel、Moonshot Kimi、火山方舟豆包、腾讯混元、Google Gemini、OpenAI、硅基流动 SiliconFlow、OpenRouter、Groq、Mistral AI、Together AI、Fireworks AI、NVIDIA NIM、DeepInfra、Hyperbolic、MiniMax、xAI Grok、百度千帆 ERNIE、本地 Ollama、本地 LM Studio。本地端点无需 API Key（自动按 keyless 处理）。
+「+ 添加提供方」目录内置以下提供方模板：Opencode Go、Command Code Goat、阿里云百炼 DashScope、智谱 BigModel、Moonshot Kimi、火山方舟豆包、腾讯混元、Google Gemini、OpenAI、硅基流动 SiliconFlow、OpenRouter、Groq、Mistral AI、Together AI、Fireworks AI、NVIDIA NIM、DeepInfra、Hyperbolic、MiniMax、xAI Grok、百度千帆 ERNIE、本地 Ollama、本地 LM Studio。本地端点无需 API Key（自动按 keyless 处理）。这些只是配置模板，不是保证兼容清单；自定义端点始终可用。
 
-**填 Key 即出模型**：从目录添加提供方后，编辑器会打开；在「API Key」里粘贴密钥（或端点本身 keyless）后，模型列表会自动从该端点的 `/models` 拉取并填进下拉——大多数情况下你只需要填 API Key，然后从列表里挑一个视觉模型即可。模型发现由 Host 完成（`ctx.vision.discoverModels`），浏览器不直接拿 Key 请求 Provider。
+**填 Key 即出模型**：从目录添加提供方后，编辑器会打开；在「API Key」里粘贴密钥（或端点本身 keyless）后，模型列表会自动从该端点的 `/models` 拉取并填进下拉。模型发现由 Host 完成，浏览器不直接拿 Key 请求 Provider。默认只显示 API Key 与模型两个字段；端点、协议、输出上限等折叠在「高级设置」里。
 
-**状态灯是真实的**：绿 = 配置完整且密钥确实可解析（凭据存储或环境变量）；红 = 未配置密钥或配置不完整；黄闪 = 测试连接中；测试失败转红并显示原因。没有密钥的提供方永远不会显示「已连接」。默认使用的提供方由 `active` 决定；`understand_image` 也可用 `provider` 参数临时指定某一提供方。
+**状态灯是真实的**：绿 = 配置完整且密钥确实可解析（凭据存储或环境变量）；红 = 未配置密钥或配置不完整；黄闪 = 测试连接中；测试失败转红并显示原因。「测试连接」发送一张内置极小图片做真实视觉请求，不是只查 `/models`。默认提供方由 `active` 决定；`understand_image` 也可用 `provider` 参数临时指定。
 
-**设置存储**：卡片通过官方设置通道读写 `image-mind` 命名空间（`settings.describe` / `settings.mutate`，机密字段在传输层自动脱敏），键入的 API Key 通过 `credentials.set` 存入凭据存储。旧的自有 `/image-mind/config` 网关保留为兼容层。
+**密钥安全**：键入的 API Key 通过官方 `credentials.set` 存入 DSH 凭据存储，`settings.yaml` 只保存引用名；界面始终以掩码显示，浏览器永远拿不到明文。旧版文档里的 legacy inline `apiKey` 会在启动时自动迁移到凭据存储（失败则保留 host-only fallback，绝不丢配置）。
 
 ## 开发
 
 ```sh
-cd <PROJECT_DIR>
-npm install          # workspace：esbuild/typescript/react/vitest；SDK 类型来自 node_modules/@deepseek-ai junction（DSH profile 树）
-npm run typecheck    # workspace 统一：两个包的 tsc 检查（vision host + image-mind host/client）
-npm test             # workspace 统一：vision 单测 + image-mind 单测 + cross-package composition/boundary（无需网络）
-npm run build        # workspace 统一：vision lib/index.js + image-mind lib/index.js + lib/client.js
-cd packages/image-mind
-RUN_VISION_E2E=1 npx vitest run tests/e2e-real.test.ts   # 真实视觉端点 e2e（读 ~/.dsh/.credentials.yaml，不打印 key）
+npm install
+npm run typecheck
+npm test
+npm run build
 ```
 
-> **⚠️ npm 安全注意事项**：本插件运行时要在项目 `node_modules` 里有一个指向 DSH profile SDK 树的 junction（`node_modules/@deepseek-ai`）。在改动依赖前**先执行 `npm run unlink-sdk`**（在 `packages/image-mind` 下），装完再 `npm run link-sdk`——否则 `npm install` 的 prune 会顺着 junction 把 DSH 的 SDK 树清空（这是此前的真实事故，恢复方法见下）。
->
-> SDK 类型解析走项目内 `node_modules/@deepseek-ai` junction；本仓库不含任何机器特定绝对路径（tsconfig / vitest 均相对解析）。
-
-### 若 SDK 树被清空（恢复）
-
-DSH 的 `profiles\node_modules` 本来就是由 CLI 启动时自动修复的符号链接层（指向 npx 缓存里的应用闭包）。恢复步骤：
+全部离线、无密钥、确定性。真实端点验证单独跑：
 
 ```sh
-# 1. 删除非链接的残留
-rm -rf "$HOME/.dsh/profiles/node_modules/@deepseek-ai"
-# 2. 让 dsh CLI 重新生成所有 junction
-npx --yes @deepseek-ai/dsh --profile web --dump-config > /dev/null
-# 3. 补回不在应用闭包里的运行时依赖（如 schemastery，来自项目真实安装）
-mkdir -p "$HOME/.dsh/profiles/node_modules/schemastery"
-cp -r <项目>/node_modules/schemastery/. "$HOME/.dsh/profiles/node_modules/schemastery/"
+RUN_VISION_E2E=1 npx vitest run --config packages/image-mind/vitest.config.ts tests/e2e-real.test.ts
 ```
 
-## 卸载
+需要 DSH 运行时联调时（在真实 profile 里跑）：
 
 ```sh
-# 1. 从 profile patch 里删掉 image-mind 段与 vision-runtime 段（两行 insert）
-# 2. 删两个 junction
-rmdir %USERPROFILE%\.dsh\profiles\node_modules\dsh-plugin-image-mind
-rmdir %USERPROFILE%\.dsh\profiles\node_modules\@ran-sh\dsh-vision
-# 3. 重启 DSH web
+node packages/image-mind/scripts/devhelpers/link-sdk.mjs     # 补齐 profile-only SDK 包
+node packages/image-mind/scripts/devhelpers/link-sdk.mjs --remove
 ```
 
-## 源代码结构和许可
+SDK 依赖是普通 registry 依赖（与 DSH profile 版本精确对齐），`npm install` 不会触碰 DSH 的 SDK 树。
 
-架构见上文「架构」一节。代码全部为自行编写，两个包均按 MIT 许可开源。
+## 项目范围
+
+**IN SCOPE**：图片附件、图片 URL/路径、视觉提供方、OCR/图像理解、DeepSeek 工具集成、多图比较。
+
+**OUT OF SCOPE**：替换主模型、视频、音频、PDF 原生解析、训练视觉模型。
+
+## 源代码结构与许可
+
+```
+packages/vision       @ran-sh/dsh-vision        Service Definition（ctx.vision）
+packages/image-mind   dsh-plugin-image-mind     Provider + Tool + UI
+scripts/              install:dsh / uninstall:dsh
+docs/                 architecture.md、provider-development.md、release-checklist.md
+```
+
+MIT License。本插件与 DeepSeek 官方无隶属关系；架构设计参考 DeepSeek Harness 的 capability/provider 模式。

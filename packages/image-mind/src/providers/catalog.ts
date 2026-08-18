@@ -1,5 +1,5 @@
 /**
- * The official vision-provider directory the "添加提供方" flow offers. Pure
+ * The built-in vision-provider template directory the "添加提供方" flow offers. Pure
  * data — no requests, no credential logic. The adapter that serves a catalog
  * entry is chosen by its `apiStyle`; the runtime layers the catalog under the
  * user's settings.
@@ -8,7 +8,7 @@
 
 import type { ApiStyle } from '../config.ts'
 
-/** One official provider the directory offers. */
+/** One built-in provider template the directory offers. */
 export interface VisionProviderCatalogEntry {
   /** Provider id (settings key), e.g. `opencode-go`. */
   id: string
@@ -24,7 +24,7 @@ export interface VisionProviderCatalogEntry {
   apiStyle?: ApiStyle
 }
 
-/** The catalog rows offered by "添加提供方". */
+/** The template rows offered by "添加提供方". */
 export const VISION_PROVIDER_CATALOG: readonly VisionProviderCatalogEntry[] = [
   {
     id: 'opencode-go',

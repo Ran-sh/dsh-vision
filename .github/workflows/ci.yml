@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: [22, 24]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit + integration + boundary tests (offline, keyless)
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+  install-roundtrip:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: Install / uninstall round trip against a temp DSH_HOME
+        run: npm test -- --run tests/install.test.ts
+        env:
+          DSH_HOME: /tmp/dsh-vision-ci-home
+
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Scan for credentials and secrets
+        run: |
+          set -e
+          # Never commit credential documents or dotenv files.
+          if git ls-files | grep -E '(^|/)\.credentials\.ya?ml$|(^|/)\.env$'; then
+            echo "credential/dotenv file committed" >&2
+            exit 1
+          fi
+          # Real API key patterns (sk-...) outside test fixtures.
+          if git grep -nE 'sk-[A-Za-z0-9]{16,}' -- ':!*.test.ts' ':!tests/**' ':!**/tests/**' | grep -v 'sk-test' ; then
+            echo "possible API key committed" >&2
+            exit 1
+          fi
+          # Provider vocabulary must stay out of the vision service package.
+          if git grep -nE 'chat-completions|responses|OpenAI|apiKey|Authorization|Bearer|baseURL' -- packages/vision/src; then
+            echo "provider vocabulary leaked into packages/vision/src" >&2
+            exit 1
+          fi
