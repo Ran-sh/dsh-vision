@@ -95,6 +95,18 @@ interface VisionRoute {
   active: boolean
 }
 
+/** Runtime construction options: the provider-neutral default-provider seam. */
+export interface VisionRuntimeOptions {
+  /**
+   * Resolve the configured active provider id. The decision belongs to the
+   * runtime, not to callers: when a request names no provider, the runtime
+   * asks this seam for the default before falling back to a single live
+   * route. Absent, no default is declared and only the single-route fallback
+   * (or an explicit request) selects a provider.
+   */
+  resolveDefaultProvider?: () => string | undefined
+}
+
 /**
  * The `vision` service: an adapter registry plus a provider directory.
  * One instance is created per plugin mount and registered on `ctx.vision`.
@@ -102,9 +114,11 @@ interface VisionRoute {
 export class VisionRuntime extends Service {
   private readonly adapters = new Map<string, VisionRoute>()
   private readonly directory = new Map<string, VisionProviderDescriptor>()
+  private readonly resolveDefaultProvider: (() => string | undefined) | undefined
 
-  constructor(ctx: Context) {
+  constructor(ctx: Context, options?: VisionRuntimeOptions) {
     super(ctx, 'vision')
+    this.resolveDefaultProvider = options?.resolveDefaultProvider
   }
 
   /** Notify topology observers without letting one broken listener veto the commit. */
@@ -328,9 +342,30 @@ export class VisionRuntime extends Service {
     return this.adapters.get(provider)?.adapter
   }
 
-  /** The active provider id: the request's explicit choice, else the directory's single live route. */
+  /**
+   * Select the provider one call uses, in order:
+   * 1. an explicit `request.provider` id;
+   * 2. the configured active provider (`resolveDefaultProvider`), validated
+   *    to have a live route;
+   * 3. the single live route when exactly one is registered;
+   * 4. otherwise `PROVIDER_NOT_FOUND`.
+   * The default-provider decision is runtime-owned — callers never read the
+   * active configuration themselves.
+   */
   private resolveProviderId(requested: string | undefined): string {
-    if (requested !== undefined && requested.trim().length > 0) return requested.trim()
+    if (requested !== undefined && requested.trim().length > 0) {
+      const id = requested.trim()
+      this.route(id)
+      return id
+    }
+    const configured = this.resolveDefaultProvider?.()
+    if (configured !== undefined && configured.trim().length > 0) {
+      // The configured active must actually have a live route; a stale active
+      // (e.g. deleted provider) is a clear failure, never a silent fallback.
+      const id = configured.trim()
+      this.route(id)
+      return id
+    }
     const live = [...this.adapters.keys()]
     if (live.length === 1) return live[0]
     if (live.length === 0) {
@@ -368,9 +403,12 @@ export class VisionRuntime extends Service {
   async discoverModels(request: VisionDiscoveryRequest): Promise<VisionModel[]> {
     const provider = request.provider
     if (provider !== undefined && provider.trim().length > 0) {
-      const route = this.route(provider)
+      const id = provider.trim()
+      const route = this.route(id)
       if (route.adapter.discoverModels === undefined) return []
-      const connection = await route.resolveConnection({ prompt: '', images: [] })
+      // The resolver must see the SAME provider id the route was selected by,
+      // so a discovery for 'b' never resolves 'a''s connection facts.
+      const connection = await route.resolveConnection({ provider: id, prompt: '', images: [] })
       return route.adapter.discoverModels(deepFreeze(connection))
     }
     if (request.draft === undefined) {

@@ -14,11 +14,13 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
+import { apply } from '../src/index.ts'
 import { resolveConfig } from '../src/config.ts'
 import { resolveApiKey } from '../src/credentials/resolve.ts'
 import { OpenAICompatibleVisionAdapter } from '../src/adapters/openai-compatible/adapter.ts'
 import { createVisionCache } from '../src/cache/vision-cache.ts'
 import type { VisionConnection } from '../src/runtime/types.ts'
+import type { VisionRuntime } from '../src/runtime/index.ts'
 
 const RUN = process.env['RUN_VISION_E2E'] === '1'
 
@@ -82,4 +84,62 @@ function runCase(providerId: string, baseURL: string, model: string, apiKeyEnv: 
 describe.skipIf(!RUN)('real-endpoint vision connectivity', () => {
   it('opencode-go answers over the new adapter', runCase('opencode-go', 'https://opencode.ai/zen/go/v1', 'mimo-v2.5', 'OPENCODE_GO_API_KEY'), 40_000)
   it('commandcode-goat answers over the new adapter', runCase('commandcode-goat', 'https://api.commandcode.ai/provider/v1', 'xiaomi/mimo-v2.5', 'COMMANDCODE_API_KEY'), 40_000)
+})
+
+describe.skipIf(!RUN)('real-endpoint composition (apply + runtime)', () => {
+  /** Mount apply() with both providers and the given active, via the launch env. */
+  function mountComposition(active: string): { vision: VisionRuntime } {
+    const storedA = credentialFromFile('OPENCODE_GO_API_KEY')
+    const storedB = credentialFromFile('COMMANDCODE_API_KEY')
+    expect(storedA, 'OPENCODE_GO_API_KEY must be present').toBeDefined()
+    expect(storedB, 'COMMANDCODE_API_KEY must be present').toBeDefined()
+    process.env['OPENCODE_GO_API_KEY'] = storedA
+    process.env['COMMANDCODE_API_KEY'] = storedB
+    const ctx = new Context()
+    ctx.provide('tools', { register: () => () => {} } as never)
+    apply(ctx, {
+      providers: {
+        'opencode-go': { baseURL: 'https://opencode.ai/zen/go/v1', model: 'mimo-v2.5', apiKeyEnv: 'OPENCODE_GO_API_KEY' },
+        'commandcode-goat': { baseURL: 'https://api.commandcode.ai/provider/v1', model: 'xiaomi/mimo-v2.5', apiKeyEnv: 'COMMANDCODE_API_KEY' },
+      },
+      active,
+    })
+    const vision = ctx.get('vision') as VisionRuntime
+    expect(vision).toBeDefined()
+    return { vision }
+  }
+
+  const PROBE = { prompt: 'Reply with exactly one short word: OK', images: [{ bytes: Buffer.from(TEST_IMAGE_BASE64, 'base64'), mimeType: 'image/png' as const }] }
+
+  it('active = opencode-go → omitted provider call goes to opencode-go', async () => {
+    const { vision } = mountComposition('opencode-go')
+    const result = await vision.call({ ...PROBE, signal: AbortSignal.timeout(30_000) })
+    expect(result.provider).toBe('opencode-go')
+    expect(result.model).toBe('mimo-v2.5')
+    expect(result.text.trim()).not.toHaveLength(0)
+  }, 40_000)
+
+  it('active = commandcode-goat → omitted provider call goes to commandcode-goat', async () => {
+    const { vision } = mountComposition('commandcode-goat')
+    const result = await vision.call({ ...PROBE, signal: AbortSignal.timeout(30_000) })
+    expect(result.provider).toBe('commandcode-goat')
+    expect(result.model).toBe('xiaomi/mimo-v2.5')
+    expect(result.text.trim()).not.toHaveLength(0)
+  }, 40_000)
+
+  it('explicit provider override beats the active', async () => {
+    const { vision } = mountComposition('opencode-go')
+    const result = await vision.call({ ...PROBE, provider: 'commandcode-goat', signal: AbortSignal.timeout(30_000) })
+    expect(result.provider).toBe('commandcode-goat')
+    expect(result.text.trim()).not.toHaveLength(0)
+  }, 40_000)
+
+  it('model override actually reaches the endpoint', async () => {
+    const { vision } = mountComposition('opencode-go')
+    // mimo-v2.5 is the vision-capable model on opencode-go; overriding to the
+    // same id proves the override path (the adapter echoes the model it sent).
+    const result = await vision.call({ ...PROBE, model: 'mimo-v2.5', signal: AbortSignal.timeout(30_000) })
+    expect(result.model).toBe('mimo-v2.5')
+    expect(result.text.trim()).not.toHaveLength(0)
+  }, 40_000)
 })

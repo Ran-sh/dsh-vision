@@ -327,4 +327,96 @@ describe('VisionRuntime', () => {
       expect(second.text).toBe('ok')
     })
   })
+
+  describe('default-provider seam (resolveDefaultProvider)', () => {
+    /** A runtime with two routes and a mutable active seam. */
+    function runtimeWithActive(initialActive: string): { runtime: VisionRuntime; setActive: (id: string) => void } {
+      const ctx = new Context()
+      let active = initialActive
+      const runtime = new VisionRuntime(ctx, { resolveDefaultProvider: () => active })
+      // The resolver is provider-aware: it serves the connection facts of the
+      // provider the runtime selected, exactly like the composition resolver.
+      const providerAware: VisionConnectionResolver = (request) => {
+        const id = request.provider ?? 'a'
+        return {
+          provider: id,
+          baseURL: `https://${id}.example/v1`,
+          model: request.model ?? `model-${id}`,
+          apiStyle: 'chat-completions',
+          maxOutputTokens: 1024,
+          timeoutMs: 60_000,
+        }
+      }
+      runtime.registerAdapter(['a', 'b'], stubAdapter(), providerAware)
+      return {
+        runtime,
+        setActive: (id: string) => { active = id },
+      }
+    }
+
+    it('routes = [a,b], active = a → omitted provider uses a', async () => {
+      const { runtime } = runtimeWithActive('a')
+      const result = await runtime.call({ prompt: 'p', images: [] })
+      expect(result.provider).toBe('a')
+    })
+
+    it('active dynamically changes a → b → the next call uses b', async () => {
+      const { runtime, setActive } = runtimeWithActive('a')
+      const first = await runtime.call({ prompt: 'p', images: [] })
+      expect(first.provider).toBe('a')
+      setActive('b')
+      const second = await runtime.call({ prompt: 'p', images: [] })
+      expect(second.provider).toBe('b')
+    })
+
+    it('an explicit provider always wins over the active', async () => {
+      const { runtime } = runtimeWithActive('a')
+      const result = await runtime.call({ provider: 'b', prompt: 'p', images: [] })
+      expect(result.provider).toBe('b')
+    })
+
+    it('active pointing at a route with no live adapter → PROVIDER_NOT_FOUND', async () => {
+      const { runtime, setActive } = runtimeWithActive('a')
+      setActive('gone')
+      await expect(runtime.call({ prompt: 'p', images: [] })).rejects.toMatchObject({ code: 'PROVIDER_NOT_FOUND' })
+    })
+
+    it('an explicit model override reaches the connection snapshot', async () => {
+      const { runtime } = runtimeWithActive('a')
+      const result = await runtime.call({ model: 'override-model', prompt: 'p', images: [] })
+      expect(result.model).toBe('override-model')
+      const plain = await runtime.call({ prompt: 'p', images: [] })
+      expect(plain.model).toBe('model-a')
+    })
+  })
+
+  describe('probe (draft connection test)', () => {
+    it('routes = [a,b], active = b → probe dispatches through b\'s adapter', async () => {
+      const ctx = new Context()
+      const runtime = new VisionRuntime(ctx, { resolveDefaultProvider: () => 'b' })
+      const probed: string[] = []
+      const adapterA = {
+        async call(request: VisionRequest, connection: Readonly<VisionConnection>): Promise<VisionResult> {
+          probed.push(`a:${connection.provider}`)
+          return { text: 'from a', provider: connection.provider, model: connection.model }
+        },
+      } satisfies VisionAdapter
+      const adapterB = {
+        async call(request: VisionRequest, connection: Readonly<VisionConnection>): Promise<VisionResult> {
+          probed.push(`b:${connection.provider}`)
+          return { text: 'from b', provider: connection.provider, model: connection.model }
+        },
+      } satisfies VisionAdapter
+      // Two adapter families: a and b are served by DIFFERENT adapters.
+      runtime.registerAdapter(['a'], adapterA, resolver('a'))
+      runtime.registerAdapter(['b'], adapterB, resolver('b'))
+      const result = await runtime.probe(
+        { prompt: 'p', images: [] },
+        { baseURL: 'https://draft.example/v1', model: 'draft-model' },
+      )
+      expect(probed).toEqual(['b:b'])
+      expect(result.text).toBe('from b')
+      expect(result.provider).toBe('b')
+    })
+  })
 })

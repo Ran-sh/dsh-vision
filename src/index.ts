@@ -26,6 +26,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import { installSettingsSection } from '@deepseek-ai/dsh-settings'
 import { VisionRuntime } from './runtime/index.ts'
+import { VisionError } from './runtime/errors.ts'
 import { OpenAICompatibleVisionAdapter } from './adapters/openai-compatible/index.ts'
 import { resolveApiKey } from './credentials/resolve.ts'
 import { Config, IMAGE_MIND_SETTINGS_NAMESPACE, resolveConfig, type Config as ConfigType, type ResolvedConfig } from './config.ts'
@@ -82,7 +83,12 @@ export function apply(ctx: Context, config: ConfigType = {}): void {
 
   // The vision runtime: an independent service, NOT ctx.llm — a vision model
   // is a perception backend for text-only models, never a main-session model.
-  const vision = new VisionRuntime(ctx)
+  // The default-provider decision is runtime-owned: the runtime asks this
+  // seam for the configured active provider when a request names none, so the
+  // tool stays thin and never reads `active` itself.
+  const vision = new VisionRuntime(ctx, {
+    resolveDefaultProvider: () => resolved().active,
+  })
   // Short-lived semantic cache scoped to this mount: identical provider +
   // model + image + prompt within the TTL reuse the prior answer.
   const cache = createVisionCache()
@@ -94,14 +100,18 @@ export function apply(ctx: Context, config: ConfigType = {}): void {
   // call from the current configuration; the adapter never sees a baseURL or
   // key from a different generation than the one it was dispatched with. The
   // runtime has already resolved `request.provider` (explicit id, else the
-  // active/single route) before calling this resolver.
-  const resolveConnection = async (request: { provider?: string }): Promise<ReturnType<typeof connectionSnapshotOf>> =>
-    connectionSnapshotOf(resolved(), request.provider)
+  // active/single route) before calling this resolver; the request's model
+  // override rides along so the snapshot carries it.
+  const resolveConnection = async (request: { provider?: string; model?: string }): Promise<ReturnType<typeof connectionSnapshotOf>> =>
+    connectionSnapshotOf(resolved(), request.provider, request.model)
 
   // The adapter registration follows the settings section: a section change
   // atomically replaces the route set (including `replace([])` when the user
   // removes every provider), so no request observes a gap and stale routes
-  // never survive.
+  // never survive. An EMPTY initial route set registers nothing — the runtime
+  // (like the official LlmRuntime) forbids `registerAdapter([])` — and the
+  // first call fails with a clear PROVIDER_NOT_FOUND; once a registration
+  // exists, `replace([])` remains legal.
   let registration: ReturnType<typeof vision.registerAdapter> | undefined
   let registeredRoutes: string[] | undefined
   const ensureRegistration = (): void => {
@@ -111,8 +121,14 @@ export function apply(ctx: Context, config: ConfigType = {}): void {
       return
     }
     if (registration === undefined) {
+      if (routes.length === 0) {
+        // Startup with zero providers: stay dormant, no empty registration.
+        registeredRoutes = routes
+        return
+      }
       registration = vision.registerAdapter(routes, adapter, resolveConnection)
     } else {
+      // A live registration replaces atomically; `replace([])` is legal.
       registration.replace(routes)
     }
     registeredRoutes = routes
@@ -120,9 +136,13 @@ export function apply(ctx: Context, config: ConfigType = {}): void {
   ensureRegistration()
 
   // The provider directory: one registration owns every catalog entry
-  // (advisory "what can be configured"), a second owns the user-configured
-  // provider entries, so a settings change atomically syncs the directory
-  // without stranding entries.
+  // (advisory "what can be configured"), a second owns ONLY the user-created
+  // providers whose ids are absent from the catalog — a catalog provider the
+  // user configures is not re-declared (that would violate registration
+  // ownership), its live baseURL/model/key still come from settings through
+  // the connection resolver. Like the adapter registration, an empty initial
+  // user set registers nothing and `replace([])` stays legal once live.
+  const catalogIds = new Set(VISION_PROVIDER_CATALOG.map(entry => entry.id))
   const catalogDirectory = vision.registerConfigurableProviders(
     VISION_PROVIDER_CATALOG.map(entry => ({
       id: entry.id,
@@ -136,18 +156,23 @@ export function apply(ctx: Context, config: ConfigType = {}): void {
   let userDirectory: ReturnType<typeof vision.registerConfigurableProviders> | undefined
   let registeredUserEntries: string[] | undefined
   const ensureDirectory = (): void => {
-    const entries = Object.keys(resolved().providers).map(id => {
-      const existing = vision.getProvider(id)
-      return existing ?? { id, displayName: id, adapter: 'openai-compatible', apiStyle: 'chat-completions' as const }
-    })
+    const entries = Object.keys(resolved().providers)
+      .filter(id => !catalogIds.has(id))
+      .map(id => ({ id, displayName: id, adapter: 'openai-compatible', apiStyle: 'chat-completions' as const }))
     const ids = entries.map(entry => entry.id)
     if (userDirectory !== undefined && registeredUserEntries !== undefined
       && ids.length === registeredUserEntries.length && ids.every((id, index) => id === registeredUserEntries![index])) {
       return
     }
     if (userDirectory === undefined) {
+      if (entries.length === 0) {
+        // Startup with no custom providers: stay dormant, no empty registration.
+        registeredUserEntries = ids
+        return
+      }
       userDirectory = vision.registerConfigurableProviders(entries)
     } else {
+      // A live directory replaces atomically; `replace([])` is legal.
       userDirectory.replace(entries)
     }
     registeredUserEntries = ids
@@ -206,25 +231,36 @@ export function apply(ctx: Context, config: ConfigType = {}): void {
  * facts, plus the request's model override. The snapshot is frozen by the
  * runtime before the adapter sees it, so an in-flight request never observes
  * a settings change and the next call re-resolves.
+ * @param resolved - the current last-good resolved configuration.
+ * @param requested - the provider id the runtime already selected (always
+ *   present on the resolver path; kept optional for direct callers).
+ * @param requestedModel - the request's model override; a non-empty trim wins
+ *   over the provider's configured default, an empty/absent value keeps the
+ *   configured model. Never mutates the provider's own configuration.
  */
 function connectionSnapshotOf(
   resolved: ResolvedConfig,
   requested?: string,
+  requestedModel?: string,
 ): { provider: string; baseURL: string; model: string; apiStyle: 'chat-completions' | 'responses'; maxOutputTokens: number; timeoutMs: number; apiKeyEnv?: string; inlineApiKey?: string } {
   const ids = Object.keys(resolved.providers)
   const requestedId = requested !== undefined && requested.trim().length > 0 ? requested.trim() : undefined
   const id = requestedId ?? resolved.active ?? (ids.length === 1 ? ids[0] : undefined)
   if (id === undefined) {
-    throw new Error('image-mind: no active vision provider configured; set one in 设置 → 插件 → 插件配置 → 图像理解')
+    throw new VisionError(
+      'image-mind: no active vision provider configured; set one in 设置 → 插件 → 插件配置 → 图像理解',
+      'PROVIDER_NOT_FOUND',
+    )
   }
   const spec = resolved.providers[id]
   if (spec === undefined) {
-    throw new Error(`image-mind: provider ${JSON.stringify(id)} is not defined`)
+    throw new VisionError(`image-mind: provider ${JSON.stringify(id)} is not defined`, 'PROVIDER_NOT_FOUND')
   }
+  const modelOverride = requestedModel !== undefined && requestedModel.trim().length > 0 ? requestedModel.trim() : undefined
   return {
     provider: id,
     baseURL: spec.baseURL,
-    model: spec.model,
+    model: modelOverride ?? spec.model,
     apiStyle: spec.apiStyle,
     maxOutputTokens: spec.maxOutputTokens,
     timeoutMs: resolved.timeoutMs,
