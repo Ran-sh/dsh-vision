@@ -51,6 +51,13 @@ export const name = 'image-mind'
 // gracefully on headless mounts).
 export const inject = ['vision', 'tools']
 
+// Host-side exports the built artifact keeps: the connection-test RPC (the
+// settings card reaches it through the routes; direct callers and the
+// built-artifact verification use the same functions) and the embedded
+// visual-challenge fixtures.
+export { runConnectionTest, listEndpointModels } from './runtime/vision-rpc.ts'
+export { VISUAL_FIXTURES, answerMatches } from './runtime/visual-fixtures.ts'
+
 /**
  * Register the vision capability: adapter, directory, settings, tool, routes.
  * @param ctx - registrant context carrying the tool registry.

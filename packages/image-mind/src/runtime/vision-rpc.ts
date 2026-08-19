@@ -12,9 +12,6 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
-import { readFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import {
   DEFAULT_API_STYLE, DEFAULT_MAX_OUTPUT_TOKENS, DEFAULT_TIMEOUT_MS,
   IMAGE_MIND_SETTINGS_NAMESPACE, resolveProvider,
@@ -26,39 +23,7 @@ import type { OpenAICompatibleVisionOptions } from '../adapters/openai-compatibl
 import { resolveApiKey } from '../credentials/resolve.ts'
 import { deepFreeze } from '@ran-sh/dsh-vision'
 import { discoverEndpointModels, planVisionModels } from '../adapters/openai-compatible/discovery.ts'
-
-/**
- * Visual-challenge fixtures: tiny self-generated 32x32 solid-color PNGs the
- * host sends during a connection test. The model must NAME the color it
- * actually sees — a text-only model or a broken image path fails the probe
- * even when the endpoint answers HTTP 200. The fixtures are shipped with the
- * plugin (tests/fixtures), never fetched from the network.
- */
-const FIXTURE_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'tests', 'fixtures')
-
-interface VisualFixture {
-  color: string
-  bytes: Buffer
-}
-
-function loadFixtures(): VisualFixture[] {
-  const colors = ['red', 'blue', 'green']
-  return colors.map(color => ({
-    color,
-    bytes: readFileSync(join(FIXTURE_DIR, color + '.png')),
-  }))
-}
-
-/** Pick one fixture at random so a guessing model cannot pre-answer. */
-function pickFixture(): VisualFixture {
-  const fixtures = loadFixtures()
-  return fixtures[Math.floor(Math.random() * fixtures.length)]
-}
-
-/** Whether the model's reply names the fixture color (loose match). */
-function answerMatches(reply: string, color: string): boolean {
-  return reply.trim().toLowerCase().includes(color)
-}
+import { answerMatches, pickFixture, visualFixture, type FixtureColor } from './visual-fixtures.ts'
 
 /** Redact secrets from any diagnostic text before it crosses to the UI. */
 export function redactSecrets(text: string, secrets: readonly string[]): string {
@@ -86,7 +51,7 @@ export interface TestConnectionOverrides {
   /** Draft-declared keyless fact (host confirms against the endpoint root). */
   keyless?: boolean
   /** Test hook: pin the visual-challenge color (never sent by the card). */
-  _fixtureColor?: 'red' | 'blue' | 'green'
+  _fixtureColor?: FixtureColor
 }
 
 /** The mask value the browser shows for a configured key; an untouched field never travels. */
@@ -237,7 +202,7 @@ export async function runConnectionTest(
   // names the color, so a text-only model or a broken image path cannot pass
   // by guessing.
   const fixture = overrides._fixtureColor !== undefined
-    ? loadFixtures().find(f => f.color === overrides._fixtureColor) ?? pickFixture()
+    ? visualFixture(overrides._fixtureColor)
     : pickFixture()
   const started = Date.now()
   try {
