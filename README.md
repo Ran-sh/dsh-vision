@@ -145,12 +145,10 @@ dsh-vision/                        ← npm workspace 根
 要求：DeepSeek Harness 已安装（`npx @deepseek-ai/dsh web` 可启动），Node.js 22+，且 profile 的包管理器为 pnpm（Harness 官方 `dsh plugin` 机制基于 pnpm）。
 
 ```sh
-dsh plugin --profile web add dsh-plugin-image-mind
+npx @deepseek-ai/dsh plugin --profile web add dsh-plugin-image-mind
 ```
 
-`dsh plugin` 是 Harness 官方命令：它把参数透传给 profile 目录下的 pnpm（add/remove/update），并在安装完成后自动 reconcile `dsh.profile.bundles` 层栈——依赖中声明了 `dsh.bundle` 的包自动成为 profile bundle 层。之后重启（或触发 HMR 刷新）web profile 即可。
-
-> **注意**：当前 `@ran-sh/dsh-vision` 尚未发布到 npm registry，安装时通过 `file:` 依赖从仓库 tarball 一起提供。发布前请先将两个包 `npm publish`（vision 先发布，image-mind 的依赖改为 registry 版本）。
+`dsh plugin` 是 Harness 官方命令：它把参数透传给 profile 目录下的 pnpm（add/remove/update），并在安装完成后自动 reconcile `dsh.profile.bundles` 层栈——依赖中声明了 `dsh.bundle` 的包自动成为 profile bundle 层。`@ran-sh/dsh-vision` 是 `dsh-plugin-image-mind` 的 npm 依赖，会随插件自动安装，**用户不需要单独安装 vision**。之后重启（或触发 HMR 刷新）web profile 即可。
 
 **不要混用安装方式**：用 Harness 官方机制安装后，不要再手工编辑 profile 的 `cordis.patch.yml` 插入 `image-mind` / `vision-runtime` 行——两者是同一层，会重复加载同一个插件。
 
@@ -160,6 +158,12 @@ dsh plugin --profile web add dsh-plugin-image-mind
 > npm run diagnose:dsh   # 只读：检查 build/link/patch 行是否存在，不打印任何密钥
 > ```
 
+卸载：
+
+```sh
+npx @deepseek-ai/dsh plugin --profile web remove dsh-plugin-image-mind
+```
+
 ## URL 安全说明
 
 图片 URL 抓取有 SSRF 防护，但**不是网络沙箱**：
@@ -168,6 +172,14 @@ dsh plugin --profile web add dsh-plugin-image-mind
 - 主机名会做 DNS 预解析，任一 A/AAAA 落在私网即拒绝；
 - redirect 始终拒绝；URL 内嵌凭据拒绝；错误信息剥离 query 参数，避免 token 泄露；
 - 无法 pin 连接到预解析地址，因此对 DNS rebinding 只能做到预解析层防御，不能提供沙箱级绝对保证。
+
+## 兼容性
+
+| 插件版本 | vision 版本 | 已验证 DSH | 状态 |
+|---|---|---|---|
+| 0.1.0 | 0.1.0 | CLI 11.7.0 / dsh-\* 0.1.0-rc.7 | KNOWN_GOOD（发布级） |
+
+DSH 仍在开发预览：宿主运行时（`@deepseek-ai/dsh-*`）以 **peerDependencies** 提供（bounded range，不 ship 私有副本）；本插件不承诺与每个未来 DSH 版本兼容。详见 `docs/compatibility.md`。若 DSH 更新导致插件无法加载：先按官方命令移除插件 → 确认 DSH 可启动 → 查看兼容矩阵 → 安装兼容的新版本。不要手工改 profile。
 
 ## 使用
 

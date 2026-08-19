@@ -26,15 +26,20 @@ If no credential document exists, record `SKIPPED — NO CREDENTIAL` in the rele
 
 The plugin installs through the DeepSeek Harness official mechanism
 (`dsh plugin --profile <name> add <package>`), which resolves dependencies
-from the registry. Publish in this order:
+from the npm registry. Publish in this order:
 
-1. `npm publish` in `packages/vision` (the `@ran-sh/dsh-vision` service);
+1. `npm publish --access public` in `packages/vision` (the
+   `@ran-sh/dsh-vision` service);
 2. flip `dsh-plugin-image-mind`'s `@ran-sh/dsh-vision` dependency from
-   `file:../vision` to the registry version;
-3. `npm publish` in `packages/image-mind`.
+   `file:../vision` to the registry version (`^0.1.0`);
+3. `npm publish --access public` in `packages/image-mind`.
 
-The plugin itself never writes the user profile: Harness reconciles
-`dsh.profile.bundles` from the installed packages' `dsh.bundle` declarations.
+Host-owned DSH runtime packages stay as **peerDependencies** (never shipped
+as private nested copies); `schemastery` and `@ran-sh/dsh-vision` are
+plugin-owned `dependencies`. See `docs/compatibility.md` for the
+KNOWN_GOOD / LATEST matrix. The plugin itself never writes the user profile:
+Harness reconciles `dsh.profile.bundles` from the installed packages'
+`dsh.bundle` declarations.
 
 ## 4. Secret scan
 
