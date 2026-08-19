@@ -1,6 +1,6 @@
 {
   "name": "dsh-plugin-image-mind",
-  "description": "Image-understanding provider plugin for the DeepSeek Harness (DSH) web UI: injects ['vision'] and registers the OpenAI-compatible vision adapter, the provider directory, and the understand_image tool into ctx.vision (owned by @ran-sh/dsh-vision). The tool lets a text-only model ask an OpenAI-compatible vision endpoint (Qwen-VL, GLM-4V, GPT-4o, local Ollama...) about one image; only the returned text enters the conversation.",
+  "description": "Image-understanding provider plugin for the DeepSeek Harness (DSH) web UI: injects ['vision'] and registers the OpenAI-compatible vision adapter, the provider directory, and the understand_image tool into ctx.vision (owned by @ran-sh/dsh-vision). The tool lets a text-only model ask an OpenAI-compatible vision endpoint (Qwen-VL, GLM-4V, GPT-4o, local Ollama...) about one or more images; only the returned text enters the conversation.",
   "version": "0.1.0",
   "type": "module",
   "engines": {

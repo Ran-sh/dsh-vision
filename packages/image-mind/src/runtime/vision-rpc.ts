@@ -243,7 +243,11 @@ export async function runConnectionTest(
  *   endpoint list could not be read.
  */
 export async function listEndpointModels(ctx: Context, overrides: TestConnectionOverrides): Promise<{ ok: true; models: string[]; source: 'endpoint' | 'fallback'; reason?: string } | { ok: false; message: string }> {
-  const saved = savedSection(ctx)
+  // Same provider-scoped overlay as the connection test: the saved fields come
+  // from providers[providerId] (never the whole section as one provider), the
+  // draft overrides win for this one discovery, and the global timeout stays
+  // section-level.
+  const saved = savedProviderRecord(ctx, overrides)
   let spec: ResolvedProvider
   try {
     spec = draftProviderForListing('list', overrides, saved)
