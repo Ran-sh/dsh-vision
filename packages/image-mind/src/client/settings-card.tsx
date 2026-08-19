@@ -59,7 +59,8 @@ export interface ImageMindSettingsCardFace {
   }
   save: () => void
   discard: () => void
-  editProvider: (id: string, field: keyof ProviderDraft, text: string) => void
+  editProvider: (id: string, field: Exclude<keyof ProviderDraft, 'keyless'>, text: string) => void
+  setProviderKeyless: (id: string, value: boolean) => void
   editTop: (field: string, text: string) => void
   addProvider: (options: {
     id: string
@@ -127,6 +128,7 @@ export class ImageMindSettingsCardController {
       save: () => { void this.save() },
       discard: () => { this.host?.discard() },
       editProvider: (id, field, text) => { this.host?.editProvider(id, field, text) },
+      setProviderKeyless: (id, value) => { this.host?.setProviderKeyless(id, value) },
       editTop: (field, text) => { this.host?.editTop(field, text) },
       addProvider: (options) => this.host?.addProvider(options) ?? false,
       deleteProvider: (id) => { this.host?.deleteProvider(id) },
@@ -297,7 +299,8 @@ function ProviderEditor(props: {
   fieldProps: Omit<FieldProps, 'id' | 'label' | 'hint' | 'text' | 'overridden' | 'invalid' | 'onEdit' | 'onReset'>
   test?: ProviderTest
   models?: { loading: boolean; candidates: string[]; note: string }
-  onEdit: (field: keyof ProviderDraft, text: string) => void
+  onEdit: (field: Exclude<keyof ProviderDraft, 'keyless'>, text: string) => void
+  onSetKeyless: (value: boolean) => void
   onRunTest: (p: ProviderCardState) => void
   onLoadModels: (p: ProviderCardState, keyOverride?: string) => void
   onClose: () => void
@@ -451,8 +454,8 @@ function ProviderEditor(props: {
               text={p.keyless ? 'true' : 'false'}
               overridden={false}
               invalid={false}
-              onEdit={(text) => { props.onEdit('keyless', text === 'true' ? 'true' : 'false') }}
-              onReset={() => { props.onEdit('keyless', 'false') }}
+              onEdit={(text) => { props.onSetKeyless(text === 'true') }}
+              onReset={() => { props.onSetKeyless(false) }}
             />
             <ValueField
               id={`image-mind-${p.id}-maxoutputtokens`}
@@ -758,6 +761,7 @@ export function ImageMindSettingsCard(props: ImageMindSettingsCardProps) {
               test={test}
               models={models}
               onEdit={(field, text) => { props.editProvider(p.id, field, text) }}
+              onSetKeyless={(value) => { props.setProviderKeyless(p.id, value) }}
               onRunTest={(row) => { void runTest(row) }}
               onLoadModels={(row, keyOverride) => { void loadModels(row, keyOverride) }}
               onClose={() => { setEditingId(null) }}

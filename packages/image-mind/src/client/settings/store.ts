@@ -292,10 +292,19 @@ export class ImageMindSettingsStore {
     this.store.set(this.projection())
   }
 
-  /** Stage one provider field. */
-  editProvider(id: string, field: keyof ProviderDraft, text: string): void {
+  /** Stage one text field (every draft field except the keyless boolean). */
+  editProvider(id: string, field: Exclude<keyof ProviderDraft, 'keyless'>, text: string): void {
     const current = this.draft.get(id) ?? draftOf(id, providerRecordOf(this.view, id), this.credentialConfigured(id), this.credentialMask(id))
     this.draft.set(id, { ...current, [field]: text })
+    this.failed = false
+    this.failedReason = undefined
+    this.publish()
+  }
+
+  /** Stage the keyless fact as a strict boolean (never a string). */
+  setProviderKeyless(id: string, value: boolean): void {
+    const current = this.draft.get(id) ?? draftOf(id, providerRecordOf(this.view, id), this.credentialConfigured(id), this.credentialMask(id))
+    this.draft.set(id, { ...current, keyless: value })
     this.failed = false
     this.failedReason = undefined
     this.publish()
@@ -409,6 +418,13 @@ export class ImageMindSettingsStore {
       }
       if (original.apiKeyEnv !== d.apiKeyEnv) {
         d.apiKeyEnv.trim() === '' ? unsetField('apiKeyEnv') : setField('apiKeyEnv', d.apiKeyEnv.trim())
+      }
+      if (original.displayName !== d.displayName) {
+        const next = d.displayName.trim()
+        next === '' || next === id ? unsetField('displayName') : setField('displayName', next)
+      }
+      if (original.keyless !== d.keyless) {
+        d.keyless ? setField('keyless', true) : unsetField('keyless')
       }
     }
 
