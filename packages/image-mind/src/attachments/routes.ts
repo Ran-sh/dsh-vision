@@ -120,16 +120,34 @@ function isLoopbackHost(req: IncomingMessage): boolean {
   }
 }
 
-/** Whether a browser Origin (if any) is same-origin with the loopback host. */
+/** Whether a browser origin is same-origin with the request authority (if any). */
 function isSameOrigin(req: IncomingMessage): boolean {
   const origin = req.headers['origin']
   if (origin === undefined) return true // Non-browser client (no Origin header).
+  if (typeof origin !== 'string' || origin.length === 0) return false
+  const host = req.headers['host']
+  if (typeof host !== 'string' || host.length === 0) return false
   try {
-    const host = new URL(origin).hostname
-    return LOOPBACK_HOSTS.has(host)
+    // The public request object carries no trustworthy scheme; the local web
+    // server speaks HTTP, so the Host header is parsed with the http: scheme
+    // for its authority (hostname + port). new URL handles bracketed IPv6 and
+    // never splits on ':'.
+    const originUrl = new URL(origin)
+    const hostUrl = new URL(`http://${host}`)
+    // Hostname AND effective port must match: `localhost:3000` page vs
+    // `localhost:3000` Host is one origin; a different port is another.
+    return originUrl.hostname === hostUrl.hostname && effectivePortOf(originUrl) === effectivePortOf(hostUrl)
   } catch {
     return false
   }
+}
+
+/** The effective port of a parsed authority (default-port-aware, URL semantics). */
+function effectivePortOf(url: URL): number {
+  if (url.port !== '') return Number(url.port)
+  // A portless authority means the scheme default: http 80, https 443.
+  if (url.protocol === 'https:') return 443
+  return 80
 }
 
 /**
