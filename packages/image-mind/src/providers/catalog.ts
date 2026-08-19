@@ -16,12 +16,14 @@ export interface VisionProviderCatalogEntry {
   name: string
   /** Endpoint root the provider answers through. */
   baseURL: string
-  /** Default vision model on that endpoint. */
+  /** Default vision model on that endpoint ('' lets model discovery fill it). */
   defaultModel: string
   /** Conventional credential-reference (env-var) name for its key. */
   apiKeyEnv: string
   /** Wire protocol the endpoint speaks; defaults to chat-completions. */
   apiStyle?: ApiStyle
+  /** Explicit keyless fact (local endpoints); otherwise derived from baseURL. */
+  keyless?: boolean
 }
 
 /** The template rows offered by "添加提供方". */
@@ -58,7 +60,7 @@ export const VISION_PROVIDER_CATALOG: readonly VisionProviderCatalogEntry[] = [
     id: 'moonshot',
     name: 'Moonshot Kimi',
     baseURL: 'https://api.moonshot.cn/v1',
-    defaultModel: 'moonshot-v1-8k-vision-preview',
+    defaultModel: 'kimi-k2.6',
     apiKeyEnv: 'MOONSHOT_API_KEY',
   },
   {
@@ -79,7 +81,7 @@ export const VISION_PROVIDER_CATALOG: readonly VisionProviderCatalogEntry[] = [
     id: 'gemini',
     name: 'Google Gemini',
     baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai',
-    defaultModel: 'gemini-2.0-flash',
+    defaultModel: 'gemini-2.5-flash',
     apiKeyEnv: 'GEMINI_API_KEY',
   },
   {
@@ -179,12 +181,14 @@ export const VISION_PROVIDER_CATALOG: readonly VisionProviderCatalogEntry[] = [
     baseURL: 'http://localhost:11434/v1',
     defaultModel: 'llava',
     apiKeyEnv: '',
+    keyless: true,
   },
   {
     id: 'lm-studio',
     name: 'LM Studio（本地）',
     baseURL: 'http://localhost:1234/v1',
-    defaultModel: 'llava',
+    defaultModel: '',
     apiKeyEnv: '',
+    keyless: true,
   },
 ]

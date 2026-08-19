@@ -138,32 +138,27 @@ dsh-vision/                        ← npm workspace 根
 - **Settings 走官方 wire**：卡片通过 `connection.api.settings.describe/mutate` 读写 `image-mind` 命名空间（官方 settings seam 对第三方命名空间开放）；`/image-mind/config` 网关保留为**兼容层**，仅在没有官方通道的旧客户端下兜底。**TODO（移除条件）**：当最低支持的 DSH 版本全部具备官方 settings wire 后，可删除 legacy transport。
 
 
-## 安装（独立第三方插件）
+## 安装（通过 DeepSeek Harness 官方插件机制）
 
-要求：DeepSeek Harness 已安装（检测 `%USERPROFILE%\.dsh`，可用 `DSH_HOME` 覆盖），Node.js 22+。
+本项目**不修改你的 DSH profile**。安装与启用交给 Harness 自己的 bundle/plugin 管理——它会把 `dsh-plugin-image-mind`（连同依赖 `@ran-sh/dsh-vision`）装进你的 profile，并自动把包的 `cordis.patch.yml` 作为 bundle 层加入 profile 组成。
 
-```sh
-git clone <your-fork-or-release-url> dsh-vision
-cd dsh-vision
-npm install
-npm run build              # 生成插件产物（install:dsh 会检查，缺失则提示）
-npm run install:dsh        # 链接两个包 + 写入 profile 的 cordis.patch.yml（幂等）
-```
-
-然后重启 web profile（或触发其 HMR 刷新）。
-
-`install:dsh` 做什么（可重复执行，不会重复插入）：
-
-1. 在 `<DSH_HOME>/profiles/node_modules` 下链接本项目两个包（Windows 用 junction，免管理员权限；POSIX 用 symlink）；
-2. 在 profile 的 `cordis.patch.yml` 里插入两行（`vision-runtime` + `image-mind`），插入前自动备份原文件；
-3. 绝不触碰：你的 `settings.yaml`（提供方/密钥配置）、凭据存储、其他插件。
-
-卸载：
+要求：DeepSeek Harness 已安装（`npx @deepseek-ai/dsh web` 可启动），Node.js 22+，且 profile 的包管理器为 pnpm（Harness 官方 `dsh plugin` 机制基于 pnpm）。
 
 ```sh
-npm run uninstall:dsh                     # 移除链接与补丁行，保留设置
-npm run uninstall:dsh -- --purge-settings # 同时删除 settings.yaml 的 image-mind 节（先备份）
+dsh plugin --profile web add dsh-plugin-image-mind
 ```
+
+`dsh plugin` 是 Harness 官方命令：它把参数透传给 profile 目录下的 pnpm（add/remove/update），并在安装完成后自动 reconcile `dsh.profile.bundles` 层栈——依赖中声明了 `dsh.bundle` 的包自动成为 profile bundle 层。之后重启（或触发 HMR 刷新）web profile 即可。
+
+> **注意**：当前 `@ran-sh/dsh-vision` 尚未发布到 npm registry，安装时通过 `file:` 依赖从仓库 tarball 一起提供。发布前请先将两个包 `npm publish`（vision 先发布，image-mind 的依赖改为 registry 版本）。
+
+**不要混用安装方式**：用 Harness 官方机制安装后，不要再手工编辑 profile 的 `cordis.patch.yml` 插入 `image-mind` / `vision-runtime` 行——两者是同一层，会重复加载同一个插件。
+
+> 早期版本（≤0.1.0）提供过 `npm run install:dsh` 直接写 profile 的安装器；该路径已**移除**（RC 规范：插件不得修改用户 profile 组成）。如需诊断安装状态，使用只读命令：
+>
+> ```sh
+> npm run diagnose:dsh   # 只读：检查 build/link/patch 行是否存在，不打印任何密钥
+> ```
 
 ## URL 安全说明
 
@@ -230,7 +225,7 @@ SDK 依赖是普通 registry 依赖（与 DSH profile 版本精确对齐），`n
 ```
 packages/vision       @ran-sh/dsh-vision        Service Definition（ctx.vision）
 packages/image-mind   dsh-plugin-image-mind     Provider + Tool + UI
-scripts/              install:dsh / uninstall:dsh
+scripts/              diagnose:dsh（只读）、run-e2e
 docs/                 architecture.md、provider-development.md、release-checklist.md
 ```
 

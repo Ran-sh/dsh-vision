@@ -8,6 +8,8 @@ Run everything before tagging a release. All commands from the repo root.
 npm run typecheck      # 0 errors (host + client + vision)
 npm test               # all unit + integration + boundary tests pass, fully offline
 npm run build          # both packages bundle cleanly
+npm run test:built     # built lib contains the visual fixtures + connection-test RPC
+npm run test:package   # package/bundle metadata, dependency closure, npm pack content
 ```
 
 ## 2. Real E2E (requires credentials in ~/.dsh/.credentials.yaml)
@@ -18,14 +20,21 @@ RUN_VISION_E2E=1 npx vitest run --config packages/image-mind/vitest.config.ts te
 
 Must prove: active-provider auto-call, explicit provider override, model override reaching the wire, real image recognition, Chinese prompt, OCR prompt, no key printed, cancellation.
 
-## 3. Install / uninstall round trip (temp DSH_HOME)
+If no credential document exists, record `SKIPPED — NO CREDENTIAL` in the release notes; never fake a PASS.
 
-```sh
-DSH_HOME=$(mktemp -d) npm run install:dsh    # links + patch rows, idempotent
-DSH_HOME=$TMP npm run uninstall:dsh          # removes exactly ours
-```
+## 3. Publish order (bundle-native distribution)
 
-Covered automatically by `tests/install.test.ts` (5 tests). On Windows, also smoke-test a path with spaces and a Chinese path.
+The plugin installs through the DeepSeek Harness official mechanism
+(`dsh plugin --profile <name> add <package>`), which resolves dependencies
+from the registry. Publish in this order:
+
+1. `npm publish` in `packages/vision` (the `@ran-sh/dsh-vision` service);
+2. flip `dsh-plugin-image-mind`'s `@ran-sh/dsh-vision` dependency from
+   `file:../vision` to the registry version;
+3. `npm publish` in `packages/image-mind`.
+
+The plugin itself never writes the user profile: Harness reconciles
+`dsh.profile.bundles` from the installed packages' `dsh.bundle` declarations.
 
 ## 4. Secret scan
 
@@ -33,15 +42,17 @@ Covered automatically by `tests/install.test.ts` (5 tests). On Windows, also smo
 - No `sk-` real key patterns, no `.credentials.yaml`, no `.env` in the repo.
 - `packages/vision/src` contains zero provider vocabulary (seam audit test enforces).
 - README/docs contain no personal machine paths.
+- `npm pack --dry-run` on both packages: no tests/, no src/, no credentials.
 
 ## 5. Windows smoke
 
 - `npm install` from scratch (no DSH profile required) works.
-- `npm run install:dsh` against a real or temp DSH_HOME creates junctions without admin rights.
+- `npm run typecheck && npm run build && npm run test:package` pass on Windows
+  (npm pack path behavior).
 - Settings card opens in the web profile; key entry shows masks; test connection runs.
 
 ## 6. Docs
 
-- README install/use sections match the release.
+- README install/use sections match the release (Harness-managed install only).
 - CHANGELOG.md updated (Unreleased → version).
 - docs/architecture.md and docs/provider-development.md current.

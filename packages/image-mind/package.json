@@ -14,7 +14,6 @@
     "./client": {
       "default": "./lib/client.js"
     },
-    "./src/*": "./src/*",
     "./package.json": "./package.json"
   },
   "dsh": {
@@ -70,7 +69,6 @@
   "files": [
     "lib/**/*.js",
     "lib/**/*.js.map",
-    "src",
     "cordis.patch.yml",
     "README.md"
   ],

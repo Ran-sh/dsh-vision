@@ -41,12 +41,12 @@ jobs:
           cache: npm
       - name: Install
         run: npm ci
-      - name: Build artifacts (installer requires them)
+      - name: Build artifacts (package/built tests require them)
         run: npm run build
-      - name: Install / uninstall round trip against a temp DSH_HOME
-        run: npm run test:install
-        env:
-          DSH_HOME: /tmp/dsh-vision-ci-home
+      - name: Package integrity (metadata, closure, npm pack content)
+        run: npm run test:package
+      - name: Built-artifact verification (embedded visual fixtures, RPC exports)
+        run: npm run test:built
 
   windows:
     runs-on: windows-latest
@@ -58,12 +58,14 @@ jobs:
           cache: npm
       - name: Install
         run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Tests
+        run: npm test
       - name: Build
         run: npm run build
-      - name: Installer round trip (Windows junctions)
-        run: npm run test:install
-        env:
-          DSH_HOME: ${{ runner.temp }}/dsh-vision-ci-home
+      - name: Package integrity (Windows npm pack)
+        run: npm run test:package
 
   secret-scan:
     runs-on: ubuntu-latest

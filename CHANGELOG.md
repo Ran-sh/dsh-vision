@@ -9,9 +9,23 @@ minor version). Package names: `@ran-sh/dsh-vision` (Service) and
 
 ### Added
 
-- `npm run install:dsh` / `npm run uninstall:dsh`: one-command mount/unmount
-  into a DSH profile (links + cordis patch rows, idempotent, backups,
-  `--purge-settings` opt-in). `tests/install.test.ts` covers the round trip.
+- **Bundle-native distribution**: install is now the DeepSeek Harness
+  official mechanism (`dsh plugin --profile <name> add <package>`); the
+  package's `dsh.bundle` declaration joins the profile bundle stack and the
+  harness owns the profile composition. `cordis.patch.yml` ships with the
+  package and mounts both the `vision-runtime` service row and the
+  `image-mind` provider row from one install unit.
+- `npm run test:package` and `npm run test:built`: package/bundle metadata,
+  dependency closure, real `npm pack --dry-run` content checks for both
+  packages, and built-artifact verification (embedded visual fixtures, RPC
+  exports) against `packages/image-mind/lib`.
+- Visual-challenge fixtures embedded as base64 in a provider-side module
+  (`runtime/visual-fixtures.ts`) — the probe no longer reads `tests/`.
+- `@ran-sh/dsh-vision` now emits `lib/types/*.d.ts` declarations on build
+  (the published package carries types).
+- Keyless catalog facts (Ollama / LM Studio) flow through to the draft;
+  catalog default models refreshed against provider docs (Moonshot
+  `kimi-k2.6`, Gemini `gemini-2.5-flash`, LM Studio discovery-filled).
 - `understand_image` multi-image: `images[]` (≤ 4) alongside the legacy
   single `image`; both serialize into one wire request; cache key hashes
   every image.
@@ -24,15 +38,25 @@ minor version). Package names: `@ran-sh/dsh-vision` (Service) and
 
 ### Fixed
 
+- **Profile mutation removed**: `install:dsh` / `uninstall:dsh` (which
+  wrote the profile's `cordis.patch.yml`) and `test:install` are deleted —
+  the plugin no longer modifies any user profile, per the RC hardening
+  spec. `diagnose:dsh` stays, strictly read-only.
 - **Client bundle no longer ships server-only packages**: the browser
   settings store imported `deriveKeyRef` from `credentials/migrate.ts`,
   which imports `@deepseek-ai/dsh-credentials`; esbuild bundled that
   server dependency into `lib/client.js` and the web shell refused the
   plugin, breaking DSH web startup. The identity helpers now live in
   `client/settings/identity.ts` with zero imports (both halves use it).
-- **Installer YAML safety**: a profile template's bare top-level `[]`
-  could not coexist with `- insert:` rows in one YAML document; the
-  installer now strips it before appending (pure block-style array).
+- **Keyless is a strict boolean end to end**: a typed
+  `setProviderKeyless(id, value: boolean)` replaces the string-typed
+  `editProvider('keyless', …)` path (a `'false'` string was truthy and
+  saved as `keyless: true`).
+- **displayName / keyless persistence for existing providers**: `planOps`
+  now emits `displayName` and `keyless` set/unset ops for providers that
+  already exist — previously those edits made the card dirty but saved
+  nothing (dirty-but-no-op invariant restored; covered by 5 new store
+  tests).
 - **Provider settings workflow**: React hooks moved out of a conditional
   into a real `ProviderEditor` component; catalog providers keep their
   stable `entry.id` (display names never generate route ids); custom ids
@@ -60,12 +84,11 @@ minor version). Package names: `@ran-sh/dsh-vision` (Service) and
 - **Adapter hardening**: cache keys are fixed-length SHA-256 digests
   (no image bytes in the map); caller abort is distinguished from
   timeout; provider error excerpts are redacted.
-- **Installer polish**: `--dry-run`, `diagnose:dsh`, atomic patch writes
-  preserving CRLF, empty-scope cleanup, ambiguity refusal, build
-  artifact gate, uninstall dry-run.
 
 ### Changed
 
+- Exports and `files` no longer publish `./src/*` or the `src/` tree —
+  the runtime never imports source from an installed package.
 - SDK dependencies moved from profile junctions to pinned registry
   dependencies (cordis 4.0.1, dsh-* 0.1.0-rc.7 family): `npm install` is
   safe and self-contained, never touching the DSH profile SDK tree.
@@ -73,6 +96,8 @@ minor version). Package names: `@ran-sh/dsh-vision` (Service) and
   replace the single `image` field.
 - `deriveKeyRef` now has one host-side owner re-exported by the browser
   store.
+- README install section rewritten around the Harness-managed install;
+  the old profile-mutating installer path is documented as removed.
 
 ## [0.1.0] — 2026-08-18
 
