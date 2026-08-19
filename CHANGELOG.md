@@ -9,13 +9,6 @@ minor version). Package names: `@ran-sh/dsh-vision` (Service) and
 
 ### Added
 
-- **GitHub-only distribution**: the project is released exclusively through
-  GitHub Releases — no npm account, no npm publish. `.github/workflows/release.yml`
-  builds and uploads the prebuilt assets on `v*` tags, and
-  `scripts/build-release.mjs` rewires the image-mind tarball's
-  `@ran-sh/dsh-vision` dependency to the matching GitHub Release asset URL, so
-  a user installs with ONE official DSH command and the vision service is
-  pulled in automatically.
 - **Bundle-native distribution**: install is now the DeepSeek Harness
   official mechanism (`dsh plugin --profile <name> add <package>`); the
   package's `dsh.bundle` declaration joins the profile bundle stack and the
