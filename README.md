@@ -152,7 +152,7 @@ npx @deepseek-ai/dsh plugin --profile web add dsh-plugin-image-mind
 
 **不要混用安装方式**：用 Harness 官方机制安装后，不要再手工编辑 profile 的 `cordis.patch.yml` 插入 `image-mind` / `vision-runtime` 行——两者是同一层，会重复加载同一个插件。
 
-> 早期版本（≤0.1.0）提供过 `npm run install:dsh` 直接写 profile 的安装器；该路径已**移除**（RC 规范：插件不得修改用户 profile 组成）。如需诊断安装状态，使用只读命令：
+> 早期开发阶段曾提供过 `npm run install:dsh` 直接写 profile 的安装器，该安装路径已在正式 RC 发布前移除（插件自身不再修改用户 profile 组成）。如需诊断安装状态，使用只读命令：
 >
 > ```sh
 > npm run diagnose:dsh   # 只读：检查 build/link/patch 行是否存在，不打印任何密钥

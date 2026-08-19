@@ -1,0 +1,51 @@
+name: DSH compat
+
+# Lightweight LATEST-DSH compatibility lane (non-blocking signal): on an
+# isolated temporary DSH_HOME, install dsh-plugin-image-mind from the npm
+# registry with the official 'dsh plugin' command, verify the bundle layers
+# compose via --dump-config, remove, and verify no stale layer remains.
+# No real API key, no user files, no profile mutation by the plugin itself.
+# KNOWN_GOOD remains the release-blocking target (docs/compatibility.md).
+
+on:
+  workflow_dispatch:
+
+jobs:
+  install-remove-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: One-command install (isolated DSH_HOME)
+        run: |
+          export DSH_HOME="$(mktemp -d)"
+          npx -y @deepseek-ai/dsh plugin --profile smoke add dsh-plugin-image-mind@0.1.0
+          echo "DSH_HOME=$DSH_HOME" >> "$GITHUB_ENV"
+        env:
+          DSH_HOME: ""
+
+      - name: Verify bundles compose (vision-runtime + image-mind)
+        run: |
+          OUT=$(npx -y @deepseek-ai/dsh --profile smoke --dump-config)
+          N_IMAGE=$(printf '%s' "$OUT" | grep -c "image-mind" || true)
+          N_VISION=$(printf '%s' "$OUT" | grep -c "vision-runtime" || true)
+          echo "image-mind refs=$N_IMAGE vision-runtime refs=$N_VISION"
+          test "$N_IMAGE" -ge 1 && test "$N_VISION" -ge 1
+          test -d "$DSH_HOME/profiles/smoke/node_modules/dsh-plugin-image-mind"
+          test -d "$DSH_HOME/profiles/smoke/node_modules/@ran-sh/dsh-vision"
+          echo "LAYER_COMPOSE=PASS"
+
+      - name: One-command remove
+        run: |
+          npx -y @deepseek-ai/dsh plugin --profile smoke remove dsh-plugin-image-mind
+
+      - name: Verify no stale layer after remove
+        run: |
+          OUT=$(npx -y @deepseek-ai/dsh --profile smoke --dump-config || true)
+          if printf '%s' "$OUT" | grep -qE "vision-runtime|image-mind"; then
+            echo "stale bundle layer remains after remove" >&2
+            exit 1
+          fi
+          echo "REMOVE_CLEAN=PASS"

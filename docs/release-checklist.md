@@ -22,17 +22,20 @@ Must prove: active-provider auto-call, explicit provider override, model overrid
 
 If no credential document exists, record `SKIPPED — NO CREDENTIAL` in the release notes; never fake a PASS.
 
-## 3. Publish order (bundle-native distribution)
+## 3. Publish order (bundle-native distribution, already released)
 
 The plugin installs through the DeepSeek Harness official mechanism
 (`dsh plugin --profile <name> add <package>`), which resolves dependencies
-from the npm registry. Publish in this order:
+from the npm registry. Both packages are already published at 0.1.0.
+Per-release verification (do not republish an existing version):
 
-1. `npm publish --access public` in `packages/vision` (the
-   `@ran-sh/dsh-vision` service);
-2. flip `dsh-plugin-image-mind`'s `@ran-sh/dsh-vision` dependency from
-   `file:../vision` to the registry version (`^0.1.0`);
-3. `npm publish --access public` in `packages/image-mind`.
+1. `npm view @ran-sh/dsh-vision@0.1.0 name version dist-tags`
+2. `npm view dsh-plugin-image-mind@0.1.0 name version dependencies`
+   → must show `@ran-sh/dsh-vision: ^0.1.0` (no `file:`/`link:`/`workspace:`)
+3. fresh temp dir: `npm init -y && npm install dsh-plugin-image-mind@0.1.0`
+   → `npm ls` shows both packages, no UNMET
+4. isolated DSH profile: `dsh plugin --profile <test> add dsh-plugin-image-mind`
+   → boot/compose → `remove` → boot, no duplicate layers
 
 Host-owned DSH runtime packages stay as **peerDependencies** (never shipped
 as private nested copies); `schemastery` and `@ran-sh/dsh-vision` are
