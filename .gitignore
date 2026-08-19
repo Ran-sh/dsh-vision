@@ -2,3 +2,5 @@ node_modules/
 lib/
 packages/*/lib/
 packages/*/node_modules/
+dist-release/
+.tmp-release-prep/

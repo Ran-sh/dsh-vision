@@ -1,0 +1,81 @@
+name: Release
+
+# GitHub-only distribution: a pushed `v*` tag builds the prebuilt release
+# assets from that exact tag and uploads them to the GitHub Release. No npm
+# account, no npm publish, no NPM_TOKEN — the artifact is installed by users
+# via the official DSH plugin command pointing at these URLs.
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit + integration + boundary tests (offline)
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Built artifact verification
+        run: npm run test:built
+
+      - name: Package integrity
+        run: npm run test:package
+
+      - name: Build GitHub release assets
+        run: node scripts/build-release.mjs
+        env:
+          GIT_TAG: ${{ github.ref_name }}
+
+      - name: Asset local-reference audit
+        run: |
+          set -e
+          for tgz in dist-release/*.tgz; do
+            tar tzf "$tgz" >/dev/null
+          done
+          # The final artifact must carry no dev-only local vision reference.
+          if tar xOf dist-release/dsh-plugin-image-mind-*.tgz package/package.json | grep -q 'file:\.\./vision'; then
+            echo "image-mind artifact still references file:../vision" >&2
+            exit 1
+          fi
+          if tar tzf dist-release/dsh-plugin-image-mind-*.tgz | grep -qE '(^|/)src/|(^|/)tests/|\.credentials\.ya?ml|(^|/)\.env|node_modules/'; then
+            echo "image-mind artifact leaks src/tests/secrets" >&2
+            exit 1
+          fi
+        shell: bash
+
+      - name: Smoke-install the vision asset (closure without the repo)
+        run: |
+          set -e
+          smoke=$(mktemp -d)
+          cd "$smoke"
+          npm init -y >/dev/null 2>&1
+          npm install "$GITHUB_WORKSPACE/dist-release/dsh-vision-"*.tgz >/dev/null 2>&1
+          node -e "import('@ran-sh/dsh-vision').then(m=>{const ok=['VisionRuntime','VisionAdapter','VisionError'].every(k=>k in m);console.log('vision import:',ok?'OK':'FAIL');process.exit(ok?0:1)})"
+          echo "vision standalone smoke: PASS"
+        shell: bash
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist-release/*.tgz

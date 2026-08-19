@@ -138,23 +138,33 @@ dsh-vision/                        ← npm workspace 根
 - **Settings 走官方 wire**：卡片通过 `connection.api.settings.describe/mutate` 读写 `image-mind` 命名空间（官方 settings seam 对第三方命名空间开放）；`/image-mind/config` 网关保留为**兼容层**，仅在没有官方通道的旧客户端下兜底。**TODO（移除条件）**：当最低支持的 DSH 版本全部具备官方 settings wire 后，可删除 legacy transport。
 
 
-## 安装（通过 DeepSeek Harness 官方插件机制）
+## 安装（GitHub Releases + DeepSeek Harness 官方命令）
 
-本项目**不修改你的 DSH profile**。安装与启用交给 Harness 自己的 bundle/plugin 管理——它会把 `dsh-plugin-image-mind`（连同依赖 `@ran-sh/dsh-vision`）装进你的 profile，并自动把包的 `cordis.patch.yml` 作为 bundle 层加入 profile 组成。
+本项目**只通过 GitHub Releases 分发，不发布到 npm，用户无需 npm 账号**——插件与 `@ran-sh/dsh-vision` 服务都是 GitHub Releases 上的预编译 tarball。安装与启用完全交给 DeepSeek Harness 官方的 `dsh plugin` 命令；插件自身从不修改你的 `~/.dsh` profile / `cordis.patch.yml` / `settings.yaml`。
 
-要求：DeepSeek Harness 已安装（`npx @deepseek-ai/dsh web` 可启动），Node.js 22+，且 profile 的包管理器为 pnpm（Harness 官方 `dsh plugin` 机制基于 pnpm）。
+要求：DeepSeek Harness 已安装（`npx @deepseek-ai/dsh web` 可启动），Node.js 22+，profile 的包管理器为 pnpm。
+
+**一条命令安装**：
 
 ```sh
-dsh plugin --profile web add dsh-plugin-image-mind
+npx @deepseek-ai/dsh plugin --profile web add https://github.com/Ran-sh/dsh-vision/releases/download/v0.1.0/dsh-plugin-image-mind-0.1.0.tgz
 ```
 
-`dsh plugin` 是 Harness 官方命令：它把参数透传给 profile 目录下的 pnpm（add/remove/update），并在安装完成后自动 reconcile `dsh.profile.bundles` 层栈——依赖中声明了 `dsh.bundle` 的包自动成为 profile bundle 层。之后重启（或触发 HMR 刷新）web profile 即可。
+`dsh plugin` 把参数透传给 profile 目录的 pnpm。发布的 image-mind 资产是**预编译** tarball，其依赖已声明 `@ran-sh/dsh-vision` 指向同一个 GitHub Release 的资产 URL——Vision 服务会随插件自动下载安装，**无需单独安装 vision、无需 clone 仓库、无需本地构建、无需编辑任何 profile 文件**。装完后重启（或触发 HMR 刷新）web profile 即可。
 
-> **注意**：当前 `@ran-sh/dsh-vision` 尚未发布到 npm registry，安装时通过 `file:` 依赖从仓库 tarball 一起提供。发布前请先将两个包 `npm publish`（vision 先发布，image-mind 的依赖改为 registry 版本）。
+> 说明：`npx @deepseek-ai/dsh` 只是官方 DSH 启动器；这不代表本插件发布到了 npm。插件与 vision 服务的 tarball 都从 GitHub Releases 下载。
+
+**一条命令卸载**：
+
+```sh
+npx @deepseek-ai/dsh plugin --profile web remove dsh-plugin-image-mind
+```
+
+**版本升级**：卸载旧版本后再 `add` 新版本的 Release URL 即可（`remove` + `add <新 URL>` 是当前已验证的更新路径；我们不提供自更新代码）。
 
 **不要混用安装方式**：用 Harness 官方机制安装后，不要再手工编辑 profile 的 `cordis.patch.yml` 插入 `image-mind` / `vision-runtime` 行——两者是同一层，会重复加载同一个插件。
 
-> 早期版本（≤0.1.0）提供过 `npm run install:dsh` 直接写 profile 的安装器；该路径已**移除**（RC 规范：插件不得修改用户 profile 组成）。如需诊断安装状态，使用只读命令：
+> 早期版本（≤0.1.0）提供过 `npm run install:dsh` 直接写 profile 的安装器；该路径已**移除**（插件职责不再包含修改用户 profile 组成）。如需诊断安装状态，使用只读命令：
 >
 > ```sh
 > npm run diagnose:dsh   # 只读：检查 build/link/patch 行是否存在，不打印任何密钥
