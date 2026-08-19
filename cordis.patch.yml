@@ -1,9 +1,0 @@
-# dsh-plugin-image-mind bundle patch: inserts the image-mind plugin row into
-# the web profile roster. One package, both halves: the node half (lib/index.js)
-# registers the understand_image tool, the /image-mind attach + raw routes, and
-# the "image-mind" settings section; the browser half (lib/client.js) rewrites
-# image-bearing sends into image-mind references at submit time and upgrades
-# references in the transcript into inline thumbnails.
-- insert:
-    - id: image-mind
-      name: dsh-plugin-image-mind
