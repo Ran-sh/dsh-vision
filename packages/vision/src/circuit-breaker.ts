@@ -31,18 +31,28 @@ export interface VisionCircuitBreaker {
   recordFailure(now?: number): void
 }
 
+function validatePolicy(policy: VisionCircuitPolicy): VisionCircuitPolicy {
+  if (!Number.isSafeInteger(policy.failureThreshold) || policy.failureThreshold <= 0) {
+    throw new Error('vision: circuit failureThreshold must be a positive safe integer')
+  }
+  if (!Number.isSafeInteger(policy.cooldownMs) || policy.cooldownMs < 0) {
+    throw new Error('vision: circuit cooldownMs must be a non-negative safe integer')
+  }
+  return policy
+}
+
 /**
  * Create a small in-memory breaker suitable for a provider route.
  *
  * State machine:
  * closed -> open after N failures
- * open -> half-open after cooldown
+ * open -> half-open after cooldown (exactly one admitted probe)
  * half-open -> closed on success, open on failure
  */
 export function createVisionCircuitBreaker(
   policy: Partial<VisionCircuitPolicy> = {},
 ): VisionCircuitBreaker {
-  const config = { ...DEFAULT_POLICY, ...policy }
+  const config = validatePolicy({ ...DEFAULT_POLICY, ...policy })
   let state: VisionCircuitState = 'closed'
   let failures = 0
   let openedAt: number | null = null
@@ -57,7 +67,11 @@ export function createVisionCircuitBreaker(
   }
 
   function allow(now = Date.now()): boolean {
-    if (state !== 'open') return true
+    if (state === 'closed') return true
+    // A half-open state means the one recovery probe is already admitted.
+    // Until that probe records success/failure, every concurrent caller must
+    // stay out or the breaker ceases to provide isolation.
+    if (state === 'half-open') return false
     if (openedAt === null || now < openedAt + config.cooldownMs) return false
     state = 'half-open'
     return true
