@@ -8,6 +8,7 @@
 import { ImageMindVisionError } from './adapter.ts'
 import type { LoadedImage } from './adapter.ts'
 import type { VisionApiStyle } from './types.ts'
+import { planVisionPrompt } from '../../runtime/vision-planner.ts'
 
 /** Promise rejection helper shared by both response-shape extractors. */
 function unexpectedShape(): never {
@@ -68,6 +69,12 @@ export function buildVisionRequest(
   prompt: string,
   images: readonly LoadedImage[],
 ): { path: string; body: string } {
+  // Keep callers and ctx.vision provider-neutral: task planning is an adapter-
+  // side concern, immediately before the request becomes a vendor wire body.
+  // The planner is deterministic and adds evidence guidance plus a universal
+  // fence against instructions embedded in image pixels.
+  const plannedPrompt = planVisionPrompt(prompt, images.length)
+
   if (apiStyle === 'responses') {
     return {
       path: `${baseURL}/responses`,
@@ -77,7 +84,7 @@ export function buildVisionRequest(
         input: [{
           role: 'user',
           content: [
-            { type: 'input_text', text: prompt },
+            { type: 'input_text', text: plannedPrompt },
             ...images.map(image => ({
               type: 'input_image',
               image_url: `data:${image.mimeType};base64,${image.bytes.toString('base64')}`,
@@ -95,7 +102,7 @@ export function buildVisionRequest(
       messages: [{
         role: 'user',
         content: [
-          { type: 'text', text: prompt },
+          { type: 'text', text: plannedPrompt },
           ...images.map(image => ({
             type: 'image_url',
             image_url: { url: `data:${image.mimeType};base64,${image.bytes.toString('base64')}` },
