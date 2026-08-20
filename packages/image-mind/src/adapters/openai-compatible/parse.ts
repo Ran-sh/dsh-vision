@@ -21,37 +21,71 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value as Record<string, unknown>
 }
 
+/**
+ * Read user-visible text from the common OpenAI-compatible content shapes.
+ * Official chat-completions normally returns one string, while several
+ * compatible providers return an array of `{type:'text', text:'...'}` parts.
+ * Ignore non-text/reasoning/tool parts instead of serializing arbitrary data.
+ */
+function textFromContent(content: unknown): string | undefined {
+  if (typeof content === 'string') {
+    return content.trim().length > 0 ? content : undefined
+  }
+  if (!Array.isArray(content)) return undefined
+
+  const parts: string[] = []
+  for (const item of content) {
+    if (typeof item === 'string') {
+      if (item.trim().length > 0) parts.push(item)
+      continue
+    }
+    const block = asRecord(item)
+    if (block === undefined) continue
+    const type = block.type
+    const text = block.text
+    if ((type === undefined || type === 'text' || type === 'output_text')
+      && typeof text === 'string' && text.trim().length > 0) {
+      parts.push(text)
+    }
+  }
+  const joined = parts.join('\n')
+  return joined.trim().length > 0 ? joined : undefined
+}
+
 /** Extract the single text answer from an OpenAI-compatible chat-completions payload. */
 export function extractChatCompletionsContent(payload: unknown): string {
   const root = asRecord(payload)
   const choices = root?.choices
   if (root === undefined || !Array.isArray(choices) || choices.length === 0) unexpectedShape()
   const message = asRecord(asRecord(choices[0])?.message)
-  const content = message?.['content']
-  if (typeof content !== 'string' || content.trim().length === 0) {
+  if (message === undefined) unexpectedShape()
+  const text = textFromContent(message.content)
+  if (text === undefined) {
     throw new ImageMindVisionError('image-mind: vision endpoint returned no text content', 'EMPTY_RESPONSE')
   }
-  return content
+  return text
 }
 
-/** Extract the text answer from an OpenAI Responses payload: every `output_text` part of assistant messages. */
+/** Extract the text answer from an OpenAI Responses payload. */
 export function extractResponsesContent(payload: unknown): string {
   const root = asRecord(payload)
-  const output = root?.output
-  if (root === undefined || !Array.isArray(output)) unexpectedShape()
+  if (root === undefined) unexpectedShape()
+
+  // Some compatible Responses endpoints expose the SDK-style convenience
+  // field directly even though the canonical API carries message parts.
+  const direct = textFromContent(root.output_text)
+  if (direct !== undefined) return direct
+
+  const output = root.output
+  if (!Array.isArray(output)) unexpectedShape()
   const parts: string[] = []
   for (const item of output) {
     const itemRecord = asRecord(item)
     if (itemRecord === undefined) continue
     const { type, role, content } = itemRecord
-    if (type !== 'message' || role !== 'assistant' || !Array.isArray(content)) continue
-    for (const part of content) {
-      const block = asRecord(part)
-      if (block === undefined) continue
-      if (block.type === 'output_text' && typeof block.text === 'string' && block.text.trim().length > 0) {
-        parts.push(block.text)
-      }
-    }
+    if (type !== 'message' || role !== 'assistant') continue
+    const text = textFromContent(content)
+    if (text !== undefined) parts.push(text)
   }
   const text = parts.join('\n')
   if (text.trim().length === 0) {
