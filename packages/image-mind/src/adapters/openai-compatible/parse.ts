@@ -1,8 +1,6 @@
 /**
- * Response parsing for OpenAI-compatible vision endpoints: the single text
- * answer out of a chat-completions or responses payload, plus the wire
- * request builders. Pure — no I/O.
- * @module dsh-plugin-image-mind/adapters/openai-compatible/parse
+ * Response parsing for OpenAI-compatible vision endpoints: answer text,
+ * provider-reported token usage, and pure wire request builders.
  */
 
 import { ImageMindVisionError } from './adapter.ts'
@@ -10,23 +8,15 @@ import type { LoadedImage } from './adapter.ts'
 import type { VisionApiStyle } from './types.ts'
 import { planVisionPrompt } from '../../runtime/vision-planner.ts'
 
-/** Promise rejection helper shared by both response-shape extractors. */
 function unexpectedShape(): never {
   throw new ImageMindVisionError('image-mind: vision endpoint returned an unexpected response shape', 'INVALID_RESPONSE')
 }
 
-/** Narrow an unknown value to a plain, non-array object, or undefined. */
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined
   return value as Record<string, unknown>
 }
 
-/**
- * Read user-visible text from the common OpenAI-compatible content shapes.
- * Official chat-completions normally returns one string, while several
- * compatible providers return an array of `{type:'text', text:'...'}` parts.
- * Ignore non-text/reasoning/tool parts instead of serializing arbitrary data.
- */
 function textFromContent(content: unknown): string | undefined {
   if (typeof content === 'string') {
     return content.trim().length > 0 ? content : undefined
@@ -52,7 +42,6 @@ function textFromContent(content: unknown): string | undefined {
   return joined.trim().length > 0 ? joined : undefined
 }
 
-/** Extract the single text answer from an OpenAI-compatible chat-completions payload. */
 export function extractChatCompletionsContent(payload: unknown): string {
   const root = asRecord(payload)
   const choices = root?.choices
@@ -66,13 +55,10 @@ export function extractChatCompletionsContent(payload: unknown): string {
   return text
 }
 
-/** Extract the text answer from an OpenAI Responses payload. */
 export function extractResponsesContent(payload: unknown): string {
   const root = asRecord(payload)
   if (root === undefined) unexpectedShape()
 
-  // Some compatible Responses endpoints expose the SDK-style convenience
-  // field directly even though the canonical API carries message parts.
   const direct = textFromContent(root.output_text)
   if (direct !== undefined) return direct
 
@@ -94,6 +80,45 @@ export function extractResponsesContent(payload: unknown): string {
   return text
 }
 
+/** A provider-neutral token-usage shape matching VisionResult.usage. */
+export interface ParsedVisionUsage {
+  inputTokens?: number
+  outputTokens?: number
+}
+
+/** Accept only trustworthy non-negative integer token counters. */
+function tokenCount(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : undefined
+}
+
+/**
+ * Normalize the two common OpenAI-compatible usage vocabularies.
+ *
+ * Chat Completions normally reports `prompt_tokens` / `completion_tokens`;
+ * Responses reports `input_tokens` / `output_tokens`. Compatible providers
+ * sometimes use the newer names on chat responses, so each style accepts its
+ * canonical pair first and the other pair as a conservative fallback.
+ * Missing/malformed counters stay absent — never estimate token usage.
+ */
+export function extractVisionUsage(payload: unknown, apiStyle: VisionApiStyle): ParsedVisionUsage | undefined {
+  const root = asRecord(payload)
+  const usage = asRecord(root?.usage)
+  if (usage === undefined) return undefined
+
+  const inputTokens = apiStyle === 'responses'
+    ? tokenCount(usage.input_tokens) ?? tokenCount(usage.prompt_tokens)
+    : tokenCount(usage.prompt_tokens) ?? tokenCount(usage.input_tokens)
+  const outputTokens = apiStyle === 'responses'
+    ? tokenCount(usage.output_tokens) ?? tokenCount(usage.completion_tokens)
+    : tokenCount(usage.completion_tokens) ?? tokenCount(usage.output_tokens)
+
+  if (inputTokens === undefined && outputTokens === undefined) return undefined
+  return {
+    ...inputTokens === undefined ? {} : { inputTokens },
+    ...outputTokens === undefined ? {} : { outputTokens },
+  }
+}
+
 /** Build the request the configured style sends: its path and JSON body. */
 export function buildVisionRequest(
   baseURL: string,
@@ -105,11 +130,6 @@ export function buildVisionRequest(
   imageOrdinals?: readonly number[],
   originalImageCount?: number,
 ): { path: string; body: string } {
-  // Keep callers and ctx.vision provider-neutral: task planning is an adapter-
-  // side concern, immediately before the request becomes a vendor wire body.
-  // The planner is deterministic and adds evidence guidance plus a universal
-  // fence against instructions embedded in image pixels. Adapter-internal
-  // ordinals preserve original image identity across HTTP-413 split batches.
   const plannedPrompt = planVisionPrompt(prompt, images.length, imageOrdinals, originalImageCount)
 
   if (apiStyle === 'responses') {
