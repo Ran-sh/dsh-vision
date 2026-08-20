@@ -3,27 +3,18 @@
  * `code` string is the shared taxonomy (exactly as `LlmError` and `WebError`
  * extend it), with a stable provider-neutral code per failure class. Tool
  * results and the settings card route on `code`, never by parsing `message`.
- *
- * Registration lifecycle failures carry their own codes —`DUPLICATE_ADAPTER`,
- * `INVALID_ADAPTER`, `REGISTRATION_DISPOSED`, `DUPLICATE_PROVIDER`,
- * `INVALID_PROVIDER` —so a registry conflict is never mistaken for a plain
- * provider lookup miss (`PROVIDER_NOT_FOUND`). Adapter-level failures (auth,
- * rate limit, timeout, network, response shape) belong to the provider
- * plugin's own error vocabulary and wrap into the generic `PROVIDER_ERROR`
- * when they cross the seam.
  * @module @ran-sh/dsh-vision/errors
  */
 
 import { HarnessError } from '@deepseek-ai/dsh-llm'
+import type { VisionTrace } from './types.ts'
 
 /** Stable provider-neutral failure classes for one vision operation. */
 export type VisionErrorCode =
-  // Request / provider lookup.
   | 'PROVIDER_NOT_FOUND'
   | 'NO_ADAPTER'
   | 'MODEL_NOT_FOUND'
   | 'UNSUPPORTED_PROTOCOL'
-  // Registration lifecycle.
   | 'DUPLICATE_ADAPTER'
   | 'INVALID_ADAPTER'
   | 'REGISTRATION_DISPOSED'
@@ -31,28 +22,22 @@ export type VisionErrorCode =
   | 'INVALID_PROVIDER'
   | 'DUPLICATE_DIRECTORY'
   | 'INVALID_DIRECTORY'
-  // Default-provider ownership.
   | 'DUPLICATE_DEFAULT_PROVIDER'
-  // Provider wire failures crossing the seam.
   | 'PROVIDER_ERROR'
 
 /**
- * Typed error for one vision operation. Carries the stable {@link code};
- * adapter-internal detail (HTTP status, provider messages) arrives chained
- * through `cause` and never leaks transport vocabulary into the code.
+ * Typed error for one vision operation. Adapter-internal transport detail
+ * stays in `cause`; optional provider-neutral execution counters make failed
+ * benchmark/diagnostic runs observable without exposing secrets or endpoints.
  */
 export class VisionError extends HarnessError {
-  /** Stable machine-routable failure class. */
   declare readonly code: VisionErrorCode
+  readonly trace?: VisionTrace
 
-  /**
-   * @param message - human-readable failure summary.
-   * @param code - stable provider-neutral machine code.
-   * @param options - optional chained cause.
-   */
-  constructor(message: string, code: VisionErrorCode, options?: { cause?: unknown }) {
+  constructor(message: string, code: VisionErrorCode, options?: { cause?: unknown; trace?: VisionTrace }) {
     super(message, code, options?.cause === undefined ? undefined : { cause: options.cause })
     this.name = 'VisionError'
+    this.trace = options?.trace
   }
 }
 
@@ -85,7 +70,6 @@ export function deepFreeze<T>(value: T): T {
     }
     const node = task.node
     if (node === null || typeof node !== 'object') continue
-    // A live signal must stay mutable so cancellation still works.
     if (node instanceof AbortSignal) continue
     if (seen.has(node)) continue
     seen.add(node)
