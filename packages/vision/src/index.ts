@@ -15,7 +15,7 @@ export type { VisionCircuitState, VisionCircuitSnapshot, VisionCircuitPolicy, Vi
 export { inferVisionTask, routeVisionTask } from './task-router.ts'
 export type { VisionTask, VisionQualityPolicy, VisionTaskRoute } from './task-router.ts'
 export { createMemoryVisionCache, createVisionAnswerKey, createVisionUnderstandingKey, normalizeVisionCacheText } from './cache.ts'
-export type { VisionUnderstanding, VisionAnswerCacheEntry, VisionCacheLayerMode, VisionCacheStore } from './cache.ts'
+export type { VisionUnderstanding, VisionAnswerCacheEntry, VisionCacheLayerMode, VisionCacheStore, MemoryVisionCacheOptions } from './cache.ts'
 export { createVisionTokenBudget } from './token-budget.ts'
 export type { VisionTokenBudget } from './token-budget.ts'
 export { selectVisionProvider } from './selector.ts'
