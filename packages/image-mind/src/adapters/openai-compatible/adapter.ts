@@ -162,18 +162,26 @@ async function sleepFor(ms: number, signal?: AbortSignal): Promise<void> {
       reject(signal.reason instanceof Error ? signal.reason : new Error('image-mind: request aborted during retry delay'))
       return
     }
-    const timer = setTimeout(resolve, ms)
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const cleanup = (): void => signal?.removeEventListener('abort', onAbort)
     const onAbort = (): void => {
-      clearTimeout(timer)
+      if (timer !== undefined) clearTimeout(timer)
+      cleanup()
       reject(signal?.reason instanceof Error ? signal.reason : new Error('image-mind: request aborted during retry delay'))
     }
+    timer = setTimeout(() => {
+      cleanup()
+      resolve()
+    }, ms)
     signal?.addEventListener('abort', onAbort, { once: true })
   })
 }
 
 function asWireError(error: unknown): ImageMindVisionError {
   if (error instanceof ImageMindVisionError) return error
-  if (error instanceof Error && error.name === 'AbortError') return new ImageMindVisionError(error.message, 'NETWORK_ERROR', { cause: error })
+  if (error instanceof Error && (error.name === 'AbortError' || error.name === 'TimeoutError')) {
+    return new ImageMindVisionError(error.message, error.name === 'TimeoutError' ? 'TIMEOUT' : 'NETWORK_ERROR', { cause: error })
+  }
   return new ImageMindVisionError((error as Error).message ?? String(error), 'PROVIDER_ERROR', { cause: error })
 }
 
@@ -230,7 +238,8 @@ async function callVisionOnce(
     })
   } catch (error) {
     if (request.signal !== undefined && request.signal.aborted) throw error
-    const isTimeout = error instanceof Error && error.name === 'AbortError'
+    const name = error instanceof Error ? error.name : ''
+    const isTimeout = name === 'AbortError' || name === 'TimeoutError'
     throw new ImageMindVisionError(
       isTimeout
         ? `image-mind: vision request timed out after ${options.timeoutMs}ms`
@@ -333,6 +342,11 @@ export class OpenAICompatibleVisionAdapter extends VisionAdapter {
         if (cacheKey !== undefined) this.options.cache?.set(cacheKey, result.text)
         return result
       } catch (error) {
+        // Caller cancellation is not a provider/network failure and must not
+        // enter retry accounting or fallback policy at all.
+        if (request.signal?.aborted === true) {
+          throw request.signal.reason instanceof Error ? request.signal.reason : error
+        }
         const wireError = asWireError(error)
         if (wireError.status === 413 && request.images.length > 1) {
           trace.splits += 1
@@ -340,8 +354,7 @@ export class OpenAICompatibleVisionAdapter extends VisionAdapter {
           if (cacheKey !== undefined) this.options.cache?.set(cacheKey, result.text)
           return result
         }
-        const retryable = wireError.retryable
-          || (request.signal?.aborted !== true && error instanceof Error && error.name === 'AbortError')
+        const retryable = wireError.retryable || (error instanceof Error && error.name === 'AbortError')
         if (!retryable || attempt >= this.maxRetries) {
           if (wireError.retryable && attempt > 0 && wireError.status !== undefined) {
             const hint = responseHint(wireError.status, true)
