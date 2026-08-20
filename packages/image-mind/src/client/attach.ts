@@ -80,20 +80,46 @@ export async function uploadImage(
 }
 
 /* ------------------------------------------------------------------ *
- * Downscaling before upload. Vision endpoints bill by pixel count, so a
- * large screenshot costs far more than the model needs; the browser scales
- * oversized images down to a reasonable long edge and re-encodes as JPEG
- * before they ever reach the host. Quality is effectively unchanged for
- * screenshots/photos, and the upload is smaller too. Any decode failure
- * falls back to the original bytes. Animated GIFs are never touched.
+ * Content-aware downscaling before upload. Vision endpoints bill by pixel
+ * count, but text-heavy screenshots lose useful OCR/UI detail much faster
+ * than photographs when they are aggressively resized or JPEG-encoded.
+ * PNGs therefore keep a larger long edge and remain lossless PNG; JPEG/WebP
+ * use the smaller photographic budget and JPEG encoding. Any decode/encode
+ * failure degrades to the original bytes. Animated GIFs are never touched.
  * ------------------------------------------------------------------ */
 
-/** Longest-edge cap for images scaled before upload (pixels). */
-export const COMPRESS_MAX_EDGE = 2048
+/** Longest-edge cap for photographic/lossy images scaled before upload. */
+export const LOSSY_COMPRESS_MAX_EDGE = 2048
+/** Longest-edge cap for PNG screenshots/documents, preserving small text. */
+export const PNG_COMPRESS_MAX_EDGE = 3072
+/** Backward-compatible name for callers that treated the old cap as photographic. */
+export const COMPRESS_MAX_EDGE = LOSSY_COMPRESS_MAX_EDGE
 /** Only images above this raw byte size are considered for scaling. */
 export const COMPRESS_MIN_BYTES = 1.5 * 1024 * 1024
-/** JPEG quality used for the re-encoded downscale. */
+/** JPEG quality used for photographic downscale. */
 const COMPRESS_JPEG_QUALITY = 0.85
+
+/** Pure preprocessing decision, exported so the quality contract is testable. */
+export interface ImagePreprocessPolicy {
+  maxEdge: number
+  outputType: 'image/png' | 'image/jpeg'
+  quality?: number
+}
+
+/**
+ * Pick a fidelity policy from the source media type.
+ * PNG is treated as screenshot/document-friendly: retain more pixels and do
+ * not introduce JPEG ringing around text. JPEG/WebP remain cost-optimized.
+ */
+export function imagePreprocessPolicy(mediaType: string): ImagePreprocessPolicy | undefined {
+  if (mediaType === 'image/png') {
+    return { maxEdge: PNG_COMPRESS_MAX_EDGE, outputType: 'image/png' }
+  }
+  if (mediaType === 'image/jpeg' || mediaType === 'image/webp') {
+    return { maxEdge: LOSSY_COMPRESS_MAX_EDGE, outputType: 'image/jpeg', quality: COMPRESS_JPEG_QUALITY }
+  }
+  return undefined
+}
 
 /** A picked image prepared for upload: possibly downscaled, always base64. */
 export type PreparedImage =
@@ -120,8 +146,10 @@ function readBlobAsBase64(blob: Blob): Promise<{ ok: true; base64: string } | { 
 
 /**
  * Read a picked image and downscale it when it is oversized, so the vision
- * model is billed on the size it actually needs. GIFs (animated) and small
- * images pass through untouched; every failure degrades to the original.
+ * model is billed only for useful resolution. PNG screenshots/documents keep
+ * a larger 3072px edge and lossless encoding; JPEG/WebP photos use 2048px
+ * JPEG. GIFs and small images pass through untouched. Every processing
+ * failure degrades to the original.
  * @param file - the picked image file.
  * @returns the base64 payload and the media type to upload (may differ from
  *   the source after re-encoding).
@@ -129,19 +157,19 @@ function readBlobAsBase64(blob: Blob): Promise<{ ok: true; base64: string } | { 
 export async function prepareImageForDescribe(file: File): Promise<PreparedImage> {
   const raw = await readFileAsBase64(file)
   if (!raw.ok) return raw
-  const compressible = (file.type === 'image/png' || file.type === 'image/jpeg' || file.type === 'image/webp')
-    && file.size > COMPRESS_MIN_BYTES
-  if (!compressible) return { ok: true, base64: raw.base64, mediaType: file.type }
+  const policy = imagePreprocessPolicy(file.type)
+  const compressible = policy !== undefined && file.size > COMPRESS_MIN_BYTES
+  if (!compressible || policy === undefined) return { ok: true, base64: raw.base64, mediaType: file.type }
 
   let bitmap: ImageBitmap | undefined
   try {
     bitmap = await createImageBitmap(file)
     const edge = Math.max(bitmap.width, bitmap.height)
-    if (edge <= COMPRESS_MAX_EDGE || bitmap.width === 0 || bitmap.height === 0) {
+    if (edge <= policy.maxEdge || bitmap.width === 0 || bitmap.height === 0) {
       bitmap.close()
       return { ok: true, base64: raw.base64, mediaType: file.type }
     }
-    const scale = COMPRESS_MAX_EDGE / edge
+    const scale = policy.maxEdge / edge
     const width = Math.max(1, Math.round(bitmap.width * scale))
     const height = Math.max(1, Math.round(bitmap.height * scale))
     const canvas = document.createElement('canvas')
@@ -152,19 +180,23 @@ export async function prepareImageForDescribe(file: File): Promise<PreparedImage
       bitmap.close()
       return { ok: true, base64: raw.base64, mediaType: file.type }
     }
-    // JPEG has no alpha: lay a white backdrop so transparent PNGs keep white
-    // (screenshots and photos are opaque anyway).
-    context.fillStyle = '#ffffff'
-    context.fillRect(0, 0, width, height)
+    // Only JPEG needs an opaque background. PNG keeps transparency and,
+    // importantly, avoids lossy ringing around small screenshot/document text.
+    if (policy.outputType === 'image/jpeg') {
+      context.fillStyle = '#ffffff'
+      context.fillRect(0, 0, width, height)
+    }
     context.drawImage(bitmap, 0, 0, width, height)
     bitmap.close()
-    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', COMPRESS_JPEG_QUALITY))
+    const blob = await new Promise<Blob | null>((resolve) => {
+      canvas.toBlob(resolve, policy.outputType, policy.quality)
+    })
     if (blob === null) return { ok: true, base64: raw.base64, mediaType: file.type }
     const down = await readBlobAsBase64(blob)
     if (!down.ok || down.base64.length >= raw.base64.length) {
       return { ok: true, base64: raw.base64, mediaType: file.type }
     }
-    return { ok: true, base64: down.base64, mediaType: 'image/jpeg' }
+    return { ok: true, base64: down.base64, mediaType: policy.outputType }
   } catch {
     try { bitmap?.close() } catch { /* double-close is a no-op; ignore */ }
     return { ok: true, base64: raw.base64, mediaType: file.type }
