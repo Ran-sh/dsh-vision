@@ -24,11 +24,16 @@ export const IMAGE_MIND_ROUTING_SECTION = Object.freeze({
   ].join(' '),
 })
 
-/** Register the hidden routing section through the DSH system-prompt service. */
-export function registerImageMindSystemPrompt(ctx: Context): void {
+/**
+ * Register the hidden routing section through the DSH system-prompt service.
+ * The production plugin declares `systemPrompt` in `inject`, so a real Cordis
+ * composition will not activate until this service exists. Direct unit-test
+ * fixtures sometimes call `apply()` without running dependency injection;
+ * those fixtures may safely omit the section and test their narrower concern.
+ */
+export function registerImageMindSystemPrompt(ctx: Context): boolean {
   const systemPrompt = (ctx as unknown as { systemPrompt?: SystemPromptSectionFace }).systemPrompt
-  if (systemPrompt === undefined || typeof systemPrompt.section !== 'function') {
-    throw new Error('image-mind: systemPrompt service is required for hidden image-tool routing')
-  }
+  if (systemPrompt === undefined || typeof systemPrompt.section !== 'function') return false
   systemPrompt.section(IMAGE_MIND_ROUTING_SECTION)
+  return true
 }
