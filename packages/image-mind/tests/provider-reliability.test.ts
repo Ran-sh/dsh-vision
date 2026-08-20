@@ -37,20 +37,33 @@ describe('provider reliability tracker', () => {
     expect(tracker.fallbacks(config(), 'primary', {})).toEqual(['second', 'third'])
   })
 
-  it('opens a circuit after repeated provider-level failures and re-allows it after cooldown', () => {
+  it('admits exactly one recovery fallback after circuit cooldown', () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date(1000))
-    const tracker = createProviderReliabilityTracker()
-    tracker.recordFailure('first', 100)
-    tracker.recordFailure('first', 100)
-    tracker.recordFailure('first', 100)
-    expect(tracker.snapshot('first').circuit.state).toBe('open')
-    expect(tracker.fallbacks(config(), 'primary', {})).not.toContain('first')
+    try {
+      const tracker = createProviderReliabilityTracker()
+      tracker.recordFailure('first', 100)
+      tracker.recordFailure('first', 100)
+      tracker.recordFailure('first', 100)
+      expect(tracker.snapshot('first').circuit.state).toBe('open')
+      expect(tracker.fallbacks(config(), 'primary', {})).not.toContain('first')
 
-    vi.setSystemTime(new Date(31_100))
-    expect(tracker.fallbacks(config(), 'primary', {})).toContain('first')
-    expect(tracker.snapshot('first').circuit.state).toBe('half-open')
-    vi.useRealTimers()
+      vi.setSystemTime(new Date(31_100))
+      const recovery = tracker.fallbacks(config(), 'primary', {})
+      expect(recovery[0]).toBe('first')
+      expect(recovery).toContain('first')
+      expect(tracker.snapshot('first').circuit.state).toBe('half-open')
+
+      // The admitted half-open probe is exclusive. A concurrent fallback
+      // resolution must not route a second request to the same provider until
+      // the first probe records success or failure.
+      expect(tracker.fallbacks(config(), 'primary', {})).not.toContain('first')
+
+      tracker.recordSuccess('first', 50)
+      expect(tracker.snapshot('first').circuit.state).toBe('closed')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('success resets the failure streak and closes the circuit', () => {
