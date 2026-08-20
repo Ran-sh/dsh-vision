@@ -2,6 +2,28 @@
 
 This file is the durable checklist for work that cannot be fully executed from the current GitHub-connector environment. Do not treat an unchecked item as verified merely because the corresponding code has deterministic unit tests.
 
+## Targeted regression after the 2026-08-21 Codex real-DSH report
+
+The source patches for the report's deterministic BLOCKER/HIGH failures and the static test-contract failures are now on `main`, but none of the items below is considered closed until rerun in the environment that originally exposed it.
+
+- [ ] **F-001 / real DSH built bundle:** on Windows Node 24, run `npm run build && npm run test:built`, install the newly built package through the official DSH plugin mechanism, paste/send an image, and confirm `understand_image` completes without `Dynamic require of "node:crypto" is not supported`. This validates the ESM `createRequire(import.meta.url)` bridge against the shipped bundle rather than only source imports.
+- [ ] **F-002 / user-visible routing secrecy:** in the real DSH web UI, send one and multiple images and confirm the user bubble contains only the user's text plus the neutral `已附加图片。` / `已附加 N 张图片。` marker. It must contain no `understand_image`, HTML routing comment, `sha256:` id, attachment JSON, MIME/dimension/byte metadata, or `/image-mind/raw/` URL.
+- [ ] **F-002 / model-only routing availability:** inspect/trace one real DSH prompt assembly and confirm the `tool:image-mind` system-prompt section is present for the model even though the routing rule is absent from the user bubble. Verify image-only and vague image questions still cause the main model to call `understand_image` with omitted `image`/`images` for the current session batch.
+- [ ] **F-003 / restart recovery:** send an image, record its raw id only in the test harness (not conversation text), restart the DSH host, verify `/image-mind/raw/<id>` returns HTTP 200, and ask the resumed session to inspect the image again. Confirm the host-side durable attachment index restores the complete `ImageAttachmentRef` and the model can read the persisted bytes.
+- [ ] **F-004 / execution gate:** rerun the Windows Node 24 `execution-gate.test.ts` FIFO case and confirm the queued third operation starts after capacity is released without relying on a fixed microtask count. Also retain the aborted-waiter capacity assertion.
+- [ ] **F-005 / circuit recovery:** rerun provider reliability tests and verify a provider is excluded during cooldown, exactly one half-open probe is admitted after cooldown, the probe actually enters the bounded fallback candidate set, success closes the circuit, and failure reopens it.
+- [ ] **F-009 / trace contract:** rerun `tool-thin.test.ts` and `vision-orchestration.integration.test.ts`; confirm task budgeting no longer trips the provider-internals structural guard and orchestration explicitly reports the expected provider-call/cache/model-fallback trace on first and cached-fallback calls.
+- [ ] **F-010 / Windows Node 24 benchmark transforms:** rerun the root benchmark test files that previously failed collection with `SyntaxError: Invalid or unexpected token`. The CLI modules no longer carry executable shebangs, but that is a targeted hypothesis until Vitest successfully collects and executes all three suites on the original Windows/Node 24 environment.
+- [ ] Run the complete `npm ci && npm run typecheck && npm test && npm run build && npm run test:package && npm run test:built` lane after the targeted checks pass; do not treat piecemeal green reruns as a replacement for the full workspace pass.
+- [ ] Only after the BLOCKER/HIGH targeted regression is green, rerun the browser Agent Routing cases T1–T5 and the broader real-DSH matrix. Do not spend Muse quota on a full quality benchmark while the integration path is still failing.
+
+Items intentionally **not** patched merely to make the report green:
+
+- Muse-listed Qwen models returned real `PROVIDER_ERROR` for all five visual probes; re-test when the gateway exposes a confirmed image-capable Qwen route rather than guessing a wire workaround.
+- MiMo UI/long-screenshot provider errors and PNG/JPEG quality variance need controlled reproduction before changing preprocessing or adapter behavior.
+- The 1440×20000 case reached the configured 1024-token provider cap. Re-test with an explicitly higher provider cap before changing the default or the hard-cap semantics; `effectiveMax = min(taskBudget, providerCap)` remains intentional.
+- The stale `node_modules/dsh-plugin-image-mind` junction after official plugin removal appears to belong to DSH/pnpm plugin-manager cleanup and should not be "fixed" by image-mind deleting profile files itself.
+
 ## Local build / package matrix
 
 - [ ] Linux + Node 22: `npm ci && npm run typecheck && npm test && npm run build && npm run test:package && npm run test:built`.
@@ -15,8 +37,8 @@ This file is the durable checklist for work that cannot be fully executed from t
 ## Browser / DSH integration
 
 - [ ] Drag and paste PNG/JPEG/WebP images in the DSH web UI; confirm send rewrite, preview, retry-on-failure, and draft retention.
-- [ ] Confirm the hidden `image-mind` routing comment and hidden full attachment note do not render visibly in the conversation UI.
-- [ ] Restart the DSH host after sending an image, then ask the model to inspect that old image again; verify the complete attachment reference survives in conversation text and the persisted attachment can still be read.
+- [ ] Confirm image-mind routing instructions and complete attachment metadata remain out of the rendered conversation UI; only the neutral attachment marker may be user-visible, while routing guidance reaches the model through the DSH system-prompt seam.
+- [ ] Restart the DSH host after sending an image, then ask the model to inspect that old image again; verify the host-side durable attachment index restores the complete reference and the persisted attachment can still be read without embedding the reference in conversation text.
 - [ ] Verify image-only sends reliably cause the main text model to call `understand_image` rather than answer without perception.
 - [ ] Verify `cache=refresh` and `cache=no-store` are selected appropriately when the user asks to re-read / re-OCR an image.
 - [ ] Verify layered evidence reuse is invisible to the normal UI: the main model receives useful visual evidence, while a second same-image/same-task question does not produce confusing stale wording or expose cache internals.
