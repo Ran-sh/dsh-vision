@@ -3,6 +3,7 @@
  * provider-reported token usage, and pure wire request builders.
  */
 
+import { inferVisionTask, routeVisionTask } from '@ran-sh/dsh-vision'
 import { ImageMindVisionError } from './adapter.ts'
 import type { LoadedImage } from './adapter.ts'
 import type { VisionApiStyle } from './types.ts'
@@ -93,11 +94,6 @@ function tokenCount(value: unknown): number | undefined {
 
 /**
  * Normalize the two common OpenAI-compatible usage vocabularies.
- *
- * Chat Completions normally reports `prompt_tokens` / `completion_tokens`;
- * Responses reports `input_tokens` / `output_tokens`. Compatible providers
- * sometimes use the newer names on chat responses, so each style accepts its
- * canonical pair first and the other pair as a conservative fallback.
  * Missing/malformed counters stay absent — never estimate token usage.
  */
 export function extractVisionUsage(payload: unknown, apiStyle: VisionApiStyle): ParsedVisionUsage | undefined {
@@ -119,6 +115,38 @@ export function extractVisionUsage(payload: unknown, apiStyle: VisionApiStyle): 
   }
 }
 
+export type OpenAIImageDetail = 'low' | 'auto' | 'high' | 'original'
+
+/** Only the official OpenAI endpoint receives OpenAI-specific detail fields. */
+function isOfficialOpenAIEndpoint(baseURL: string): boolean {
+  try {
+    const url = new URL(baseURL)
+    return url.protocol === 'https:'
+      && url.hostname === 'api.openai.com'
+      && url.pathname.replace(/\/+$/, '') === '/v1'
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Map provider-neutral task intent onto the official OpenAI image-detail
+ * vocabulary without leaking that vendor-specific field to compatible APIs.
+ * GPT-5.6 high-detail tasks use `original`; older models retain `high`.
+ */
+export function openAIImageDetailForRequest(
+  baseURL: string,
+  model: string,
+  prompt: string,
+  imageCount: number,
+): OpenAIImageDetail | undefined {
+  if (!isOfficialOpenAIEndpoint(baseURL)) return undefined
+  const detail = routeVisionTask(inferVisionTask(prompt, imageCount)).policy.detail
+  if (detail === 'low') return 'low'
+  if (detail === 'medium') return 'auto'
+  return /^gpt-5\.6(?:$|[-.])/i.test(model) ? 'original' : 'high'
+}
+
 /** Build the request the configured style sends: its path and JSON body. */
 export function buildVisionRequest(
   baseURL: string,
@@ -131,6 +159,7 @@ export function buildVisionRequest(
   originalImageCount?: number,
 ): { path: string; body: string } {
   const plannedPrompt = planVisionPrompt(prompt, images.length, imageOrdinals, originalImageCount)
+  const detail = openAIImageDetailForRequest(baseURL, model, prompt, originalImageCount ?? images.length)
 
   if (apiStyle === 'responses') {
     return {
@@ -145,6 +174,7 @@ export function buildVisionRequest(
             ...images.map(image => ({
               type: 'input_image',
               image_url: `data:${image.mimeType};base64,${image.bytes.toString('base64')}`,
+              ...(detail === undefined ? {} : { detail }),
             })),
           ],
         }],
@@ -162,7 +192,10 @@ export function buildVisionRequest(
           { type: 'text', text: plannedPrompt },
           ...images.map(image => ({
             type: 'image_url',
-            image_url: { url: `data:${image.mimeType};base64,${image.bytes.toString('base64')}` },
+            image_url: {
+              url: `data:${image.mimeType};base64,${image.bytes.toString('base64')}`,
+              ...(detail === undefined ? {} : { detail }),
+            },
           })),
         ],
       }],
