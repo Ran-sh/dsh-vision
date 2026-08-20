@@ -50,11 +50,23 @@ const HOOK_MARKER = '__dshImageMindSendHooked'
  * response that depends on pixels must use the perception tool instead of
  * hallucinating from an opaque sha256 handle.
  */
-export const VISION_ROUTE_HINT = '<!-- image-mind: The image references below are opaque attachment handles, not visual descriptions. If the answer depends on image contents, call understand_image before answering and never infer pixels from the handle itself. For an image-only message, inspect the image with understand_image before replying. -->'
+export const VISION_ROUTE_HINT = '<!-- image-mind: The image references below are opaque attachment handles, not visual descriptions. If the answer depends on image contents, call understand_image before answering and never infer pixels from the handle itself. Prefer the exact hidden [image attachment {...}] JSON metadata when present; unlike a bare sha256 id it remains resolvable after a host restart. For an image-only message, inspect the image with understand_image before replying. -->'
+
+/** Hide one full attachment note from UI rendering while keeping it in model context. */
+export function hiddenAttachmentNote(note: string): string {
+  // Notes are generated from JSON, but defensively break an HTML-comment close
+  // token if a future display name ever contains one.
+  return `<!-- ${note.replace(/-->/g, '--\u200b>')} -->`
+}
 
 /** Build the plain-text rewrite sent to the text-only main model. */
-export function buildVisionAwarePrompt(text: string, refs: readonly string[]): string {
-  return [text.trim(), VISION_ROUTE_HINT, ...refs].filter(part => part !== '').join('\n')
+export function buildVisionAwarePrompt(
+  text: string,
+  refs: readonly string[],
+  notes: readonly string[] = [],
+): string {
+  const metadata = notes.map(hiddenAttachmentNote)
+  return [text.trim(), VISION_ROUTE_HINT, ...metadata, ...refs].filter(part => part !== '').join('\n')
 }
 
 /**
@@ -81,6 +93,7 @@ export function installSendHook(conversation: unknown): void {
       return
     }
     const refs: string[] = []
+    const notes: string[] = []
     let failureReason: string | undefined
     for (const attachment of attachments) {
       // Preflight: use the content-aware image policy before upload so OCR/UI
@@ -96,6 +109,7 @@ export function installSendHook(conversation: unknown): void {
         break
       }
       refs.push(uploaded.markdown)
+      notes.push(uploaded.note)
     }
     if (refs.length !== attachments.length) {
       // Fail closed. Falling back to the shell's raw image send is a known
@@ -108,7 +122,7 @@ export function installSendHook(conversation: unknown): void {
       showToast(`图片发送失败：${failureReason ?? '未知原因'}；草稿图片已保留，可直接重试`, 'error')
       return
     }
-    const fullText = buildVisionAwarePrompt(text, refs)
+    const fullText = buildVisionAwarePrompt(text, refs, notes)
     const result = await session.prompt([{ type: 'text', text: fullText }], mode)
     if (!result.ok) {
       // The rewrite succeeded but the conversation send did not. Keep the
