@@ -180,6 +180,14 @@ export function understandImageTool(
               },
             },
           },
+          usage: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+              inputTokens: { type: 'integer' },
+              outputTokens: { type: 'integer' },
+            },
+          },
           trace: {
             type: 'object',
             additionalProperties: false,
@@ -195,6 +203,8 @@ export function understandImageTool(
           },
         },
       },
+      // UI remains answer-only; usage/trace are structured diagnostics for
+      // benchmark/debug consumers and are not rendered into the conversation.
       render: (_args, value) => [{ type: 'text', text: value.text }],
     },
     async execute(args, exec) {
@@ -268,6 +278,7 @@ export function understandImageTool(
           mimeType: image.mimeType,
           bytes: image.bytes.length,
         })),
+        ...result.usage === undefined ? {} : { usage: result.usage },
         ...result.trace === undefined ? {} : { trace: result.trace },
       }
     },
