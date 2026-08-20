@@ -1,0 +1,3 @@
+{"id":"ocr-example","category":"documents-ocr","prompt":"Transcribe the visible error exactly.","images":["fixtures/ocr-example.png"],"weight":1,"assertion":{"containsAll":["ERROR 42"],"excludes":["segmentation fault"]}}
+{"id":"ui-example","category":"ui-screenshots","prompt":"Identify the visible layout defect.","images":["fixtures/ui-example.png"],"weight":1,"assertion":{"containsAny":["clipped","overflow"]}}
+{"id":"compare-example","category":"multi-image-compare","prompt":"Compare the two screenshots and list visible changes.","images":["fixtures/before.png","fixtures/after.png"],"weight":1,"assertion":{"containsAll":["Image 1","Image 2"]}}
