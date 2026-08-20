@@ -1,15 +1,11 @@
 /**
- * Typed vision failures: extends the harness `HarnessError` base so the
- * `code` string is the shared taxonomy (exactly as `LlmError` and `WebError`
- * extend it), with a stable provider-neutral code per failure class. Tool
- * results and the settings card route on `code`, never by parsing `message`.
- * @module @ran-sh/dsh-vision/errors
+ * Typed vision failures with provider-neutral error codes and optional
+ * execution tracing for failed diagnostics/benchmarks.
  */
 
 import { HarnessError } from '@deepseek-ai/dsh-llm'
 import type { VisionTrace } from './types.ts'
 
-/** Stable provider-neutral failure classes for one vision operation. */
 export type VisionErrorCode =
   | 'PROVIDER_NOT_FOUND'
   | 'NO_ADAPTER'
@@ -25,11 +21,6 @@ export type VisionErrorCode =
   | 'DUPLICATE_DEFAULT_PROVIDER'
   | 'PROVIDER_ERROR'
 
-/**
- * Typed error for one vision operation. Adapter-internal transport detail
- * stays in `cause`; optional provider-neutral execution counters make failed
- * benchmark/diagnostic runs observable without exposing secrets or endpoints.
- */
 export class VisionError extends HarnessError {
   declare readonly code: VisionErrorCode
   readonly trace?: VisionTrace
@@ -37,25 +28,15 @@ export class VisionError extends HarnessError {
   constructor(message: string, code: VisionErrorCode, options?: { cause?: unknown; trace?: VisionTrace }) {
     super(message, code, options?.cause === undefined ? undefined : { cause: options.cause })
     this.name = 'VisionError'
-    this.trace = options?.trace
+    if (options?.trace !== undefined) this.trace = options.trace
   }
 }
 
-/** Narrow an unknown thrown value to a `VisionError`. */
 export function isVisionError(value: unknown): value is VisionError {
   return value instanceof VisionError
 }
 
-/**
- * Deep-freeze for runtime snapshots. The TypeScript `Readonly<>` / `interface`
- * modifiers are compile-time only; a snapshot an adapter receives must also
- * resist accidental mutation at runtime, so callers freeze the whole object
- * graph before handing it over.
- *
- * Iterative (a WeakSet + explicit pending stack) rather than recursive so a
- * deep graph cannot overflow the call stack; cycles are safe; `AbortSignal`
- * instances are left mutable (freezing a signal breaks later abort).
- */
+/** Deep-freeze snapshots while keeping AbortSignal live/mutable. */
 export function deepFreeze<T>(value: T): T {
   const seen = new WeakSet<object>()
   const pending: Array<{ kind: 'visit'; node: unknown } | { kind: 'property'; source: Record<string, unknown>; key: string }> = [
