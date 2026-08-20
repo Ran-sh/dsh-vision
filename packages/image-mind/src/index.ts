@@ -24,12 +24,13 @@ import { readConfigView, writeConfigView } from './attachments/legacy-config.ts'
 import { runConnectionTest, listEndpointModels } from './runtime/vision-rpc.ts'
 import { createProviderReliabilityTracker } from './runtime/provider-reliability.ts'
 import { ReliabilityVisionAdapter } from './runtime/reliability-adapter.ts'
+import { registerImageMindSystemPrompt } from './runtime/system-prompt-routing.ts'
 import { VISION_PROVIDER_CATALOG } from './providers/catalog.ts'
 import { createVisionCache } from './cache/vision-cache.ts'
 import { DEFAULT_MAX_BYTES } from './media/types.ts'
 
 export const name = 'image-mind'
-export const inject = ['vision', 'tools']
+export const inject = ['vision', 'tools', 'systemPrompt']
 
 export { runConnectionTest, listEndpointModels } from './runtime/vision-rpc.ts'
 export { VISUAL_FIXTURES, answerMatches } from './runtime/visual-fixtures.ts'
@@ -159,6 +160,7 @@ export function apply(ctx: Context, config: ConfigType = {}): void {
 
   void migrateLegacyInlineKeys(ctx, current().providers)
 
+  registerImageMindSystemPrompt(ctx)
   ctx.tools.register(understandImageTool(
     ctx,
     () => resolved().defaultPrompt,
