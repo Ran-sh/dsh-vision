@@ -145,7 +145,7 @@ dsh-vision/                        ← npm workspace 根
 要求：DeepSeek Harness 已安装（`npx @deepseek-ai/dsh web` 可启动），Node.js 22+，且 profile 的包管理器为 pnpm（Harness 官方 `dsh plugin` 机制基于 pnpm）。
 
 ```sh
-npx @deepseek-ai/dsh plugin --profile web add dsh-plugin-image-mind
+npx @deepseek-ai/dsh plugin --profile web add dsh-plugin-image-mind@0.1.1
 ```
 
 `dsh plugin` 是 Harness 官方命令：它把参数透传给 profile 目录下的 pnpm（add/remove/update），并在安装完成后自动 reconcile `dsh.profile.bundles` 层栈——依赖中声明了 `dsh.bundle` 的包自动成为 profile bundle 层。`@ran-sh/dsh-vision` 是 `dsh-plugin-image-mind` 的 npm 依赖，会随插件自动安装，**用户不需要单独安装 vision**。之后重启（或触发 HMR 刷新）web profile 即可。
@@ -177,7 +177,8 @@ npx @deepseek-ai/dsh plugin --profile web remove dsh-plugin-image-mind
 
 | 插件版本 | vision 版本 | 已验证 DSH | 状态 |
 |---|---|---|---|
-| 0.1.0 | 0.1.0 | CLI 11.7.0 / dsh-\* 0.1.0-rc.7 | KNOWN_GOOD（发布级） |
+| 0.1.1 | 0.1.0 | DSH CLI/runtime 0.1.0-rc.7 | KNOWN_GOOD（发布级） |
+| 0.1.0 | 0.1.0 | DSH CLI/runtime 0.1.0-rc.7 | 历史发布 |
 
 DSH 仍在开发预览：宿主运行时（`@deepseek-ai/dsh-*`）以 **peerDependencies** 提供（bounded range，不 ship 私有副本）；本插件不承诺与每个未来 DSH 版本兼容。详见 `docs/compatibility.md`。若 DSH 更新导致插件无法加载：先按官方命令移除插件 → 确认 DSH 可启动 → 查看兼容矩阵 → 安装兼容的新版本。不要手工改 profile。
 
@@ -214,7 +215,7 @@ npm run build
 全部离线、无密钥、确定性。真实端点验证单独跑：
 
 ```sh
-RUN_VISION_E2E=1 npx vitest run --config packages/image-mind/vitest.config.ts tests/e2e-real.test.ts
+RUN_VISION_E2E=1 npm exec --workspace packages/image-mind -- vitest run tests/e2e-real.test.ts
 ```
 
 需要 DSH 运行时联调时（在真实 profile 里跑）：

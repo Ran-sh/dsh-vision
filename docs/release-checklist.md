@@ -18,7 +18,7 @@ git diff --check
 ## 2. Real E2E (requires credentials in ~/.dsh/.credentials.yaml)
 
 ```sh
-RUN_VISION_E2E=1 npx vitest run --config packages/image-mind/vitest.config.ts tests/e2e-real.test.ts
+RUN_VISION_E2E=1 npm exec --workspace packages/image-mind -- vitest run tests/e2e-real.test.ts
 ```
 
 Must prove: active-provider auto-call, explicit provider override, model override reaching the wire, real image recognition, Chinese prompt, OCR prompt, no key printed, cancellation.
