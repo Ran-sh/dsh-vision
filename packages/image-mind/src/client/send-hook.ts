@@ -42,17 +42,17 @@ interface ConversationSendFace {
 const HOOK_MARKER = '__dshImageMindSendHooked'
 
 /**
- * User-safe routing marker. DSH currently renders the submitted text verbatim
- * in the user bubble, so HTML comments are NOT a hidden channel. Keep this
- * message deliberately free of attachment ids, raw URLs, dimensions, byte
- * counts, file metadata, or other host-only routing facts.
+ * User-visible attachment marker. This deliberately carries NO tool-routing
+ * instruction and no host attachment metadata. The model-side routing rule is
+ * registered through the DSH system-prompt service instead of being smuggled
+ * into the user's conversation text.
  */
-export const VISION_ROUTE_HINT = '已附加图片。若回答依赖图片内容，请先调用 understand_image 查看图片，不要根据附件占位信息猜测。'
+export const VISION_ATTACHMENT_MARKER = '已附加图片。'
 
-/** Build the text-only rewrite without leaking host attachment metadata. */
+/** Build the text-only rewrite without leaking routing or host attachment metadata. */
 export function buildVisionAwarePrompt(text: string, imageCount = 1): string {
   const count = Number.isSafeInteger(imageCount) && imageCount > 0 ? imageCount : 1
-  const marker = count === 1 ? VISION_ROUTE_HINT : `已附加 ${count} 张图片。若回答依赖图片内容，请先调用 understand_image 查看图片，不要猜测。`
+  const marker = count === 1 ? VISION_ATTACHMENT_MARKER : `已附加 ${count} 张图片。`
   return [text.trim(), marker].filter(part => part !== '').join('\n')
 }
 
