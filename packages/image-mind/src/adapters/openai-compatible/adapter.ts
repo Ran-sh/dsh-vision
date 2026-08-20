@@ -299,10 +299,11 @@ export class OpenAICompatibleVisionAdapter extends VisionAdapter {
     // a configuration change and the next call re-resolves.
     const options = this.snapshot(provider, request)
     const apiKey = await this.options.resolveApiKey(options)
-    const cacheKey = this.options.cache === undefined
+    const cacheMode = request.cache ?? 'use'
+    const cacheKey = this.options.cache === undefined || cacheMode === 'no-store'
       ? undefined
       : semanticRequestKey(options, request.prompt, request.images)
-    if (cacheKey !== undefined) {
+    if (cacheKey !== undefined && cacheMode === 'use') {
       const cached = this.options.cache?.get(cacheKey)
       if (cached !== undefined) {
         return { text: cached, provider: options.provider, model: options.model }
