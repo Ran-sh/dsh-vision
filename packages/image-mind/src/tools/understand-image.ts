@@ -13,6 +13,7 @@ import type { VisionCacheMode, VisionCacheStore, VisionTrace } from '@ran-sh/dsh
 import type {} from '@ran-sh/dsh-vision'
 import { loadImage } from '../media/load.ts'
 import type { LoadedImage } from '../media/types.ts'
+import { latestSessionAttachmentRefs } from '../attachments/ref-index.ts'
 import { isReusableEvidenceTask, reusableEvidenceKey, reusableEvidencePrompt } from '../runtime/reusable-evidence.ts'
 
 export const MAX_IMAGES_PER_REQUEST = 8
@@ -115,31 +116,28 @@ export function understandImageTool(
   evidenceCache?: VisionCacheStore,
 ): ReturnType<typeof defineTool> {
   const DESCRIPTION_HEAD =
-    'Inspect one or more images — local absolute paths, http(s) URLs, or the JSON of image attachment '
-    + 'notes — and return visual evidence the main model can reason over. YOU MUST pass either `image` '
-    + '(single) or `images` (array) — never call with neither. Call this for OCR, charts, screenshots, '
-    + 'UI analysis, translation, code/terminal images, documents, comparisons, or photos. '
-    + 'Always pass an explicit `prompt` describing what the user needs. For stable evidence tasks such as '
-    + 'OCR/UI/code/documents/charts, image-mind may reuse task-scoped visual evidence across later questions. '
-    + 'If the user explicitly asks you to look again, re-read/OCR from the pixels, ignore a previous '
-    + 'analysis, or verify a detail afresh, set `cache` to `refresh`. Use `no-store` only when the '
-    + 'caller specifically needs the result not to enter either cache layer.'
+    'Inspect one or more images and return visual evidence the main model can reason over. When the current '
+    + 'DSH user message has uploaded images, call this tool without `image`/`images` to inspect that session’s '
+    + 'latest image batch. Explicit references are also supported: local absolute paths, http(s) URLs, complete '
+    + 'image attachment JSON, or bare attachment ids. Call this for OCR, charts, screenshots, UI analysis, '
+    + 'translation, code/terminal images, documents, comparisons, or photos. Always pass an explicit `prompt` '
+    + 'describing what the user needs. For stable evidence tasks such as OCR/UI/code/documents/charts, image-mind '
+    + 'may reuse task-scoped visual evidence across later questions. If the user explicitly asks you to look again, '
+    + 're-read/OCR from the pixels, ignore a previous analysis, or verify a detail afresh, set `cache` to `refresh`. '
+    + 'Use `no-store` only when the caller specifically needs the result not to enter either cache layer.'
 
   return defineTool({
     name: 'understand_image',
-    description: DESCRIPTION_HEAD
-      + ' Each image may be a local path, an http(s) URL, the JSON object from an `[image attachment …]` '
-      + 'note, or the bare attachment id from `![图片](/image-mind/raw/<id>)`. Prefer the complete hidden '
-      + '`[image attachment …]` JSON when available because it survives a host restart.',
+    description: DESCRIPTION_HEAD,
     parameters: {
       image: {
         type: 'string',
-        description: 'REQUIRED unless `images` is passed. Absolute local image path, http(s) URL, complete [image attachment …] JSON object, or bare attachment id.',
+        description: 'Optional explicit single image reference. Omit when inspecting the current DSH session’s latest uploaded image batch.',
       },
       images: {
         type: 'array',
         items: { type: 'string' },
-        description: `REQUIRED unless \`image\` is passed. Several image references to analyze together. At most ${MAX_IMAGES_PER_REQUEST}. Mutually exclusive with \`image\`.`,
+        description: `Optional explicit image references. At most ${MAX_IMAGES_PER_REQUEST}. Mutually exclusive with \`image\`; omit both for the current DSH session batch.`,
       },
       prompt: {
         type: 'string',
@@ -213,16 +211,28 @@ export function understandImageTool(
       const hasMany = (args.images ?? []).some(ref => ref.trim().length > 0)
       if (hasSingle && hasMany) throw new Error('image-mind: pass either `image` (single) or `images` (array), not both')
 
-      const rawRefs = hasSingle ? [args.image!.trim()] : (args.images ?? []).map(ref => ref.trim())
-      if (rawRefs.some(ref => ref.length === 0)) throw new Error('image-mind: image references must be non-empty strings')
-      const refs = rawRefs.filter(ref => ref.length > 0)
-      if (refs.length === 0) throw new Error('image-mind: pass `image` (single) or `images` (array) with at least one image reference')
+      const explicitRawRefs = hasSingle ? [args.image!.trim()] : (args.images ?? []).map(ref => ref.trim())
+      if (explicitRawRefs.some(ref => ref.length === 0)) throw new Error('image-mind: image references must be non-empty strings')
+      let refs = explicitRawRefs.filter(ref => ref.length > 0)
+      let sourceLabels = refs.map(safeImageIdentity)
+
+      if (refs.length === 0) {
+        const sessionId = exec.agent?.id
+        if (sessionId !== undefined) {
+          const sessionRefs = await latestSessionAttachmentRefs(ctx, String(sessionId))
+          refs = sessionRefs.map(ref => JSON.stringify(ref))
+          sourceLabels = sessionRefs.map((_ref, index) => `session-image-${index + 1}`)
+        }
+      }
+      if (refs.length === 0) {
+        throw new Error('image-mind: pass at least one image reference, or call from a DSH session with an uploaded image batch')
+      }
       if (refs.length > MAX_IMAGES_PER_REQUEST) throw new Error(`image-mind: at most ${MAX_IMAGES_PER_REQUEST} images per call; got ${refs.length}`)
 
       const images = await loadImagesConcurrent(ctx, refs, exec.signal, maxBytes, allowPrivateNetwork, MAX_TOTAL_IMAGE_BYTES_FACTOR)
       const callerPrompt = args.prompt ?? defaultPrompt()
       const task = inferVisionTask(callerPrompt, images.length)
-      const budget = routeVisionTask(task).policy
+      const { maxOutputTokens } = routeVisionTask(task).policy
       const cacheMode = args.cache ?? 'use'
       const explicitRoute = (args.provider?.trim().length ?? 0) > 0 || (args.model?.trim().length ?? 0) > 0
       const useEvidenceLayer = evidenceCache !== undefined
@@ -239,7 +249,7 @@ export function understandImageTool(
             model: hit.model,
             provider: hit.provider,
             images: images.map((image, index) => ({
-              source: safeImageIdentity(refs[index]),
+              source: sourceLabels[index],
               mimeType: image.mimeType,
               bytes: image.bytes.length,
             })),
@@ -254,7 +264,7 @@ export function understandImageTool(
         model: args.model,
         prompt: requestPrompt,
         images,
-        maxOutputTokens: budget.maxOutputTokens,
+        maxOutputTokens,
         ...args.cache === undefined ? {} : { cache: args.cache },
         signal: exec.signal,
       })
@@ -274,7 +284,7 @@ export function understandImageTool(
         model: result.model,
         provider: result.provider,
         images: images.map((image, index) => ({
-          source: safeImageIdentity(refs[index]),
+          source: sourceLabels[index],
           mimeType: image.mimeType,
           bytes: image.bytes.length,
         })),
