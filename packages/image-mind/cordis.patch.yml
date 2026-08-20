@@ -1,10 +1,11 @@
 # dsh-plugin-image-mind bundle patch: inserts TWO rows into the web profile
 # roster — the vision service entry (@ran-sh/dsh-vision, owns ctx.vision)
-# and the image-mind provider entry (dsh-plugin-image-mind, injects
-# ['vision'] and registers the understand_image tool, the /image-mind attach +
-# raw routes, and the "image-mind" settings section). The order of the two
-# rows does not matter: Cordis resolves the 'vision' inject dependency, so
-# image-mind activates only once the service is up.
+# and the image-mind provider entry (dsh-plugin-image-mind, hard-injects the
+# vision + tools services, optionally contributes hidden routing guidance when
+# systemPrompt is present, and registers the understand_image tool, the
+# /image-mind attach + raw routes, and the "image-mind" settings section).
+# The order of the two rows does not matter: Cordis resolves the hard service
+# dependencies, so image-mind activates only once vision/tools are available.
 - insert:
     - id: vision-runtime
       name: '@ran-sh/dsh-vision'
