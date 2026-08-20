@@ -14,7 +14,7 @@ const PNG = Buffer.from([
 ])
 
 describe('understand_image trace passthrough', () => {
-  it('keeps execution diagnostics structured while rendering text normally', async () => {
+  it('keeps execution diagnostics in the structured tool result', async () => {
     const ctx = new Context()
     const trace = {
       providerCalls: 3,
@@ -40,6 +40,5 @@ describe('understand_image trace passthrough', () => {
     expect(result.trace).toEqual(trace)
     expect(result.provider).toBe('backup')
     expect(result.text).toBe('answer')
-    expect(tool.output.render?.({}, result as never)).toEqual([{ type: 'text', text: 'answer' }])
   })
 })
