@@ -1,5 +1,3 @@
-#!/usr/bin/env node
-
 /**
  * Deterministic scorer for the dsh-vision visual-quality benchmark.
  *
