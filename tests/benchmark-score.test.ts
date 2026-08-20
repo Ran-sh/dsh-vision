@@ -64,6 +64,29 @@ describe('vision benchmark scorer', () => {
     expect(score.traceCoverage).toBe(0.5)
   })
 
+  it('does not count null telemetry as reported zero-cost telemetry', () => {
+    const score = scoreBenchmark([{ id: 'nulls' }], [{
+      id: 'nulls',
+      answer: 'facts',
+      toolCalled: true,
+      providerCalls: null,
+      payloadBytes: null,
+      cacheHits: null,
+      retries: null,
+      modelFallbacks: null,
+      providerFallbacks: null,
+      splits: null,
+      inputTokens: null,
+      outputTokens: null,
+    }])
+
+    expect(score.traceCoverage).toBe(0)
+    expect(score.tokenUsageCoverage).toBe(0)
+    expect(score.zeroProviderReuseRate).toBe(0)
+    expect(score.totals.calls).toBe(0)
+    expect(score.totals.inputTokens).toBe(0)
+  })
+
   it('counts forbidden-answer hits as assertion failures', () => {
     const score = scoreBenchmark([
       { id: 'x', assertion: { excludes: ['hallucinated'] } },
