@@ -1,19 +1,18 @@
 /**
  * The `understand_image` tool: a thin consumer of `ctx.vision`. It loads one
- * or more images (media layer) and hands the request to the runtime — it
- * never touches baseURL, apiKey, apiStyle, timeout, fetch, protocol selection,
- * model discovery, or retry policy. Provider and model defaults are resolved
- * by the runtime from its own provider registration. The image never enters
- * the conversation: only the returned text crosses.
+ * or more images (media layer), classifies broad visual intent through the
+ * provider-neutral vision task router, and hands a bounded request to the
+ * runtime. Provider/model/wire details remain outside the tool.
  * @module dsh-plugin-image-mind/tools/understand-image
  */
 
 import type { Context } from '@deepseek-ai/cordis'
 import { defineTool, type GenericCallView } from '@deepseek-ai/dsh-tools'
-import { loadImage } from '../media/load.ts'
-import type { LoadedImage } from '../media/types.ts'
+import { inferVisionTask, routeVisionTask } from '@ran-sh/dsh-vision'
 import type { VisionCacheMode } from '@ran-sh/dsh-vision'
 import type {} from '@ran-sh/dsh-vision'
+import { loadImage } from '../media/load.ts'
+import type { LoadedImage } from '../media/types.ts'
 
 export const MAX_IMAGES_PER_REQUEST = 8
 export const MAX_TOTAL_IMAGE_BYTES_FACTOR = 2
@@ -192,8 +191,6 @@ export function understandImageTool(
           },
         },
       },
-      // Conversation/UI rendering stays clean: structured trace metadata is
-      // available to diagnostics/benchmarks but the user sees the answer text.
       render: (_args, value) => [{ type: 'text', text: value.text }],
     },
     async execute(args, exec) {
@@ -214,12 +211,17 @@ export function understandImageTool(
       if (refs.length > MAX_IMAGES_PER_REQUEST) {
         throw new Error(`image-mind: at most ${MAX_IMAGES_PER_REQUEST} images per call; got ${refs.length}`)
       }
+
       const images = await loadImagesConcurrent(ctx, refs, exec.signal, maxBytes, allowPrivateNetwork, MAX_TOTAL_IMAGE_BYTES_FACTOR)
+      const prompt = args.prompt ?? defaultPrompt()
+      const task = inferVisionTask(prompt, images.length)
+      const budget = routeVisionTask(task).policy
       const result = await ctx.vision.call({
         provider: args.provider,
         model: args.model,
-        prompt: args.prompt ?? defaultPrompt(),
+        prompt,
         images,
+        maxOutputTokens: budget.maxOutputTokens,
         ...args.cache === undefined ? {} : { cache: args.cache },
         signal: exec.signal,
       })
