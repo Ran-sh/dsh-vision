@@ -26,9 +26,6 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import { installSettingsSection } from '@deepseek-ai/dsh-settings'
-// Type-only: the `ctx.vision` Context augmentation comes from the vision
-// service package. The runtime instance itself is injected through the
-// 'vision' service key —this plugin never constructs it.
 import type {} from '@ran-sh/dsh-vision'
 import { VisionError } from '@ran-sh/dsh-vision'
 import type { VisionRequest } from '@ran-sh/dsh-vision'
@@ -41,20 +38,14 @@ import { migrateLegacyInlineKeys } from './credentials/migrate.ts'
 import { registerAttachRoute } from './attachments/routes.ts'
 import { readConfigView, writeConfigView } from './attachments/legacy-config.ts'
 import { runConnectionTest, listEndpointModels } from './runtime/vision-rpc.ts'
+import { automaticProviderFallbacks } from './runtime/provider-fallback.ts'
 import { VISION_PROVIDER_CATALOG } from './providers/catalog.ts'
 import { createVisionCache } from './cache/vision-cache.ts'
 import { DEFAULT_MAX_BYTES } from './media/types.ts'
 
 export const name = 'image-mind'
-// 'vision' and 'tools' are hard dependencies (injected); 'webServer' is
-// optional and probed per call via ctx.get (the attach route degrades
-// gracefully on headless mounts).
 export const inject = ['vision', 'tools']
 
-// Host-side exports the built artifact keeps: the connection-test RPC (the
-// settings card reaches it through the routes; direct callers and the
-// built-artifact verification use the same functions) and the embedded
-// visual-challenge fixtures.
 export { runConnectionTest, listEndpointModels } from './runtime/vision-rpc.ts'
 export { VISUAL_FIXTURES, answerMatches } from './runtime/visual-fixtures.ts'
 
@@ -64,19 +55,11 @@ export { VISUAL_FIXTURES, answerMatches } from './runtime/visual-fixtures.ts'
  * @param config - deployment configuration.
  */
 export function apply(ctx: Context, config: ConfigType = {}): void {
-  // The loader fills schema defaults before apply, so an unconfigured entry
-  // still arrives with default fields set. Only a config that actually names
-  // a provider or active is validated eagerly —an unconfigured mount loads
-  // silently and the first call fails with a clear "no active provider".
   const configHasProviders = config.providers !== undefined && Object.keys(config.providers).length > 0
   if (configHasProviders || config.active !== undefined) {
     resolveConfig(config)
   }
   let current: () => ConfigType = () => config
-  // Official last-good pattern: a live settings snapshot that fails beyond
-  // the schema keeps serving the last good snapshot (logged once per bad
-  // snapshot) and recovers when the settings turn good. A static composition
-  // error has no last good yet, so it fails loud at load.
   let lastRaw: ConfigType | undefined
   let lastGood: ResolvedConfig | undefined
   const resolved = (): ResolvedConfig => {
@@ -97,28 +80,15 @@ export function apply(ctx: Context, config: ConfigType = {}): void {
   }
   resolved()
 
-  // The vision service is injected (inject: ['vision']): the @ran-sh/dsh-vision
-  // package owns ctx.vision, this plugin only registers into it —exactly as
-  // llm-deepseek injects ['llm'] and registers into ctx.llm. The
-  // default-provider decision is runtime-owned, but the ACTIVE provider is
-  // this plugin's configuration, so the plugin registers the resolver on the
-  // injected runtime under its own owner id; the tool stays thin and never
-  // reads `active` itself. The registration handle doubles as the fiber
-  // disposer: unloading the plugin withdraws the strategy, so no stale
-  // resolver can outlive its owner.
   ctx.vision.registerDefaultProviderResolver('image-mind', () => resolved().active)
-  // Short-lived semantic cache scoped to this mount: identical provider +
-  // model + image + prompt within the TTL reuse the prior answer.
   const cache = createVisionCache()
-  // The adapter owns every provider fact: it resolves the current immutable
-  // endpoint snapshot per call from the last-good configuration (the request's
-  // model override rides along so the snapshot carries it) and the bearer key
-  // from the same snapshot —the endpoint and the secret sent to it can never
-  // come from different configuration generations. The runtime never sees a
-  // baseURL, protocol style, or credential reference.
   const adapter = new OpenAICompatibleVisionAdapter({
     resolveProviderOptions: (provider, request) => connectionSnapshotOf(resolved(), provider, request),
     resolveApiKey: options => resolveApiKey(ctx, options),
+    // Cross-provider recovery is provider-plugin policy, not a Runtime route
+    // selection rule. It is evaluated from the latest last-good snapshot for
+    // every exhausted call, so settings changes take effect immediately.
+    resolveProviderFallbacks: (provider, request) => automaticProviderFallbacks(resolved(), provider, request),
     cache,
   })
 
@@ -139,13 +109,11 @@ export function apply(ctx: Context, config: ConfigType = {}): void {
     }
     if (registration === undefined) {
       if (routes.length === 0) {
-        // Startup with zero providers: stay dormant, no empty registration.
         registeredRoutes = routes
         return
       }
       registration = ctx.vision.registerAdapter(routes, adapter)
     } else {
-      // A live registration replaces atomically; `replace([])` is legal.
       registration.replace(routes)
     }
     registeredRoutes = routes
@@ -156,10 +124,8 @@ export function apply(ctx: Context, config: ConfigType = {}): void {
   // (advisory "what can be configured"), a second owns ONLY the user-created
   // providers whose ids are absent from the catalog —a catalog provider the
   // user configures is not re-declared (that would violate registration
-  // ownership). Like the adapter registration, an empty initial user set
-  // registers nothing and `replace([])` stays legal once live. Directory
-  // entries carry display metadata only —endpoint, protocol, and credential
-  // facts live in the adapter's own resolution, never in the directory.
+  // ownership). Directory entries carry display metadata only —endpoint,
+  // protocol, and credential facts live in the adapter's own resolution.
   const catalogIds = new Set(VISION_PROVIDER_CATALOG.map(entry => entry.id))
   const catalogDirectory = ctx.vision.registerConfigurableProviders(
     VISION_PROVIDER_CATALOG.map(entry => ({
@@ -181,13 +147,11 @@ export function apply(ctx: Context, config: ConfigType = {}): void {
     }
     if (userDirectory === undefined) {
       if (entries.length === 0) {
-        // Startup with no custom providers: stay dormant, no empty registration.
         registeredUserEntries = ids
         return
       }
       userDirectory = ctx.vision.registerConfigurableProviders(entries)
     } else {
-      // A live directory replaces atomically; `replace([])` is legal.
       userDirectory.replace(entries)
     }
     registeredUserEntries = ids
@@ -199,8 +163,6 @@ export function apply(ctx: Context, config: ConfigType = {}): void {
       current = source
     },
     onChange: () => {
-      // A section change re-resolves (last-good keeps the previous snapshot
-      // on a bad one) and atomically re-registers the route + directory sets.
       try {
         resolved()
         ensureRegistration()
@@ -216,30 +178,16 @@ export function apply(ctx: Context, config: ConfigType = {}): void {
     },
   })
 
-  // Legacy inline apiKey migration: move any stored `providers.<id>.apiKey`
-  // into the credential store and clear the inline field (idempotent,
-  // best-effort, never drops the user's configuration). Runs once against the
-  // stored section; the settings card never creates inline keys.
   void migrateLegacyInlineKeys(ctx, current().providers)
 
-  // The thin tool: it only loads the image and hands the request to ctx.vision.
   ctx.tools.register(understandImageTool(
     ctx,
     () => resolved().defaultPrompt,
     () => ({ maxBytes: resolved().maxBytes, allowPrivateNetwork: resolved().allowPrivateNetwork }),
   ))
 
-  // Attachment routes + thin vision RPC; the legacy /image-mind/config
-  // gateway stays as a compatibility transport. The web server is optional
-  // (headless mounts have none), but on some DSH versions it is attached to
-  // the context only after this plugin's apply — the official host plugins
-  // declare webServer as an injected hard dependency; keeping it optional
-  // here, we register immediately when it is already present, otherwise as
-  // soon as the host attaches it (idempotent service + attach hooks).
   const registerRoutes = (): void => {
     if (ctx.get('webServer') === undefined) return
-    // Hosts keep the same prefix registered idempotently (the host replaces
-    // the row), so repeated calls are harmless.
     registerAttachRoute(ctx, {
       readMaxBytes: () => current().maxBytes ?? DEFAULT_MAX_BYTES,
       readConfigView: () => readConfigView(ctx),
@@ -249,10 +197,6 @@ export function apply(ctx: Context, config: ConfigType = {}): void {
       catalog: () => VISION_PROVIDER_CATALOG,
     })
   }
-  // The web server is optional (headless mounts have none) and, on some DSH
-  // versions, is attached to the context only after this plugin's apply. Poll
-  // briefly for it instead of relying on a service-lifecycle event name; on a
-  // headless mount the poll simply gives up and no routes are registered.
   registerRoutes()
   if (ctx.get('webServer') === undefined) {
     let attempts = 0
@@ -272,12 +216,6 @@ export function apply(ctx: Context, config: ConfigType = {}): void {
  * facts, plus the request's model override. The adapter deep-freezes the
  * snapshot before the wire layer sees it, so an in-flight request never
  * observes a settings change and the next call re-resolves.
- * @param resolved - the current last-good resolved configuration.
- * @param requested - the provider id the runtime already selected (always
- *   present on the dispatch path; kept optional for direct callers).
- * @param request - the caller's request; a non-empty `model` override wins
- *   over the provider's configured default. Never mutates the provider's own
- *   configuration.
  */
 function connectionSnapshotOf(
   resolved: ResolvedConfig,
@@ -308,8 +246,6 @@ function connectionSnapshotOf(
     maxOutputTokens,
     timeoutMs: resolved.timeoutMs,
     ...spec.apiKeyEnv === undefined || spec.apiKeyEnv.length === 0 ? {} : { apiKeyEnv: String(spec.apiKeyEnv) },
-    // Host-only legacy fallback: a still-unmigrated inline key resolves in
-    // the host process, never reaching the browser.
     ...spec.apiKey === undefined || spec.apiKey.length === 0 ? {} : { inlineApiKey: spec.apiKey },
   }
 }
