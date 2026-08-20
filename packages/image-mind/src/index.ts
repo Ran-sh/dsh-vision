@@ -38,7 +38,8 @@ import { migrateLegacyInlineKeys } from './credentials/migrate.ts'
 import { registerAttachRoute } from './attachments/routes.ts'
 import { readConfigView, writeConfigView } from './attachments/legacy-config.ts'
 import { runConnectionTest, listEndpointModels } from './runtime/vision-rpc.ts'
-import { automaticProviderFallbacks } from './runtime/provider-fallback.ts'
+import { createProviderReliabilityTracker } from './runtime/provider-reliability.ts'
+import { ReliabilityVisionAdapter } from './runtime/reliability-adapter.ts'
 import { VISION_PROVIDER_CATALOG } from './providers/catalog.ts'
 import { createVisionCache } from './cache/vision-cache.ts'
 import { DEFAULT_MAX_BYTES } from './media/types.ts'
@@ -82,15 +83,20 @@ export function apply(ctx: Context, config: ConfigType = {}): void {
 
   ctx.vision.registerDefaultProviderResolver('image-mind', () => resolved().active)
   const cache = createVisionCache()
-  const adapter = new OpenAICompatibleVisionAdapter({
+  const reliability = createProviderReliabilityTracker()
+  const wireAdapter = new OpenAICompatibleVisionAdapter({
     resolveProviderOptions: (provider, request) => connectionSnapshotOf(resolved(), provider, request),
     resolveApiKey: options => resolveApiKey(ctx, options),
     // Cross-provider recovery is provider-plugin policy, not a Runtime route
-    // selection rule. It is evaluated from the latest last-good snapshot for
-    // every exhausted call, so settings changes take effect immediately.
-    resolveProviderFallbacks: (provider, request) => automaticProviderFallbacks(resolved(), provider, request),
+    // selection rule. Candidates are ranked from current last-good config plus
+    // bounded in-memory health/circuit state; settings changes take effect on
+    // the very next exhausted call.
+    resolveProviderFallbacks: (provider, request) => reliability.fallbacks(resolved(), provider, request),
     cache,
   })
+  // The decorator observes provider-level outcomes without touching transport
+  // logic. Retry/model fallback/cache remain owned by the wire adapter.
+  const adapter = new ReliabilityVisionAdapter(wireAdapter, reliability)
 
   // The adapter registration follows the settings section: a section change
   // atomically replaces the route set (including `replace([])` when the user
