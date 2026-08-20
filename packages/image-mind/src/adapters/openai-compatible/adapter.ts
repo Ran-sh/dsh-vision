@@ -80,13 +80,21 @@ function responseHint(status: number, retried: boolean, excerpt?: string): strin
   return ''
 }
 
+/** Stable default ordinals for a request that has not been split. */
+function defaultImageOrdinals(imageCount: number): number[] {
+  return Array.from({ length: imageCount }, (_, index) => index + 1)
+}
+
 /** The semantic identity of one vision request: a fixed-length SHA-256 of
- * every wire-affecting field plus the ORDERED image digests (never the image
- * bytes themselves — the cache must not hold large image copies). */
+ * every wire-affecting field plus the ORDERED image digests and stable image
+ * identities (never the image bytes themselves — the cache must not hold
+ * large image copies). */
 export function semanticRequestKey(
   options: Readonly<OpenAICompatibleVisionOptions>,
   prompt: string,
   images: readonly { bytes: Buffer; mimeType: string }[],
+  imageOrdinals: readonly number[] = defaultImageOrdinals(images.length),
+  originalImageCount: number = images.length,
 ): string {
   const canonical = JSON.stringify([
     options.provider, options.baseURL, options.model,
@@ -94,6 +102,8 @@ export function semanticRequestKey(
     // Ordered image digests: [A,B] != [B,A].
     images.map(image => [sha256Hex(image.bytes), image.mimeType]),
     prompt,
+    imageOrdinals,
+    originalImageCount,
   ])
   return sha256Hex(Buffer.from(canonical, 'utf8'))
 }
@@ -236,10 +246,12 @@ async function callVisionOnce(
   request: VisionRequest,
   options: Readonly<OpenAICompatibleVisionOptions>,
   apiKey: string,
+  imageOrdinals: readonly number[],
+  originalImageCount: number,
 ): Promise<VisionResult> {
   const { path, body } = buildVisionRequest(
     options.baseURL, options.model, options.apiStyle, options.maxOutputTokens,
-    request.prompt, request.images,
+    request.prompt, request.images, imageOrdinals, originalImageCount,
   )
   let response: Response
   try {
@@ -317,18 +329,30 @@ export class OpenAICompatibleVisionAdapter extends VisionAdapter {
    * Split a provider-rejected multi-image payload in half and process the
    * chunks sequentially. Recursive callSelectedModel handles a second 413 on
    * either half; a single-image 413 remains a clear terminal provider error.
+   * Stable original image ordinals are carried through every recursive child.
    */
   private async callSplitImages(
     request: VisionRequest,
     options: Readonly<OpenAICompatibleVisionOptions>,
     apiKey: string,
+    imageOrdinals: readonly number[],
+    originalImageCount: number,
   ): Promise<VisionResult> {
     const middle = Math.ceil(request.images.length / 2)
     const chunks = [request.images.slice(0, middle), request.images.slice(middle)].filter(chunk => chunk.length > 0)
+    const ordinalChunks = [imageOrdinals.slice(0, middle), imageOrdinals.slice(middle)].filter(chunk => chunk.length > 0)
     const parts: string[] = []
     for (let index = 0; index < chunks.length; index += 1) {
-      const result = await this.callSelectedModel({ ...request, images: chunks[index] }, options, apiKey)
-      parts.push(`[Vision batch ${index + 1}/${chunks.length}; ${chunks[index].length} image(s)]\n${result.text}`)
+      const ordinals = ordinalChunks[index]
+      const result = await this.callSelectedModel(
+        { ...request, images: chunks[index] },
+        options,
+        apiKey,
+        ordinals,
+        originalImageCount,
+      )
+      const labels = ordinals.map(value => `Image ${value}`).join(', ')
+      parts.push(`[Vision split evidence for original ${labels} of ${originalImageCount}]\n${result.text}`)
     }
     return { text: parts.join('\n\n'), provider: options.provider, model: options.model }
   }
@@ -338,11 +362,13 @@ export class OpenAICompatibleVisionAdapter extends VisionAdapter {
     request: VisionRequest,
     options: Readonly<OpenAICompatibleVisionOptions>,
     apiKey: string,
+    imageOrdinals: readonly number[] = defaultImageOrdinals(request.images.length),
+    originalImageCount: number = request.images.length,
   ): Promise<VisionResult> {
     const cacheMode = request.cache ?? 'use'
     const cacheKey = this.options.cache === undefined || cacheMode === 'no-store'
       ? undefined
-      : semanticRequestKey(options, request.prompt, request.images)
+      : semanticRequestKey(options, request.prompt, request.images, imageOrdinals, originalImageCount)
     if (cacheKey !== undefined && cacheMode === 'use') {
       const cached = this.options.cache?.get(cacheKey)
       if (cached !== undefined) {
@@ -354,7 +380,7 @@ export class OpenAICompatibleVisionAdapter extends VisionAdapter {
     for (;;) {
       try {
         const result = await globalVisionExecutionGate.run(
-          () => callVisionOnce(request, options, apiKey),
+          () => callVisionOnce(request, options, apiKey, imageOrdinals, originalImageCount),
           request.signal,
         )
         if (cacheKey !== undefined) this.options.cache?.set(cacheKey, result.text)
@@ -365,7 +391,7 @@ export class OpenAICompatibleVisionAdapter extends VisionAdapter {
         // For multi-image requests adapt to the provider's real limit by
         // recursively bisecting; keep a single image intact and fail loudly.
         if (wireError.status === 413 && request.images.length > 1) {
-          const result = await this.callSplitImages(request, options, apiKey)
+          const result = await this.callSplitImages(request, options, apiKey, imageOrdinals, originalImageCount)
           if (cacheKey !== undefined) this.options.cache?.set(cacheKey, result.text)
           return result
         }
