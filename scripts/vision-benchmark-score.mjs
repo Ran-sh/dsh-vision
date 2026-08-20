@@ -69,6 +69,11 @@ function finiteNonNegative(value, fallback = 0) {
   return Number.isFinite(number) && number >= 0 ? number : fallback
 }
 
+function hasFiniteField(record, fields) {
+  if (record == null) return false
+  return fields.some(field => Number.isFinite(Number(record[field])))
+}
+
 /** Score all cases and aggregate stable benchmark metrics. */
 export function scoreBenchmark(cases, results) {
   const resultById = new Map(results.map(result => [result.id, result]))
@@ -85,7 +90,12 @@ export function scoreBenchmark(cases, results) {
     const inputTokens = finiteNonNegative(result?.inputTokens)
     const outputTokens = finiteNonNegative(result?.outputTokens)
     const usageReported = result !== undefined
-      && (Number.isFinite(Number(result.inputTokens)) || Number.isFinite(Number(result.outputTokens)))
+      && hasFiniteField(result, ['inputTokens', 'outputTokens'])
+    const traceReported = result !== undefined
+      && hasFiniteField(result, [
+        'providerCalls', 'calls', 'payloadBytes', 'cacheHits', 'retries',
+        'modelFallbacks', 'providerFallbacks', 'splits',
+      ])
 
     rows.push({
       id: testCase.id,
@@ -103,7 +113,8 @@ export function scoreBenchmark(cases, results) {
       inputTokens,
       outputTokens,
       usageReported,
-      zeroProviderReuse: result !== undefined && toolCalled && calls === 0 && cacheHits > 0,
+      traceReported,
+      zeroProviderReuse: result !== undefined && toolCalled && traceReported && calls === 0 && cacheHits > 0,
       retries: finiteNonNegative(result?.retries),
       modelFallbacks: finiteNonNegative(result?.modelFallbacks),
       providerFallbacks: finiteNonNegative(result?.providerFallbacks),
@@ -130,6 +141,7 @@ export function scoreBenchmark(cases, results) {
     assertionPassRate: weighted(row => row.assertionPass && !row.missing),
     taskSuccessRate: weighted(row => row.success),
     forbiddenHitCount: rows.reduce((sum, row) => sum + row.forbiddenHits, 0),
+    traceCoverage: weighted(row => row.traceReported && !row.missing),
     tokenUsageCoverage: weighted(row => row.usageReported && !row.missing),
     zeroProviderReuseRate: weighted(row => row.zeroProviderReuse),
     latencyMs: { p50: percentile(latencies, 0.5), p95: percentile(latencies, 0.95) },
