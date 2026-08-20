@@ -17,7 +17,9 @@ export const DEFAULT_BENCHMARK_THRESHOLDS = Object.freeze({
   maxRoutingRegression: 0.01,
   maxTaskSuccessRegression: 0.02,
   maxForbiddenHitIncrease: 0,
+  maxTraceCoverageRegression: 0.10,
   maxTokenCoverageRegression: 0.10,
+  minComparableCoverage: 0.80,
   maxP95LatencyRatio: 1.30,
   p95LatencyAbsoluteAllowanceMs: 250,
   maxCallsRatio: 1.15,
@@ -44,7 +46,25 @@ function checkUpper(name, baseline, candidate, limit) {
   return { name, pass: candidate <= limit, baseline, candidate, limit, direction: 'max' }
 }
 
-function optionalRatioCheck(name, baselineValue, candidateValue, ratio) {
+function coverageRatioCheck(
+  name,
+  baselineValue,
+  candidateValue,
+  ratio,
+  baselineCoverage,
+  candidateCoverage,
+  minCoverage,
+) {
+  if (baselineCoverage < minCoverage || candidateCoverage < minCoverage) {
+    return {
+      name,
+      pass: true,
+      skipped: true,
+      reason: `telemetry coverage below comparable threshold ${minCoverage}`,
+      baselineCoverage,
+      candidateCoverage,
+    }
+  }
   const baseline = finite(baselineValue)
   const candidate = finite(candidateValue)
   if (baseline === undefined || candidate === undefined || (baseline === 0 && candidate === 0)) {
@@ -68,12 +88,18 @@ export function compareBenchmarkScores(baseline, candidate, thresholds = {}) {
     }
   }
 
+  const baselineTraceCoverage = finite(baseline.traceCoverage) ?? 0
+  const candidateTraceCoverage = finite(candidate.traceCoverage) ?? 0
+  const baselineTokenCoverage = finite(baseline.tokenUsageCoverage) ?? 0
+  const candidateTokenCoverage = finite(candidate.tokenUsageCoverage) ?? 0
+
   const checks = [
     checkUpper('missing-results', baseline.missing, candidate.missing, baseline.missing),
     checkLower('routing-success-rate', baseline.routingSuccessRate, candidate.routingSuccessRate, t.maxRoutingRegression),
     checkLower('task-success-rate', baseline.taskSuccessRate, candidate.taskSuccessRate, t.maxTaskSuccessRegression),
     checkUpper('forbidden-hit-count', baseline.forbiddenHitCount, candidate.forbiddenHitCount, baseline.forbiddenHitCount + t.maxForbiddenHitIncrease),
-    checkLower('token-usage-coverage', baseline.tokenUsageCoverage ?? 0, candidate.tokenUsageCoverage ?? 0, t.maxTokenCoverageRegression),
+    checkLower('trace-coverage', baselineTraceCoverage, candidateTraceCoverage, t.maxTraceCoverageRegression),
+    checkLower('token-usage-coverage', baselineTokenCoverage, candidateTokenCoverage, t.maxTokenCoverageRegression),
   ]
 
   const baselineP95 = finite(baseline.latencyMs?.p95)
@@ -90,10 +116,22 @@ export function compareBenchmarkScores(baseline, candidate, thresholds = {}) {
   }
 
   checks.push(
-    optionalRatioCheck('provider-calls', baseline.totals?.calls, candidate.totals?.calls, t.maxCallsRatio),
-    optionalRatioCheck('payload-bytes', baseline.totals?.payloadBytes, candidate.totals?.payloadBytes, t.maxPayloadBytesRatio),
-    optionalRatioCheck('input-tokens', baseline.totals?.inputTokens, candidate.totals?.inputTokens, t.maxInputTokensRatio),
-    optionalRatioCheck('output-tokens', baseline.totals?.outputTokens, candidate.totals?.outputTokens, t.maxOutputTokensRatio),
+    coverageRatioCheck(
+      'provider-calls', baseline.totals?.calls, candidate.totals?.calls, t.maxCallsRatio,
+      baselineTraceCoverage, candidateTraceCoverage, t.minComparableCoverage,
+    ),
+    coverageRatioCheck(
+      'payload-bytes', baseline.totals?.payloadBytes, candidate.totals?.payloadBytes, t.maxPayloadBytesRatio,
+      baselineTraceCoverage, candidateTraceCoverage, t.minComparableCoverage,
+    ),
+    coverageRatioCheck(
+      'input-tokens', baseline.totals?.inputTokens, candidate.totals?.inputTokens, t.maxInputTokensRatio,
+      baselineTokenCoverage, candidateTokenCoverage, t.minComparableCoverage,
+    ),
+    coverageRatioCheck(
+      'output-tokens', baseline.totals?.outputTokens, candidate.totals?.outputTokens, t.maxOutputTokensRatio,
+      baselineTokenCoverage, candidateTokenCoverage, t.minComparableCoverage,
+    ),
   )
 
   return {
@@ -102,6 +140,10 @@ export function compareBenchmarkScores(baseline, candidate, thresholds = {}) {
     summary: {
       baselineTaskSuccessRate: baseline.taskSuccessRate,
       candidateTaskSuccessRate: candidate.taskSuccessRate,
+      baselineTraceCoverage,
+      candidateTraceCoverage,
+      baselineTokenUsageCoverage: baselineTokenCoverage,
+      candidateTokenUsageCoverage: candidateTokenCoverage,
       baselineZeroProviderReuseRate: baseline.zeroProviderReuseRate ?? 0,
       candidateZeroProviderReuseRate: candidate.zeroProviderReuseRate ?? 0,
       baselineCalls: baseline.totals?.calls ?? 0,
