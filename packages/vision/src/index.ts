@@ -3,9 +3,7 @@
  * capability seam: the package OWNS `ctx.vision`. The default export is the
  * `VisionRuntime` service class, so a Cordis composition loads this package
  * as a service plugin entry (`- name: '@ran-sh/dsh-vision'`) and provider
- * plugins inject `['vision']` and register into it — exactly as
- * `@deepseek-ai/dsh-llm` default-exports `LlmRuntime` and
- * `@deepseek-ai/dsh-llm-deepseek` injects `['llm']`.
+ * plugins inject `['vision']` and register into it.
  * @module @ran-sh/dsh-vision
  */
 
@@ -21,15 +19,15 @@ export {
   openVisionCircuit,
 } from './health.ts'
 export type { VisionProviderHealthSnapshot, VisionProviderHealthScore } from './health.ts'
-export {
-  createVisionCircuitBreaker,
-} from './circuit-breaker.ts'
+export { createVisionCircuitBreaker } from './circuit-breaker.ts'
 export type {
   VisionCircuitState,
   VisionCircuitSnapshot,
   VisionCircuitPolicy,
   VisionCircuitBreaker,
 } from './circuit-breaker.ts'
+export { routeVisionTask } from './task-router.ts'
+export type { VisionTask, VisionQualityPolicy, VisionTaskRoute } from './task-router.ts'
 export type {
   VisionModel, VisionModelDiscoveryRequest, VisionProbeRequest, VisionProviderDescriptor,
   VisionRequest, VisionResult, VisionTrace, LoadedImage, VisionImageMimeType, VisionCacheMode,
