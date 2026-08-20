@@ -230,15 +230,41 @@ export function apply(ctx: Context, config: ConfigType = {}): void {
   ))
 
   // Attachment routes + thin vision RPC; the legacy /image-mind/config
-  // gateway stays as a compatibility transport.
-  registerAttachRoute(ctx, {
-    readMaxBytes: () => current().maxBytes ?? DEFAULT_MAX_BYTES,
-    readConfigView: () => readConfigView(ctx),
-    writeConfigView: (body) => writeConfigView(ctx, body),
-    runConnectionTest: (body) => runConnectionTest(ctx, body as Parameters<typeof runConnectionTest>[1]),
-    listEndpointModels: (body) => listEndpointModels(ctx, body as Parameters<typeof listEndpointModels>[1]),
-    catalog: () => VISION_PROVIDER_CATALOG,
-  })
+  // gateway stays as a compatibility transport. The web server is optional
+  // (headless mounts have none), but on some DSH versions it is attached to
+  // the context only after this plugin's apply — the official host plugins
+  // declare webServer as an injected hard dependency; keeping it optional
+  // here, we register immediately when it is already present, otherwise as
+  // soon as the host attaches it (idempotent service + attach hooks).
+  const registerRoutes = (): void => {
+    if (ctx.get('webServer') === undefined) return
+    // Hosts keep the same prefix registered idempotently (the host replaces
+    // the row), so repeated calls are harmless.
+    registerAttachRoute(ctx, {
+      readMaxBytes: () => current().maxBytes ?? DEFAULT_MAX_BYTES,
+      readConfigView: () => readConfigView(ctx),
+      writeConfigView: (body) => writeConfigView(ctx, body),
+      runConnectionTest: (body) => runConnectionTest(ctx, body as Parameters<typeof runConnectionTest>[1]),
+      listEndpointModels: (body) => listEndpointModels(ctx, body as Parameters<typeof listEndpointModels>[1]),
+      catalog: () => VISION_PROVIDER_CATALOG,
+    })
+  }
+  // The web server is optional (headless mounts have none) and, on some DSH
+  // versions, is attached to the context only after this plugin's apply. Poll
+  // briefly for it instead of relying on a service-lifecycle event name; on a
+  // headless mount the poll simply gives up and no routes are registered.
+  registerRoutes()
+  if (ctx.get('webServer') === undefined) {
+    let attempts = 0
+    const pollForServer = (): void => {
+      if (ctx.get('webServer') !== undefined) { registerRoutes(); return }
+      if (attempts < 100) {
+        attempts += 1
+        setTimeout(pollForServer, 200)
+      }
+    }
+    pollForServer()
+  }
 }
 
 /**

@@ -177,8 +177,12 @@ export function registerAttachRoute(
     readMaxBytes: () => number
     readConfigView: () => Promise<unknown>
     writeConfigView: (body: unknown) => Promise<{ ok: boolean; value?: unknown; error?: { code: string; message: string } }>
-    runConnectionTest: (body: unknown) => Promise<{ ok: boolean; value?: { text: string }; error?: { code: string; message: string } }>
-    listEndpointModels: (body: unknown) => Promise<{ ok: boolean; value?: unknown; error?: { code: string; message: string } }>
+    runConnectionTest: (body: unknown) => Promise<
+      | { ok: true; text: string; provider: string; model: string; latencyMs: number; visualVerified: true }
+      | { ok: false; message: string; visualFailed?: true }>
+    listEndpointModels: (body: unknown) => Promise<
+      | { ok: true; models: string[]; source: 'endpoint' | 'fallback'; reason?: string }
+      | { ok: false; message: string }>
     catalog: () => unknown
   },
 ): void {
@@ -230,10 +234,10 @@ export function registerAttachRoute(
         }
         const outcome = await hooks.runConnectionTest(body ?? {})
         if (outcome.ok) {
-          json(res, { ok: true, value: outcome.value })
+          json(res, { ok: true, value: { text: outcome.text, provider: outcome.provider, model: outcome.model, latencyMs: outcome.latencyMs, visualVerified: outcome.visualVerified } })
           return
         }
-        json(res, { ok: false, error: outcome.error }, outcome.error?.code === 'rejected' ? 422 : 500)
+        json(res, { ok: false, error: { code: outcome.visualFailed === true ? 'visual' : 'failed', message: outcome.message } })
         return
       }
       // Thin vision RPC: list model ids for the current endpoint.
@@ -249,10 +253,10 @@ export function registerAttachRoute(
         }
         const outcome = await hooks.listEndpointModels(body ?? {})
         if (outcome.ok) {
-          json(res, { ok: true, value: outcome.value })
+          json(res, { ok: true, value: { models: outcome.models, source: outcome.source, ...outcome.reason === undefined ? {} : { reason: outcome.reason } } })
           return
         }
-        json(res, { ok: false, error: outcome.error }, outcome.error?.code === 'rejected' ? 422 : 500)
+        json(res, { ok: false, error: { code: 'failed', message: outcome.message } })
         return
       }
       // The official-provider directory the "添加提供方" flow offers.
