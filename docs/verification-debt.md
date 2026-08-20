@@ -7,7 +7,7 @@ This file is the durable checklist for work that cannot be fully executed from t
 - [ ] Linux + Node 22: `npm ci && npm run typecheck && npm test && npm run build && npm run test:package && npm run test:built`.
 - [ ] Linux + Node 24: `npm ci && npm run typecheck && npm test && npm run build`.
 - [ ] Windows + Node 22: `npm ci`, typecheck, tests, build, package integrity.
-- [ ] Confirm generated `packages/vision/lib/types` includes the current `VisionRequest`, `VisionResult.trace`, `VisionTrace`, and traced `VisionError` contract, and that `dsh-plugin-image-mind` still installs against the published service dependency range.
+- [ ] Confirm generated `packages/vision/lib/types` includes the current `VisionRequest`, `VisionResult.trace`, `VisionTrace`, selector/health/circuit types, and traced `VisionError` contract, and that `dsh-plugin-image-mind` still installs against the published service dependency range.
 - [ ] Run the official DSH plugin install/remove roundtrip in an isolated profile and confirm no stale bundle layer remains.
 - [ ] Run `npm run benchmark:score -- benchmarks/vision/cases.example.jsonl benchmarks/vision/results.example.jsonl` and confirm the offline scorer is included in the normal repository test/build environment.
 
@@ -34,9 +34,12 @@ Run with real credentials only in a controlled environment; never record keys in
 - [ ] At least one endpoint that returns HTTP 413 for a multi-image payload: verify recursive split, merged evidence, stable original image numbering, and trace `splits/providerCalls/payloadBytes` against observed requests.
 - [ ] At least one endpoint returning 429 + `Retry-After`: verify retry delay, global execution-gate interaction, and trace retry counters.
 - [ ] At least one endpoint returning deterministic 400/404: verify no repeated wire request and no automatic cross-provider traffic.
-- [ ] Cross-provider recovery: configure primary + two backups, force primary 5xx/timeout/429 exhaustion, and verify ordered bounded recovery. Confirm explicit `provider` or `model`, 401/403, deterministic 4xx, and response-shape errors do not reroute.
+- [ ] Cross-provider recovery: configure primary + three backups, force the configured first backup to become slow/unhealthy, and verify health-aware fallback ordering prefers healthier candidates while preserving initial configuration order before observations.
+- [ ] Circuit breaker: force one backup through three provider-level failures, verify it is excluded during the 30s cooldown, then verify exactly one half-open recovery attempt can re-enter selection and a success closes the circuit.
+- [ ] Confirm explicit `provider` or `model`, 401/403, deterministic 4xx, model-incompatibility errors, and response-shape errors do not degrade provider health or trigger automatic rerouting.
 - [ ] Compare `VisionResult.trace`/traced `VisionError` counters with server/provider request logs for provider calls, serialized payload bytes, cache hits, retries, model fallback, provider fallback, and split events.
-- [ ] Caller cancellation during an in-flight request and during retry delay: verify no extra retry/fallback request is sent and cancellation is not recorded as a retry.
+- [ ] Compare `VisionResult.usage.inputTokens/outputTokens` against provider dashboards/logs for both Chat Completions and Responses APIs. For a real 413 split, verify the returned usage equals the sum of successful child calls and never includes guessed values.
+- [ ] Caller cancellation during an in-flight request and during retry delay: verify no extra retry/fallback request is sent and cancellation is not recorded as a retry or provider-health failure.
 
 ## Visual quality benchmark
 
@@ -52,4 +55,4 @@ Run with real credentials only in a controlled environment; never record keys in
 
 ## Exit criteria
 
-A future release candidate is not considered fully verified until all build/package items are checked, the browser restart/attachment and long-screenshot scenarios pass, at least two hosted providers plus one local provider pass the real-provider matrix, trace counters match observed traffic, and the visual benchmark shows no regression versus 0.1.1 on routing success or hallucination rate.
+A future release candidate is not considered fully verified until all build/package items are checked, the browser restart/attachment and long-screenshot scenarios pass, at least two hosted providers plus one local provider pass the real-provider matrix, health/circuit behavior matches observed provider traffic, token usage matches provider-reported counters, trace counters match observed traffic, and the visual benchmark shows no regression versus 0.1.1 on routing success or hallucination rate.
