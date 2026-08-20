@@ -22,7 +22,7 @@ function imageFile(): string {
 }
 
 function setup() {
-  const call = vi.fn(async () => ({ text: `facts-${call.mock.calls.length}`, provider: 'p', model: 'm' }))
+  const call = vi.fn(async (_request: unknown) => ({ text: `facts-${call.mock.calls.length}`, provider: 'p', model: 'm' }))
   const ctx = new Context()
   ctx.provide('vision', { call } as never)
   ctx.provide('attachments', {} as never)
@@ -46,7 +46,8 @@ describe('layered reusable evidence cache', () => {
     const second = await tool.execute({ image: file, prompt: '提取文字并告诉我标题' }, exec)
 
     expect(call).toHaveBeenCalledTimes(1)
-    expect(call.mock.calls[0][0].prompt).toContain('OCR evidence extraction')
+    const firstRequest = call.mock.calls[0][0] as { prompt: string }
+    expect(firstRequest.prompt).toContain('OCR evidence extraction')
     expect(first.text).toBe(second.text)
     expect(second.trace).toMatchObject({ providerCalls: 0, cacheHits: 1 })
   })
