@@ -21,6 +21,15 @@ export {
   openVisionCircuit,
 } from './health.ts'
 export type { VisionProviderHealthSnapshot, VisionProviderHealthScore } from './health.ts'
+export {
+  createVisionCircuitBreaker,
+} from './circuit-breaker.ts'
+export type {
+  VisionCircuitState,
+  VisionCircuitSnapshot,
+  VisionCircuitPolicy,
+  VisionCircuitBreaker,
+} from './circuit-breaker.ts'
 export type {
   VisionModel, VisionModelDiscoveryRequest, VisionProbeRequest, VisionProviderDescriptor,
   VisionRequest, VisionResult, VisionTrace, LoadedImage, VisionImageMimeType, VisionCacheMode,
