@@ -10,6 +10,7 @@ function score(overrides: Record<string, unknown> = {}) {
     routingSuccessRate: 0.98,
     taskSuccessRate: 0.90,
     forbiddenHitCount: 1,
+    traceCoverage: 1,
     tokenUsageCoverage: 0.8,
     zeroProviderReuseRate: 0,
     latencyMs: { p50: 500, p95: 1000 },
@@ -57,6 +58,33 @@ describe('vision benchmark regression gate', () => {
     const comparison = compareBenchmarkScores(score(), candidate)
     expect(comparison.pass).toBe(false)
     expect(comparison.checks.find(check => check.name === 'forbidden-hit-count')).toMatchObject({ pass: false })
+  })
+
+  it('does not treat newly available token telemetry as a cost regression', () => {
+    const baseline = score({
+      tokenUsageCoverage: 0,
+      totals: { ...score().totals, inputTokens: 0, outputTokens: 0 },
+    })
+    const candidate = score({
+      tokenUsageCoverage: 1,
+      totals: { ...score().totals, inputTokens: 120_000, outputTokens: 35_000 },
+    })
+    const comparison = compareBenchmarkScores(baseline, candidate)
+    expect(comparison.pass).toBe(true)
+    expect(comparison.checks.find(check => check.name === 'input-tokens')).toMatchObject({
+      pass: true,
+      skipped: true,
+    })
+  })
+
+  it('fails when trace coverage drops enough to make cost totals untrustworthy', () => {
+    const comparison = compareBenchmarkScores(score(), score({ traceCoverage: 0.6 }))
+    expect(comparison.pass).toBe(false)
+    expect(comparison.checks.find(check => check.name === 'trace-coverage')).toMatchObject({ pass: false })
+    expect(comparison.checks.find(check => check.name === 'provider-calls')).toMatchObject({
+      pass: true,
+      skipped: true,
+    })
   })
 
   it('scores baseline and candidate from the same frozen corpus', () => {
