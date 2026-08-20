@@ -29,7 +29,7 @@ function toolWithCall(call: ReturnType<typeof vi.fn>) {
 
 describe('understand_image task-aware budgets', () => {
   it('requests an OCR-sized output budget for transcription', async () => {
-    const call = vi.fn(async () => ({ text: 'ok', provider: 'p', model: 'm' }))
+    const call = vi.fn(async (_request: unknown) => ({ text: 'ok', provider: 'p', model: 'm' }))
     const tool = toolWithCall(call)
     await tool.execute({ image: imageFile(), prompt: 'transcribe all text verbatim' }, { signal: new AbortController().signal } as never)
 
@@ -41,7 +41,7 @@ describe('understand_image task-aware budgets', () => {
   })
 
   it('requests a smaller output budget for ordinary photo description', async () => {
-    const call = vi.fn(async () => ({ text: 'ok', provider: 'p', model: 'm' }))
+    const call = vi.fn(async (_request: unknown) => ({ text: 'ok', provider: 'p', model: 'm' }))
     const tool = toolWithCall(call)
     await tool.execute({ image: imageFile(), prompt: 'describe this photo' }, { signal: new AbortController().signal } as never)
 
