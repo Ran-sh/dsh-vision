@@ -1,24 +1,14 @@
 /**
- * The OpenAI-compatible vision adapter: one instance serves every provider
- * route that speaks chat-completions or responses. The adapter owns its
- * provider facts — it resolves the current endpoint/credential snapshot per
- * call through the constructor hooks, freezes it, and never re-reads live
- * mutable settings while a request is in flight. Retry policy lives here (not
- * in the tool): transient failures (429/5xx/network/timeout) retry with
- * exponential backoff and jitter; auth, config, and response-shape failures
- * never repeat; an aborted signal stops the loop immediately.
- *
- * The vision service routes only `provider → adapter`; everything below this
- * line (endpoint, credential, protocol, HTTP, retry, model discovery) is
- * owned by this package.
- * @module dsh-plugin-image-mind/adapters/openai-compatible/adapter
+ * OpenAI-compatible vision adapter: endpoint resolution, cache, retries,
+ * adaptive payload splitting, bounded model/provider fallback, and
+ * provider-neutral execution tracing.
  */
 
-import { VisionAdapter, VisionError } from '@ran-sh/dsh-vision'
-import type { VisionErrorCode } from '@ran-sh/dsh-vision'
-import type { VisionModel, VisionModelDiscoveryRequest, VisionRequest, VisionResult } from '@ran-sh/dsh-vision'
-import { deepFreeze } from '@ran-sh/dsh-vision'
-import type { LoadedImage } from '@ran-sh/dsh-vision'
+import { VisionAdapter, VisionError, deepFreeze } from '@ran-sh/dsh-vision'
+import type {
+  LoadedImage, VisionErrorCode, VisionModel, VisionModelDiscoveryRequest,
+  VisionRequest, VisionResult, VisionTrace,
+} from '@ran-sh/dsh-vision'
 import { readBoundedBody, readBoundedText } from '../../media/load.ts'
 import { buildVisionRequest, extractChatCompletionsContent, extractResponsesContent } from './parse.ts'
 import { automaticFallbackVisionModels, discoverEndpointModels } from './discovery.ts'
@@ -27,37 +17,37 @@ import type { VisionCache } from '../../cache/vision-cache.ts'
 import { globalVisionExecutionGate } from '../../runtime/execution-gate.ts'
 import type { OpenAICompatibleVisionOptions } from './types.ts'
 
-/** Default retry count after the first request, matching the harness default. */
 const DEFAULT_MAX_RETRIES = 2
-/** Defense-in-depth ceiling even if a policy callback returns too many routes. */
 const MAX_PROVIDER_FALLBACKS = 2
 
-/** Constructor options: the operation-local resolution hooks the adapter owns. */
 export interface OpenAICompatibleAdapterOptions {
-  /**
-   * Resolve the current immutable endpoint snapshot for one provider route.
-   * Called once per operation; the adapter deep-freezes the result before the
-   * wire layer sees it, so an in-flight request never observes a settings
-   * change and the next call re-resolves. The request rides along so a model
-   * override reaches the wire.
-   */
   resolveProviderOptions: (provider: string, request: VisionRequest) => OpenAICompatibleVisionOptions
-  /** Resolve the bearer token for one endpoint snapshot. */
   resolveApiKey: (options: Readonly<OpenAICompatibleVisionOptions>) => Promise<string>
-  /**
-   * Optional ordered provider-recovery policy. It is consulted only after the
-   * selected provider exhausts its own retry/model-recovery path and only for
-   * endpoint-level recoverable failures. The adapter still caps and dedupes
-   * the returned routes.
-   */
   resolveProviderFallbacks?: (provider: string, request: VisionRequest) => readonly string[]
-  /** Optional semantic cache; absent disables caching. */
   cache?: VisionCache
-  /** Retry scheduling; absent uses the default backoff. */
   retry?: { maxRetries?: number; backoff?: BackoffConfig }
 }
 
-/** Whether the endpoint error body identifies a text-only model rejection. */
+function createTrace(): VisionTrace {
+  return {
+    providerCalls: 0,
+    payloadBytes: 0,
+    cacheHits: 0,
+    retries: 0,
+    modelFallbacks: 0,
+    providerFallbacks: 0,
+    splits: 0,
+  }
+}
+
+function snapshotTrace(trace: VisionTrace): VisionTrace {
+  return { ...trace }
+}
+
+function withTrace(result: VisionResult, trace: VisionTrace): VisionResult {
+  return { ...result, trace: snapshotTrace(trace) }
+}
+
 function isTextOnlyModelError(excerpt: string): boolean {
   const e = excerpt.toLowerCase()
   return /allowed values\s*:\s*\[?\s*'text'/.test(e)
@@ -66,12 +56,10 @@ function isTextOnlyModelError(excerpt: string): boolean {
     || /(?:not|doesn't|does not).*support.*image/.test(e)
 }
 
-/** Whether the endpoint error body identifies an unknown model. */
 function isUnknownModelError(excerpt: string): boolean {
   return /unsupported model|model not found|no such model|model .*does not exist|invalid model/i.test(excerpt)
 }
 
-/** One-line, actionable hint appended to endpoint errors. */
 function responseHint(status: number, retried: boolean, excerpt?: string): string {
   if (excerpt !== undefined) {
     if (isTextOnlyModelError(excerpt)) {
@@ -89,15 +77,10 @@ function responseHint(status: number, retried: boolean, excerpt?: string): strin
   return ''
 }
 
-/** Stable default ordinals for a request that has not been split. */
 function defaultImageOrdinals(imageCount: number): number[] {
   return Array.from({ length: imageCount }, (_, index) => index + 1)
 }
 
-/** The semantic identity of one vision request: a fixed-length SHA-256 of
- * every wire-affecting field plus the ORDERED image digests and stable image
- * identities (never the image bytes themselves — the cache must not hold
- * large image copies). */
 export function semanticRequestKey(
   options: Readonly<OpenAICompatibleVisionOptions>,
   prompt: string,
@@ -116,44 +99,29 @@ export function semanticRequestKey(
   return sha256Hex(Buffer.from(canonical, 'utf8'))
 }
 
-/** SHA-256 hex digest of a buffer (node:crypto). */
 function sha256Hex(bytes: Buffer): string {
   const { createHash } = require('node:crypto') as typeof import('node:crypto')
   return createHash('sha256').update(bytes).digest('hex')
 }
 
-/** Re-export for the wire-parsing layer. */
 export type { LoadedImage }
 
-/** Adapter-owned transport failure vocabulary. */
-type ProviderWireCode = 'AUTH_FAILED' | 'RATE_LIMITED' | 'PROVIDER_ERROR' | 'TIMEOUT' | 'NETWORK_ERROR' | 'INVALID_RESPONSE' | 'EMPTY_RESPONSE' | 'INVALID_CREDENTIAL' | 'MISSING_CREDENTIAL'
+type ProviderWireCode =
+  | 'AUTH_FAILED' | 'RATE_LIMITED' | 'PROVIDER_ERROR' | 'TIMEOUT'
+  | 'NETWORK_ERROR' | 'INVALID_RESPONSE' | 'EMPTY_RESPONSE'
+  | 'INVALID_CREDENTIAL' | 'MISSING_CREDENTIAL'
 
-/** Narrow the adapter-owned wire codes into the seam's stable provider-neutral vocabulary. */
-function toSeamCode(code: ProviderWireCode): VisionErrorCode {
-  switch (code) {
-    case 'AUTH_FAILED':
-    case 'RATE_LIMITED':
-    case 'TIMEOUT':
-    case 'NETWORK_ERROR':
-    case 'EMPTY_RESPONSE':
-    case 'INVALID_RESPONSE':
-    case 'INVALID_CREDENTIAL':
-    case 'MISSING_CREDENTIAL':
-    default:
-      return 'PROVIDER_ERROR'
-  }
+function toSeamCode(_code: ProviderWireCode): VisionErrorCode {
+  return 'PROVIDER_ERROR'
 }
 
-/** Upper bound on a provider-requested Retry-After delay (avoid hour-long stalls). */
 export const MAX_RETRY_AFTER_MS = 15_000
 
 export class ImageMindVisionError extends Error {
   readonly code: ProviderWireCode
   readonly status?: number
   readonly retryable: boolean
-  /** Whether a known-plan alternate model may repair this exact failure. */
   readonly modelFallbackEligible: boolean
-  /** Provider-requested delay from a Retry-After header, capped at MAX_RETRY_AFTER_MS. */
   readonly retryAfterMs?: number
 
   constructor(message: string, code: ProviderWireCode, options?: { status?: number; retryAfterMs?: number; modelFallbackEligible?: boolean; cause?: unknown }) {
@@ -170,7 +138,6 @@ export class ImageMindVisionError extends Error {
   }
 }
 
-/** Parse Retry-After seconds/date into a bounded delay. */
 export function parseRetryAfter(header: string | null): number | undefined {
   if (header === null) return undefined
   const trimmed = header.trim()
@@ -189,7 +156,6 @@ export function parseRetryAfter(header: string | null): number | undefined {
   return undefined
 }
 
-/** Sleep a fixed delay, abortable (used for Retry-After). */
 async function sleepFor(ms: number, signal?: AbortSignal): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     if (signal?.aborted === true) {
@@ -205,21 +171,18 @@ async function sleepFor(ms: number, signal?: AbortSignal): Promise<void> {
   })
 }
 
-/** Normalize one thrown value into the adapter's wire failure vocabulary. */
 function asWireError(error: unknown): ImageMindVisionError {
   if (error instanceof ImageMindVisionError) return error
   if (error instanceof Error && error.name === 'AbortError') return new ImageMindVisionError(error.message, 'NETWORK_ERROR', { cause: error })
   return new ImageMindVisionError((error as Error).message ?? String(error), 'PROVIDER_ERROR', { cause: error })
 }
 
-/** Recover the adapter-local cause from the seam wrapper, when present. */
 function wireCause(error: unknown): ImageMindVisionError | undefined {
   if (error instanceof ImageMindVisionError) return error
   const cause = (error as { cause?: unknown } | null)?.cause
   return cause instanceof ImageMindVisionError ? cause : undefined
 }
 
-/** Whether another configured provider may repair this exhausted failure. */
 function providerFallbackEligible(error: unknown): boolean {
   const wire = wireCause(error)
   if (wire === undefined || wire.modelFallbackEligible) return false
@@ -228,7 +191,6 @@ function providerFallbackEligible(error: unknown): boolean {
   return wire.status === 413 || (wire.status !== undefined && wire.status >= 500)
 }
 
-/** Strip secret patterns from a provider error excerpt before it reaches a message. */
 function redactExcerpt(excerpt: string): string {
   return excerpt
     .replace(/(authorization\s*:\s*)bearer\s+[^\s,;]+/gi, '$1[REDACTED]')
@@ -236,25 +198,27 @@ function redactExcerpt(excerpt: string): string {
     .replace(/sk-[a-zA-Z0-9]{8,}/g, 'sk-[REDACTED]')
 }
 
-/** Classify a non-2xx HTTP status into a stable code. */
 function visionCodeForStatus(status: number): ProviderWireCode {
   if (status === 401 || status === 403) return 'AUTH_FAILED'
   if (status === 429) return 'RATE_LIMITED'
   return 'PROVIDER_ERROR'
 }
 
-/** Run one wire request. Never retries; the caller's retry loop decides. */
 async function callVisionOnce(
   request: VisionRequest,
   options: Readonly<OpenAICompatibleVisionOptions>,
   apiKey: string,
   imageOrdinals: readonly number[],
   originalImageCount: number,
+  trace: VisionTrace,
 ): Promise<VisionResult> {
   const { path, body } = buildVisionRequest(
     options.baseURL, options.model, options.apiStyle, options.maxOutputTokens,
     request.prompt, request.images, imageOrdinals, originalImageCount,
   )
+  trace.providerCalls += 1
+  trace.payloadBytes += Buffer.byteLength(body, 'utf8')
+
   let response: Response
   try {
     response = await fetch(path, {
@@ -288,6 +252,7 @@ async function callVisionOnce(
       retryAfterMs: response.headers !== undefined ? parseRetryAfter(response.headers.get('retry-after')) : undefined,
     })
   }
+
   const payloadBytes = await readBoundedBody(response, options.maxOutputTokens * 8 + 64 * 1024)
   let payload: unknown
   try {
@@ -301,7 +266,6 @@ async function callVisionOnce(
   return { text, provider: options.provider, model: options.model }
 }
 
-/** OpenAI-compatible adapter with retry, model recovery, payload splitting, and provider recovery. */
 export class OpenAICompatibleVisionAdapter extends VisionAdapter {
   private readonly maxRetries: number
   private readonly backoff: ReturnType<typeof resolveBackoff>
@@ -312,16 +276,15 @@ export class OpenAICompatibleVisionAdapter extends VisionAdapter {
     this.backoff = resolveBackoff(options.retry?.backoff)
   }
 
-  /** The immutable endpoint snapshot for one call, deep-frozen before the wire layer sees it. */
   private snapshot(provider: string, request: VisionRequest): OpenAICompatibleVisionOptions {
     return deepFreeze(this.options.resolveProviderOptions(provider, request))
   }
 
-  /** Split a provider-rejected multi-image payload while preserving original image ordinals. */
   private async callSplitImages(
     request: VisionRequest,
     options: Readonly<OpenAICompatibleVisionOptions>,
     apiKey: string,
+    trace: VisionTrace,
     imageOrdinals: readonly number[],
     originalImageCount: number,
   ): Promise<VisionResult> {
@@ -332,7 +295,7 @@ export class OpenAICompatibleVisionAdapter extends VisionAdapter {
     for (let index = 0; index < chunks.length; index += 1) {
       const ordinals = ordinalChunks[index]
       const result = await this.callSelectedModel(
-        { ...request, images: chunks[index] }, options, apiKey, ordinals, originalImageCount,
+        { ...request, images: chunks[index] }, options, apiKey, trace, ordinals, originalImageCount,
       )
       const labels = ordinals.map(value => `Image ${value}`).join(', ')
       parts.push(`[Vision split evidence for original ${labels} of ${originalImageCount}]\n${result.text}`)
@@ -340,11 +303,11 @@ export class OpenAICompatibleVisionAdapter extends VisionAdapter {
     return { text: parts.join('\n\n'), provider: options.provider, model: options.model }
   }
 
-  /** Run one selected model with cache + retry semantics. */
   private async callSelectedModel(
     request: VisionRequest,
     options: Readonly<OpenAICompatibleVisionOptions>,
     apiKey: string,
+    trace: VisionTrace,
     imageOrdinals: readonly number[] = defaultImageOrdinals(request.images.length),
     originalImageCount: number = request.images.length,
   ): Promise<VisionResult> {
@@ -354,14 +317,17 @@ export class OpenAICompatibleVisionAdapter extends VisionAdapter {
       : semanticRequestKey(options, request.prompt, request.images, imageOrdinals, originalImageCount)
     if (cacheKey !== undefined && cacheMode === 'use') {
       const cached = this.options.cache?.get(cacheKey)
-      if (cached !== undefined) return { text: cached, provider: options.provider, model: options.model }
+      if (cached !== undefined) {
+        trace.cacheHits += 1
+        return { text: cached, provider: options.provider, model: options.model }
+      }
     }
 
     let attempt = 0
     for (;;) {
       try {
         const result = await globalVisionExecutionGate.run(
-          () => callVisionOnce(request, options, apiKey, imageOrdinals, originalImageCount),
+          () => callVisionOnce(request, options, apiKey, imageOrdinals, originalImageCount, trace),
           request.signal,
         )
         if (cacheKey !== undefined) this.options.cache?.set(cacheKey, result.text)
@@ -369,7 +335,8 @@ export class OpenAICompatibleVisionAdapter extends VisionAdapter {
       } catch (error) {
         const wireError = asWireError(error)
         if (wireError.status === 413 && request.images.length > 1) {
-          const result = await this.callSplitImages(request, options, apiKey, imageOrdinals, originalImageCount)
+          trace.splits += 1
+          const result = await this.callSplitImages(request, options, apiKey, trace, imageOrdinals, originalImageCount)
           if (cacheKey !== undefined) this.options.cache?.set(cacheKey, result.text)
           return result
         }
@@ -380,9 +347,10 @@ export class OpenAICompatibleVisionAdapter extends VisionAdapter {
             const hint = responseHint(wireError.status, true)
             wireError.message = wireError.message.replace(responseHint(wireError.status, false), '') + hint
           }
-          throw new VisionError(wireError.message, toSeamCode(wireError.code), { cause: wireError })
+          throw new VisionError(wireError.message, toSeamCode(wireError.code), { cause: wireError, trace })
         }
         attempt += 1
+        trace.retries += 1
         const delay = wireError.retryAfterMs !== undefined
           ? Math.max(this.backoff.initialDelayMs, wireError.retryAfterMs)
           : undefined
@@ -392,12 +360,11 @@ export class OpenAICompatibleVisionAdapter extends VisionAdapter {
     }
   }
 
-  /** Run one provider, including that endpoint's bounded model fallback. */
-  private async callProvider(provider: string, request: VisionRequest): Promise<VisionResult> {
+  private async callProvider(provider: string, request: VisionRequest, trace: VisionTrace): Promise<VisionResult> {
     const primary = this.snapshot(provider, request)
     const apiKey = await this.options.resolveApiKey(primary)
     try {
-      return await this.callSelectedModel(request, primary, apiKey)
+      return await this.callSelectedModel(request, primary, apiKey, trace)
     } catch (primaryError) {
       if (request.model !== undefined && request.model.trim().length > 0) throw primaryError
       if (wireCause(primaryError)?.modelFallbackEligible !== true) throw primaryError
@@ -405,9 +372,10 @@ export class OpenAICompatibleVisionAdapter extends VisionAdapter {
       const candidates = automaticFallbackVisionModels(primary.baseURL, primary.model)
       let lastError: unknown = primaryError
       for (const model of candidates) {
+        trace.modelFallbacks += 1
         const fallback = deepFreeze({ ...primary, model })
         try {
-          return await this.callSelectedModel(request, fallback, apiKey)
+          return await this.callSelectedModel(request, fallback, apiKey, trace)
         } catch (error) {
           lastError = error
           if (wireCause(error)?.modelFallbackEligible !== true) throw error
@@ -418,11 +386,10 @@ export class OpenAICompatibleVisionAdapter extends VisionAdapter {
   }
 
   override async call(provider: string, request: VisionRequest): Promise<VisionResult> {
+    const trace = createTrace()
     try {
-      return await this.callProvider(provider, request)
+      return withTrace(await this.callProvider(provider, request, trace), trace)
     } catch (primaryError) {
-      // Explicit routing/model choices are sticky; do not turn user intent
-      // into hidden traffic to another endpoint.
       if (request.provider !== undefined && request.provider.trim().length > 0) throw primaryError
       if (request.model !== undefined && request.model.trim().length > 0) throw primaryError
       if (!providerFallbackEligible(primaryError)) throw primaryError
@@ -440,13 +407,11 @@ export class OpenAICompatibleVisionAdapter extends VisionAdapter {
 
       let lastError: unknown = primaryError
       for (const candidate of candidates) {
+        trace.providerFallbacks += 1
         try {
-          return await this.callProvider(candidate, request)
+          return withTrace(await this.callProvider(candidate, request, trace), trace)
         } catch (error) {
           lastError = error
-          // A backup that fails deterministically (auth/4xx/response shape)
-          // stops the chain. Only another endpoint-level recoverable failure
-          // justifies trying the next configured backup.
           if (!providerFallbackEligible(error)) throw error
         }
       }
