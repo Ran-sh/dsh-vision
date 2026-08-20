@@ -14,6 +14,13 @@ export type { VisionAdapterRegistration, VisionDirectoryRegistration } from './r
 export { VisionAdapter } from './adapter.ts'
 export { VisionError, isVisionError, deepFreeze } from './errors.ts'
 export type { VisionErrorCode } from './errors.ts'
+export {
+  createVisionProviderHealth,
+  scoreVisionProviderHealth,
+  shouldOpenVisionCircuit,
+  openVisionCircuit,
+} from './health.ts'
+export type { VisionProviderHealthSnapshot, VisionProviderHealthScore } from './health.ts'
 export type {
   VisionModel, VisionModelDiscoveryRequest, VisionProbeRequest, VisionProviderDescriptor,
   VisionRequest, VisionResult, VisionTrace, LoadedImage, VisionImageMimeType, VisionCacheMode,
