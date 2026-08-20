@@ -71,7 +71,12 @@ function finiteNonNegative(value, fallback = 0) {
 
 function hasFiniteField(record, fields) {
   if (record == null) return false
-  return fields.some(field => Number.isFinite(Number(record[field])))
+  return fields.some((field) => {
+    const value = record[field]
+    if (value === null || value === undefined || value === '') return false
+    const number = Number(value)
+    return Number.isFinite(number) && number >= 0
+  })
 }
 
 /** Score all cases and aggregate stable benchmark metrics. */
