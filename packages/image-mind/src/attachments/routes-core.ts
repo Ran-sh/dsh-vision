@@ -8,7 +8,8 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import { decodeBase64, isImageMimeType, sniffMimeType, type ImageMimeType } from '../media/validate.ts'
-import { registerAttachmentRef, attachmentMarkdown, attachmentNote } from './store.ts'
+import { attachmentMarkdown, attachmentNote } from './store.ts'
+import { rememberAttachmentRef, type AttachmentBatchPosition } from './ref-index.ts'
 
 /** Stable error codes the browser half surfaces without leaking internals. */
 export interface AttachError {
@@ -25,6 +26,8 @@ export interface AttachPayload {
   mediaType: ImageMimeType
   /** Optional display name; never interpreted as a path. */
   name?: string
+  /** Optional current-session routing metadata; all four fields travel together. */
+  position?: AttachmentBatchPosition
 }
 
 /** Outcome of one attach attempt. */
@@ -36,6 +39,33 @@ export type AttachOutcome =
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined
   return value as Record<string, unknown>
+}
+
+function optionalBatchPosition(record: Record<string, unknown>): AttachmentBatchPosition | { error: AttachError } | undefined {
+  const values = [record['sessionId'], record['batchId'], record['batchIndex'], record['batchCount']]
+  if (values.every(value => value === undefined)) return undefined
+  if (values.some(value => value === undefined)) {
+    return { error: { code: 'rejected', message: 'session batch routing fields must be supplied together' } }
+  }
+  const [sessionId, batchId, batchIndex, batchCount] = values
+  if (typeof sessionId !== 'string' || sessionId.length === 0 || sessionId.length > 256) {
+    return { error: { code: 'rejected', message: 'sessionId must be a non-empty string within 256 characters' } }
+  }
+  if (typeof batchId !== 'string' || batchId.length === 0 || batchId.length > 128) {
+    return { error: { code: 'rejected', message: 'batchId must be a non-empty string within 128 characters' } }
+  }
+  if (!Number.isSafeInteger(batchCount) || (batchCount as number) <= 0 || (batchCount as number) > 8) {
+    return { error: { code: 'rejected', message: 'batchCount must be an integer from 1 through 8' } }
+  }
+  if (!Number.isSafeInteger(batchIndex) || (batchIndex as number) < 0 || (batchIndex as number) >= (batchCount as number)) {
+    return { error: { code: 'rejected', message: 'batchIndex must identify one image inside the declared batch' } }
+  }
+  return {
+    sessionId,
+    batchId,
+    batchIndex: batchIndex as number,
+    batchCount: batchCount as number,
+  }
 }
 
 /**
@@ -60,6 +90,8 @@ export function validateAttachPayload(payload: unknown, maxBytes: number): { pay
   if (name !== undefined && (typeof name !== 'string' || name.length === 0)) {
     return { error: { code: 'rejected', message: 'name must be a non-empty string when present' } }
   }
+  const position = optionalBatchPosition(record)
+  if (position !== undefined && 'error' in position) return position
   const bytes = decodeBase64(data)
   if (bytes === undefined) {
     return { error: { code: 'rejected', message: 'image data is not valid base64' } }
@@ -73,7 +105,15 @@ export function validateAttachPayload(payload: unknown, maxBytes: number): { pay
   if (sniffMimeType(bytes) !== mediaType) {
     return { error: { code: 'rejected', message: `bytes do not match the declared ${mediaType} type` } }
   }
-  return { payload: { data, mediaType, ...name === undefined ? {} : { name } }, bytes }
+  return {
+    payload: {
+      data,
+      mediaType,
+      ...name === undefined ? {} : { name },
+      ...position === undefined ? {} : { position },
+    },
+    bytes,
+  }
 }
 
 /**
@@ -98,7 +138,9 @@ export async function handleAttach(ctx: Context, maxBytes: number, payload: unkn
       mediaType: validated.payload.mediaType,
       ...validated.payload.name === undefined ? {} : { name: validated.payload.name },
     })
-    registerAttachmentRef(ref)
+    // Persist only validated metadata. The image bytes remain owned by the DSH
+    // attachment backend; image-mind stores no second copy.
+    await rememberAttachmentRef(ctx, ref, validated.payload.position)
     return { ok: true, ref, note: attachmentNote(ref), markdown: attachmentMarkdown(ref.attachmentId) }
   } catch (error) {
     return { ok: false, error: { code: 'internal', message: `attachment store rejected the image: ${(error as Error).message ?? String(error)}` } }
