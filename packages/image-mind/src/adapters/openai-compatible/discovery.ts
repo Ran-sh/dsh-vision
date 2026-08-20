@@ -158,6 +158,26 @@ export function planVisionModels(baseURL: string): readonly string[] {
   return GENERIC_VISION_MODELS
 }
 
+/**
+ * Bounded automatic fallback candidates for a known endpoint plan.
+ * Unknown/custom endpoints deliberately return none: guessing a random model
+ * there would hide configuration errors and waste calls. The current model is
+ * removed while preserving the plan's preferred order.
+ */
+export function automaticFallbackVisionModels(
+  baseURL: string,
+  currentModel: string,
+  limit = 2,
+): readonly string[] {
+  if (!Number.isSafeInteger(limit) || limit <= 0) return []
+  const lower = baseURL.toLowerCase()
+  for (const plan of KNOWN_PLAN_VISION_MODELS) {
+    if (!lower.includes(plan.match)) continue
+    return plan.models.filter(model => model !== currentModel).slice(0, limit)
+  }
+  return []
+}
+
 /** Narrow an unknown value to a plain, non-array object, or undefined. */
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined
