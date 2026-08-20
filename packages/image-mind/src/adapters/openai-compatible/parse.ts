@@ -102,12 +102,15 @@ export function buildVisionRequest(
   maxOutputTokens: number,
   prompt: string,
   images: readonly LoadedImage[],
+  imageOrdinals?: readonly number[],
+  originalImageCount?: number,
 ): { path: string; body: string } {
   // Keep callers and ctx.vision provider-neutral: task planning is an adapter-
   // side concern, immediately before the request becomes a vendor wire body.
   // The planner is deterministic and adds evidence guidance plus a universal
-  // fence against instructions embedded in image pixels.
-  const plannedPrompt = planVisionPrompt(prompt, images.length)
+  // fence against instructions embedded in image pixels. Adapter-internal
+  // ordinals preserve original image identity across HTTP-413 split batches.
+  const plannedPrompt = planVisionPrompt(prompt, images.length, imageOrdinals, originalImageCount)
 
   if (apiStyle === 'responses') {
     return {
