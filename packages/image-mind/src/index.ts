@@ -50,16 +50,11 @@ export const inject = ['vision', 'tools']
 export { runConnectionTest, listEndpointModels } from './runtime/vision-rpc.ts'
 export { VISUAL_FIXTURES, answerMatches } from './runtime/visual-fixtures.ts'
 
-/**
- * Register the vision capability: adapter, directory, settings, tool, routes.
- * @param ctx - registrant context carrying the tool registry.
- * @param config - deployment configuration.
- */
+/** Register the vision capability: adapter, directory, settings, tool, routes. */
 export function apply(ctx: Context, config: ConfigType = {}): void {
   const configHasProviders = config.providers !== undefined && Object.keys(config.providers).length > 0
-  if (configHasProviders || config.active !== undefined) {
-    resolveConfig(config)
-  }
+  if (configHasProviders || config.active !== undefined) resolveConfig(config)
+
   let current: () => ConfigType = () => config
   let lastRaw: ConfigType | undefined
   let lastGood: ResolvedConfig | undefined
@@ -87,32 +82,17 @@ export function apply(ctx: Context, config: ConfigType = {}): void {
   const wireAdapter = new OpenAICompatibleVisionAdapter({
     resolveProviderOptions: (provider, request) => connectionSnapshotOf(resolved(), provider, request),
     resolveApiKey: options => resolveApiKey(ctx, options),
-    // Cross-provider recovery is provider-plugin policy, not a Runtime route
-    // selection rule. Candidates are ranked from current last-good config plus
-    // bounded in-memory health/circuit state; settings changes take effect on
-    // the very next exhausted call.
     resolveProviderFallbacks: (provider, request) => reliability.fallbacks(resolved(), provider, request),
     cache,
   })
-  // The decorator observes provider-level outcomes without touching transport
-  // logic. Retry/model fallback/cache remain owned by the wire adapter.
   const adapter = new ReliabilityVisionAdapter(wireAdapter, reliability)
 
-  // The adapter registration follows the settings section: a section change
-  // atomically replaces the route set (including `replace([])` when the user
-  // removes every provider), so no request observes a gap and stale routes
-  // never survive. An EMPTY initial route set registers nothing —the runtime
-  // (like the official LlmRuntime) forbids `registerAdapter([])` —and the
-  // first call fails with a clear PROVIDER_NOT_FOUND; once a registration
-  // exists, `replace([])` remains legal.
   let registration: ReturnType<typeof ctx.vision.registerAdapter> | undefined
   let registeredRoutes: string[] | undefined
   const ensureRegistration = (): void => {
     const routes = Object.keys(resolved().providers)
     if (registration !== undefined && registeredRoutes !== undefined
-      && routes.length === registeredRoutes.length && routes.every((route, index) => route === registeredRoutes![index])) {
-      return
-    }
+      && routes.length === registeredRoutes.length && routes.every((route, index) => route === registeredRoutes![index])) return
     if (registration === undefined) {
       if (routes.length === 0) {
         registeredRoutes = routes
@@ -126,14 +106,8 @@ export function apply(ctx: Context, config: ConfigType = {}): void {
   }
   ensureRegistration()
 
-  // The provider directory: one registration owns every catalog entry
-  // (advisory "what can be configured"), a second owns ONLY the user-created
-  // providers whose ids are absent from the catalog —a catalog provider the
-  // user configures is not re-declared (that would violate registration
-  // ownership). Directory entries carry display metadata only —endpoint,
-  // protocol, and credential facts live in the adapter's own resolution.
   const catalogIds = new Set(VISION_PROVIDER_CATALOG.map(entry => entry.id))
-  const catalogDirectory = ctx.vision.registerConfigurableProviders(
+  ctx.vision.registerConfigurableProviders(
     VISION_PROVIDER_CATALOG.map(entry => ({
       id: entry.id,
       displayName: entry.name,
@@ -148,9 +122,7 @@ export function apply(ctx: Context, config: ConfigType = {}): void {
       .map(id => ({ id, displayName: id }))
     const ids = entries.map(entry => entry.id)
     if (userDirectory !== undefined && registeredUserEntries !== undefined
-      && ids.length === registeredUserEntries.length && ids.every((id, index) => id === registeredUserEntries![index])) {
-      return
-    }
+      && ids.length === registeredUserEntries.length && ids.every((id, index) => id === registeredUserEntries![index])) return
     if (userDirectory === undefined) {
       if (entries.length === 0) {
         registeredUserEntries = ids
@@ -165,9 +137,7 @@ export function apply(ctx: Context, config: ConfigType = {}): void {
   ensureDirectory()
 
   installSettingsSection(ctx, IMAGE_MIND_SETTINGS_NAMESPACE, Config, config, {
-    setSource: (source) => {
-      current = source
-    },
+    setSource: (source) => { current = source },
     onChange: () => {
       try {
         resolved()
@@ -218,10 +188,9 @@ export function apply(ctx: Context, config: ConfigType = {}): void {
 }
 
 /**
- * Build the endpoint snapshot one call holds: the named provider's resolved
- * facts, plus the request's model override. The adapter deep-freezes the
- * snapshot before the wire layer sees it, so an in-flight request never
- * observes a settings change and the next call re-resolves.
+ * Build an immutable endpoint snapshot. Task-aware `maxOutputTokens` is a
+ * caller preference, while the configured provider value remains the hard
+ * safety/cost cap. Therefore a task may lower the cap but never raise it.
  */
 function connectionSnapshotOf(
   resolved: ResolvedConfig,
@@ -238,12 +207,15 @@ function connectionSnapshotOf(
     )
   }
   const spec = resolved.providers[id]
-  if (spec === undefined) {
-    throw new VisionError(`image-mind: provider ${JSON.stringify(id)} is not defined`, 'PROVIDER_NOT_FOUND')
-  }
+  if (spec === undefined) throw new VisionError(`image-mind: provider ${JSON.stringify(id)} is not defined`, 'PROVIDER_NOT_FOUND')
+
   const requestedModel = request?.model
   const modelOverride = requestedModel !== undefined && requestedModel.trim().length > 0 ? requestedModel.trim() : undefined
-  const maxOutputTokens = request?.maxOutputTokens ?? spec.maxOutputTokens
+  const requestedMax = request?.maxOutputTokens
+  const maxOutputTokens = requestedMax === undefined
+    ? spec.maxOutputTokens
+    : Math.min(spec.maxOutputTokens, requestedMax)
+
   return {
     provider: id,
     baseURL: spec.baseURL,
