@@ -60,3 +60,6 @@ export type VisionRequestLifecycleEvent =
   | VisionRequestStartedEvent
   | VisionRequestCompletedEvent
   | VisionRequestFailedEvent
+
+/** Observer invoked after runtime state has already been decided. */
+export type VisionLifecycleListener = (event: VisionRequestLifecycleEvent) => void | Promise<void>
