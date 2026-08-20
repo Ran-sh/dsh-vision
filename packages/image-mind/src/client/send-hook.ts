@@ -1,15 +1,10 @@
 /**
  * Send interception: text-only models reject image blocks at submit, so a
- * send that carries draft images is rewritten into a plain-text prompt that
- * carries image-mind references instead. The images are uploaded through the
- * host attach route (so bytes stay out of the conversation log), the draft
- * images are released only after the rewritten send succeeds, and the model
- * analyzes them through the understand_image tool rather than receiving bytes
- * it cannot read.
- *
- * The hook wraps the conversation service's sendSession method in place. It
- * is structural (no dependency on the conversation package's internal
- * types) and idempotent (a module marker guards against double install).
+ * send that carries draft images is rewritten into a plain-text prompt. The
+ * images are uploaded through the host attach route (so bytes and durable
+ * attachment metadata stay out of the conversation text), the draft images
+ * are released only after the rewritten send succeeds, and the model analyzes
+ * them through the understand_image tool rather than receiving image bytes.
  * @module dsh-plugin-image-mind/client/send_hook
  */
 
@@ -30,13 +25,15 @@ interface PromptResult { ok: boolean; error?: { code: string; message?: string }
 
 /** The session face needed to re-send a text-only prompt. */
 interface SessionPromptFace {
-  prompt(content: readonly TextBlock[], mode: string): Promise<PromptResult>
+  /** DSH session/agent identity; used only as a server-side attachment lookup key. */
+  readonly sessionId?: string
+  prompt(content: readonly TextBlock[], mode: string, signal?: AbortSignal): Promise<PromptResult>
 }
 
 /** The conversation-service surface this hook wraps. */
 interface ConversationSendFace {
   send(text: string): Promise<void>
-  sendSession(session: SessionPromptFace, text: string, imageIds: readonly string[], mode: string): Promise<void>
+  sendSession(session: SessionPromptFace, text: string, imageIds: readonly string[], mode: string, signal?: AbortSignal): Promise<unknown>
   draftImages(ids: readonly string[]): readonly DraftImageFace[]
   releaseDraftImage(id: string): void
 }
@@ -45,28 +42,18 @@ interface ConversationSendFace {
 const HOOK_MARKER = '__dshImageMindSendHooked'
 
 /**
- * Model-facing routing hint hidden by normal Markdown renderers. It does not
- * force needless image calls: text-only questions can proceed normally, but a
- * response that depends on pixels must use the perception tool instead of
- * hallucinating from an opaque sha256 handle.
+ * User-safe routing marker. DSH currently renders the submitted text verbatim
+ * in the user bubble, so HTML comments are NOT a hidden channel. Keep this
+ * message deliberately free of attachment ids, raw URLs, dimensions, byte
+ * counts, file metadata, or other host-only routing facts.
  */
-export const VISION_ROUTE_HINT = '<!-- image-mind: The image references below are opaque attachment handles, not visual descriptions. If the answer depends on image contents, call understand_image before answering and never infer pixels from the handle itself. Prefer the exact hidden [image attachment {...}] JSON metadata when present; unlike a bare sha256 id it remains resolvable after a host restart. For an image-only message, inspect the image with understand_image before replying. -->'
+export const VISION_ROUTE_HINT = '已附加图片。若回答依赖图片内容，请先调用 understand_image 查看图片，不要根据附件占位信息猜测。'
 
-/** Hide one full attachment note from UI rendering while keeping it in model context. */
-export function hiddenAttachmentNote(note: string): string {
-  // Notes are generated from JSON, but defensively break an HTML-comment close
-  // token if a future display name ever contains one.
-  return `<!-- ${note.replace(/-->/g, '--\u200b>')} -->`
-}
-
-/** Build the plain-text rewrite sent to the text-only main model. */
-export function buildVisionAwarePrompt(
-  text: string,
-  refs: readonly string[],
-  notes: readonly string[] = [],
-): string {
-  const metadata = notes.map(hiddenAttachmentNote)
-  return [text.trim(), VISION_ROUTE_HINT, ...metadata, ...refs].filter(part => part !== '').join('\n')
+/** Build the text-only rewrite without leaking host attachment metadata. */
+export function buildVisionAwarePrompt(text: string, imageCount = 1): string {
+  const count = Number.isSafeInteger(imageCount) && imageCount > 0 ? imageCount : 1
+  const marker = count === 1 ? VISION_ROUTE_HINT : `已附加 ${count} 张图片。若回答依赖图片内容，请先调用 understand_image 查看图片，不要猜测。`
+  return [text.trim(), marker].filter(part => part !== '').join('\n')
 }
 
 /**
@@ -83,19 +70,31 @@ export function installSendHook(conversation: unknown): void {
   if ((face as unknown as Record<string, unknown>)[HOOK_MARKER] === true) return
 
   const original = face.sendSession
-  face.sendSession = async (session, text, imageIds, mode): Promise<void> => {
+  face.sendSession = async (session, text, imageIds, mode, signal): Promise<void> => {
     if (imageIds.length === 0) {
-      return original.call(face, session, text, imageIds, mode)
+      await original.call(face, session, text, imageIds, mode, signal)
+      return
     }
     const attachments = face.draftImages(imageIds)
     if (attachments.length !== imageIds.length) {
       showToast('图片发送失败：草稿图片已失效，请重新选择图片后再试', 'error')
       return
     }
-    const refs: string[] = []
-    const notes: string[] = []
+    const sessionId = typeof session.sessionId === 'string' ? session.sessionId.trim() : ''
+    if (sessionId === '') {
+      // Without a stable DSH session identity there is no safe way to keep the
+      // routing metadata off the user-visible prompt while still letting the
+      // host tool resolve the just-uploaded images. Fail closed and preserve
+      // drafts instead of falling back to leaking refs into conversation text.
+      showToast('图片发送失败：当前 DSH 会话缺少可用的 sessionId；草稿图片已保留', 'error')
+      return
+    }
+
+    const batchId = crypto.randomUUID()
+    let uploadedCount = 0
     let failureReason: string | undefined
-    for (const attachment of attachments) {
+    for (let index = 0; index < attachments.length; index += 1) {
+      const attachment = attachments[index]
       // Preflight: use the content-aware image policy before upload so OCR/UI
       // screenshots retain more detail while photographic payloads stay small.
       const prepared = await prepareImageForDescribe(attachment.file)
@@ -103,15 +102,19 @@ export function installSendHook(conversation: unknown): void {
         failureReason = `prepare failed: ${prepared.message}`
         break
       }
-      const uploaded = await uploadImage(prepared.base64, prepared.mediaType, attachment.file.name)
+      const uploaded = await uploadImage(
+        prepared.base64,
+        prepared.mediaType,
+        attachment.file.name,
+        { sessionId, batchId, batchIndex: index, batchCount: attachments.length },
+      )
       if (!uploaded.ok) {
         failureReason = `upload failed: ${uploaded.message}`
         break
       }
-      refs.push(uploaded.markdown)
-      notes.push(uploaded.note)
+      uploadedCount += 1
     }
-    if (refs.length !== attachments.length) {
+    if (uploadedCount !== attachments.length) {
       // Fail closed. Falling back to the shell's raw image send is a known
       // failure for text-only main models and can also discard the user's
       // retry opportunity. Keep every draft image intact so the user can send
@@ -122,8 +125,8 @@ export function installSendHook(conversation: unknown): void {
       showToast(`图片发送失败：${failureReason ?? '未知原因'}；草稿图片已保留，可直接重试`, 'error')
       return
     }
-    const fullText = buildVisionAwarePrompt(text, refs, notes)
-    const result = await session.prompt([{ type: 'text', text: fullText }], mode)
+    const fullText = buildVisionAwarePrompt(text, attachments.length)
+    const result = await session.prompt([{ type: 'text', text: fullText }], mode, signal)
     if (!result.ok) {
       // The rewrite succeeded but the conversation send did not. Keep the
       // drafts for retry; release only after a successful session.prompt.
