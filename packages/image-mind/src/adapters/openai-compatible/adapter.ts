@@ -313,6 +313,26 @@ export class OpenAICompatibleVisionAdapter extends VisionAdapter {
     return deepFreeze(this.options.resolveProviderOptions(provider, request))
   }
 
+  /**
+   * Split a provider-rejected multi-image payload in half and process the
+   * chunks sequentially. Recursive callSelectedModel handles a second 413 on
+   * either half; a single-image 413 remains a clear terminal provider error.
+   */
+  private async callSplitImages(
+    request: VisionRequest,
+    options: Readonly<OpenAICompatibleVisionOptions>,
+    apiKey: string,
+  ): Promise<VisionResult> {
+    const middle = Math.ceil(request.images.length / 2)
+    const chunks = [request.images.slice(0, middle), request.images.slice(middle)].filter(chunk => chunk.length > 0)
+    const parts: string[] = []
+    for (let index = 0; index < chunks.length; index += 1) {
+      const result = await this.callSelectedModel({ ...request, images: chunks[index] }, options, apiKey)
+      parts.push(`[Vision batch ${index + 1}/${chunks.length}; ${chunks[index].length} image(s)]\n${result.text}`)
+    }
+    return { text: parts.join('\n\n'), provider: options.provider, model: options.model }
+  }
+
   /** Run one selected model with cache + retry semantics. */
   private async callSelectedModel(
     request: VisionRequest,
@@ -341,6 +361,14 @@ export class OpenAICompatibleVisionAdapter extends VisionAdapter {
         return result
       } catch (error) {
         const wireError = asWireError(error)
+        // Payload-too-large is neither a model failure nor a transient retry.
+        // For multi-image requests adapt to the provider's real limit by
+        // recursively bisecting; keep a single image intact and fail loudly.
+        if (wireError.status === 413 && request.images.length > 1) {
+          const result = await this.callSplitImages(request, options, apiKey)
+          if (cacheKey !== undefined) this.options.cache?.set(cacheKey, result.text)
+          return result
+        }
         const retryable = wireError.retryable
           || (request.signal?.aborted !== true && error instanceof Error && error.name === 'AbortError')
         if (!retryable || attempt >= this.maxRetries) {
