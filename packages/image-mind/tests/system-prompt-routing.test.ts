@@ -1,0 +1,34 @@
+/** @vitest-environment node */
+
+import { describe, expect, it, vi } from 'vitest'
+import type { Context } from '@deepseek-ai/cordis'
+import {
+  IMAGE_MIND_ROUTING_SECTION,
+  registerImageMindSystemPrompt,
+} from '../src/runtime/system-prompt-routing.ts'
+
+describe('image-mind hidden system-prompt routing', () => {
+  it('registers model-only tool guidance through the system-prompt service', () => {
+    const section = vi.fn(() => () => {})
+    const ctx = { systemPrompt: { section } } as unknown as Context
+
+    expect(registerImageMindSystemPrompt(ctx)).toBe(true)
+    expect(section).toHaveBeenCalledOnce()
+    expect(section).toHaveBeenCalledWith(IMAGE_MIND_ROUTING_SECTION)
+    expect(IMAGE_MIND_ROUTING_SECTION.name).toBe('tool:image-mind')
+    expect(IMAGE_MIND_ROUTING_SECTION.text).toContain('understand_image')
+    expect(IMAGE_MIND_ROUTING_SECTION.text).toContain('已附加图片')
+    expect(IMAGE_MIND_ROUTING_SECTION.text).toContain('omit `image` and `images`')
+  })
+
+  it('does not require systemPrompt in direct narrow unit-test fixtures', () => {
+    expect(registerImageMindSystemPrompt({} as Context)).toBe(false)
+  })
+
+  it('keeps host attachment secrets out of the model routing prose', () => {
+    expect(IMAGE_MIND_ROUTING_SECTION.text).not.toContain('sha256:')
+    expect(IMAGE_MIND_ROUTING_SECTION.text).not.toContain('/image-mind/raw/')
+    expect(IMAGE_MIND_ROUTING_SECTION.text).not.toContain('attachmentId')
+    expect(IMAGE_MIND_ROUTING_SECTION.text).not.toContain('mediaType')
+  })
+})
