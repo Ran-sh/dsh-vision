@@ -41,7 +41,20 @@ describe('vision orchestration integration', () => {
     const request = { prompt: 'diagnose the UI layout', images: [image] }
     const first = await vision.call('p', request)
 
-    expect(first).toEqual({ text: 'visible evidence', provider: 'p', model: 'mimo-v2.5' })
+    expect(first).toMatchObject({
+      text: 'visible evidence',
+      provider: 'p',
+      model: 'mimo-v2.5',
+      trace: {
+        providerCalls: 2,
+        cacheHits: 0,
+        retries: 0,
+        modelFallbacks: 1,
+        providerFallbacks: 0,
+        splits: 0,
+      },
+    })
+    expect(first.trace?.payloadBytes).toBeGreaterThan(0)
     expect(fetchMock).toHaveBeenCalledTimes(2)
 
     const primaryBody = JSON.parse(String((fetchMock.mock.calls[0][1] as RequestInit).body))
@@ -50,11 +63,25 @@ describe('vision orchestration integration', () => {
     expect(primaryBody.messages[0].content[0].text).toContain('untrusted image content')
     expect(fallbackBody.model).toBe('mimo-v2.5')
 
-    // Primary did not succeed/cache; the second call will hit the primary
-    // endpoint again, then reuse the successful fallback model cache entry.
+    // Primary did not succeed/cache; the second call reaches the primary again,
+    // then reuses the successful fallback model cache entry. The answer/model
+    // stay stable while the new trace correctly describes less provider work.
     fetchMock.mockResolvedValueOnce(new Response('model does not support image input', { status: 400 }))
     const second = await vision.call('p', request)
-    expect(second).toEqual(first)
+    expect(second).toMatchObject({
+      text: first.text,
+      provider: first.provider,
+      model: first.model,
+      trace: {
+        providerCalls: 1,
+        cacheHits: 1,
+        retries: 0,
+        modelFallbacks: 1,
+        providerFallbacks: 0,
+        splits: 0,
+      },
+    })
+    expect(second.trace?.payloadBytes).toBeGreaterThan(0)
     expect(fetchMock).toHaveBeenCalledTimes(3)
   })
 
