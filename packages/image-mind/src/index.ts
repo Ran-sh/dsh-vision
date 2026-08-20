@@ -5,30 +5,14 @@
  * vision-language model at an OpenAI-compatible endpoint to answer over it;
  * only the returned text crosses into the conversation, so the image never
  * enters the session log.
- *
- * This entry is composition only: it registers the provider directory and the
- * OpenAI-compatible adapter (with its own per-call provider-option and
- * credential resolution) into the injected `ctx.vision`, installs the
- * settings section, registers the thin `understand_image` tool, and mounts
- * the attachment routes. Provider selection, HTTP, credential parsing, and
- * configuration validation live in their own layers. The vision service
- * package owns `ctx.vision`; this plugin only registers into it.
- *
- * Configuration resolution follows the official llm-deepseek last-good
- * pattern: a static composition error fails loud at load; a live settings
- * snapshot that fails beyond the schema keeps serving the last good snapshot
- * (logged once per bad snapshot) and recovers when the settings turn good.
- *
- * Personal plugin, written from scratch: plugin id `image-mind`, tool name
- * `understand_image`, route prefix /image-mind.
  * @module dsh-plugin-image-mind
  */
 
 import type { Context } from '@deepseek-ai/cordis'
 import { installSettingsSection } from '@deepseek-ai/dsh-settings'
 import type {} from '@ran-sh/dsh-vision'
-import { VisionError } from '@ran-sh/dsh-vision'
-import type { VisionRequest } from '@ran-sh/dsh-vision'
+import { VisionError, createMemoryVisionCache } from '@ran-sh/dsh-vision'
+import type { VisionCacheStore, VisionRequest } from '@ran-sh/dsh-vision'
 import { OpenAICompatibleVisionAdapter } from './adapters/openai-compatible/index.ts'
 import type { OpenAICompatibleVisionOptions } from './adapters/openai-compatible/types.ts'
 import { resolveApiKey } from './credentials/resolve.ts'
@@ -49,6 +33,9 @@ export const inject = ['vision', 'tools']
 
 export { runConnectionTest, listEndpointModels } from './runtime/vision-rpc.ts'
 export { VISUAL_FIXTURES, answerMatches } from './runtime/visual-fixtures.ts'
+
+const EVIDENCE_CACHE_MAX_ENTRIES = 64
+const EVIDENCE_CACHE_TTL_MS = 5 * 60_000
 
 /** Register the vision capability: adapter, directory, settings, tool, routes. */
 export function apply(ctx: Context, config: ConfigType = {}): void {
@@ -78,6 +65,19 @@ export function apply(ctx: Context, config: ConfigType = {}): void {
 
   ctx.vision.registerDefaultProviderResolver('image-mind', () => resolved().active)
   const cache = createVisionCache()
+  let evidenceCache = createMemoryVisionCache({ maxEntries: EVIDENCE_CACHE_MAX_ENTRIES, ttlMs: EVIDENCE_CACHE_TTL_MS })
+  // Stable proxy lets settings changes replace the backing store without
+  // re-registering the tool closure.
+  const evidenceCacheView: VisionCacheStore = {
+    getUnderstanding: key => evidenceCache.getUnderstanding(key),
+    setUnderstanding: entry => evidenceCache.setUnderstanding(entry),
+    getAnswer: key => evidenceCache.getAnswer(key),
+    setAnswer: entry => evidenceCache.setAnswer(entry),
+  }
+  const resetEvidenceCache = (): void => {
+    evidenceCache = createMemoryVisionCache({ maxEntries: EVIDENCE_CACHE_MAX_ENTRIES, ttlMs: EVIDENCE_CACHE_TTL_MS })
+  }
+
   const reliability = createProviderReliabilityTracker()
   const wireAdapter = new OpenAICompatibleVisionAdapter({
     resolveProviderOptions: (provider, request) => connectionSnapshotOf(resolved(), provider, request),
@@ -143,6 +143,9 @@ export function apply(ctx: Context, config: ConfigType = {}): void {
         resolved()
         ensureRegistration()
         ensureDirectory()
+        // Provider/model/policy changes invalidate reusable evidence. Exact
+        // semantic request cache remains adapter-owned and key-scoped.
+        resetEvidenceCache()
       } catch (error) {
         ctx.logger.error('image-mind: keeping the previously registered vision routes after a refused settings update')
         ctx.logger.error(error)
@@ -160,6 +163,7 @@ export function apply(ctx: Context, config: ConfigType = {}): void {
     ctx,
     () => resolved().defaultPrompt,
     () => ({ maxBytes: resolved().maxBytes, allowPrivateNetwork: resolved().allowPrivateNetwork }),
+    evidenceCacheView,
   ))
 
   const registerRoutes = (): void => {
@@ -212,9 +216,7 @@ function connectionSnapshotOf(
   const requestedModel = request?.model
   const modelOverride = requestedModel !== undefined && requestedModel.trim().length > 0 ? requestedModel.trim() : undefined
   const requestedMax = request?.maxOutputTokens
-  const maxOutputTokens = requestedMax === undefined
-    ? spec.maxOutputTokens
-    : Math.min(spec.maxOutputTokens, requestedMax)
+  const maxOutputTokens = requestedMax === undefined ? spec.maxOutputTokens : Math.min(spec.maxOutputTokens, requestedMax)
 
   return {
     provider: id,
