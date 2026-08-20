@@ -36,15 +36,18 @@ export interface VisionModel {
   supportsReasoning?: boolean
 }
 
+/** Caller preference for semantic vision-result caching. */
+export type VisionCacheMode = 'use' | 'refresh' | 'no-store'
+
 /**
  * One vision request. `images` is a list so the adapter API can grow to
  * multi-image naturally; the tool consumer still passes one image today.
  *
  * The request names only what the caller wants — which provider/model, what
- * prompt over which images, the output cap the answer may use, and
- * cancellation. It carries NO connection facts: how the provider reaches an
- * endpoint, authenticates, serializes the request, or times it out is the
- * registered adapter's own concern, never the runtime's.
+ * prompt over which images, cache freshness, the output cap the answer may
+ * use, and cancellation. It carries NO connection facts: how the provider
+ * reaches an endpoint, authenticates, serializes the request, or times it out
+ * is the registered adapter's own concern, never the runtime's.
  */
 export interface VisionRequest {
   /** Provider id to use; absent selects the runtime's active provider. */
@@ -55,6 +58,12 @@ export interface VisionRequest {
   prompt: string
   /** Loaded image bytes and their sniffed media type. */
   images: LoadedImage[]
+  /**
+   * Semantic-cache preference. `use` (default) may reuse a fresh hit;
+   * `refresh` forces a new endpoint call and replaces the cached answer;
+   * `no-store` bypasses both cache reads and writes.
+   */
+  cache?: VisionCacheMode
   /** Output-token cap the caller wants for the answer. */
   maxOutputTokens?: number
   /** Caller cancellation; adapters must honor it. */
