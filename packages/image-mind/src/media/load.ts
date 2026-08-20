@@ -13,6 +13,7 @@ import { validateImageUrl } from './network.ts'
 import type { Context } from '@deepseek-ai/cordis'
 import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import { attachmentRefById, parseImageAttachmentRef } from '../attachments/store.ts'
+import { durableAttachmentRefById } from '../attachments/ref-index.ts'
 import { isImageMimeType, sniffMimeType, type ImageMimeType } from './validate.ts'
 import type { LoadedImage } from './types.ts'
 
@@ -118,23 +119,19 @@ export async function loadImage(
     const bytes = await readBoundedBody(response, maxBytes)
     return toImage(bytes, trimmed)
   }
-  // A bare attachment id — the `sha256:…` string text models copy out of the
-  // markdown image reference instead of the whole JSON. Resolve it through the
-  // attach-route registry (the store's digest verification still runs).
-  const registered = attachmentRefById(trimmed)
+  // A bare attachment id — first use the process cache, then the metadata-only
+  // durable index. The actual bytes still come from DSH's attachment backend
+  // and its digest/metadata verification runs on every read.
+  const registered = attachmentRefById(trimmed) ?? await durableAttachmentRefById(ctx, trimmed)
   if (registered !== undefined) {
     const bytes = await readAttachmentRef(ctx, registered, signal)
     assertWithinBound(bytes.length, maxBytes)
     return toImage(bytes, trimmed)
   }
-  // A sha256:… id that is NOT in the registry is an expired or unknown
-  // attachment — never fall through to treating it as a file path (the old
-  // behavior produced "path is not a file: sha256:..." which sent the user
-  // hunting for a file that never existed).
   if (/^sha256:/i.test(trimmed)) {
     throw new Error(
       'image-mind: the image attachment ' + JSON.stringify(trimmed.slice(0, 64))
-      + ' is no longer available (attachments are process-lifetime); ask the user to re-send the image',
+      + ' is unavailable or has no validated metadata; ask the user to re-send the image',
     )
   }
   const info = await stat(trimmed, { bigint: false })
