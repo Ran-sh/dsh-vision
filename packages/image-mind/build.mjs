@@ -29,6 +29,14 @@ await build({
   target: 'es2024',
   sourcemap: true,
   external: ['@deepseek-ai/*', '@ran-sh/dsh-vision', 'schemastery'],
+  // Some source/dependency paths intentionally use runtime require() for Node
+  // built-ins. esbuild's ESM helper can only service those calls when a native
+  // require binding exists. DSH imports this bundle as ESM, so provide the
+  // standard createRequire(import.meta.url) bridge instead of letting the
+  // generated helper throw "Dynamic require of node:* is not supported".
+  banner: {
+    js: "import { createRequire as __imageMindCreateRequire } from 'node:module';\nconst require = __imageMindCreateRequire(import.meta.url);",
+  },
   logLevel: 'info',
 })
 
