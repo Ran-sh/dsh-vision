@@ -21,7 +21,7 @@ import { deepFreeze } from '@ran-sh/dsh-vision'
 import type { LoadedImage } from '@ran-sh/dsh-vision'
 import { readBoundedBody, readBoundedText } from '../../media/load.ts'
 import { buildVisionRequest, extractChatCompletionsContent, extractResponsesContent } from './parse.ts'
-import { discoverEndpointModels } from './discovery.ts'
+import { automaticFallbackVisionModels, discoverEndpointModels } from './discovery.ts'
 import { resolveBackoff, sleepBackoff, type BackoffConfig } from './retry.ts'
 import type { VisionCache } from '../../cache/vision-cache.ts'
 import { globalVisionExecutionGate } from '../../runtime/execution-gate.ts'
@@ -136,15 +136,18 @@ export class ImageMindVisionError extends Error {
   readonly code: ProviderWireCode
   readonly status?: number
   readonly retryable: boolean
+  /** Whether a known-plan alternate model may repair this exact failure. */
+  readonly modelFallbackEligible: boolean
   /** Provider-requested delay from a Retry-After header, capped at MAX_RETRY_AFTER_MS. */
   readonly retryAfterMs?: number
 
-  constructor(message: string, code: ProviderWireCode, options?: { status?: number; retryAfterMs?: number; cause?: unknown }) {
+  constructor(message: string, code: ProviderWireCode, options?: { status?: number; retryAfterMs?: number; modelFallbackEligible?: boolean; cause?: unknown }) {
     super(message, options?.cause === undefined ? undefined : { cause: options.cause })
     this.name = 'ImageMindVisionError'
     this.code = code
     this.status = options?.status
     this.retryAfterMs = options?.retryAfterMs
+    this.modelFallbackEligible = options?.modelFallbackEligible === true
     // Generic provider/network failures are retryable, but a concrete HTTP
     // 4xx (other than RATE_LIMITED, classified above) is deterministic input,
     // auth, route, or model configuration and must fail fast. Previously every
@@ -201,6 +204,13 @@ function asWireError(error: unknown): ImageMindVisionError {
   if (error instanceof ImageMindVisionError) return error
   if (error instanceof Error && error.name === 'AbortError') return new ImageMindVisionError(error.message, 'NETWORK_ERROR', { cause: error })
   return new ImageMindVisionError((error as Error).message ?? String(error), 'PROVIDER_ERROR', { cause: error })
+}
+
+/** Recover the adapter-local cause from the seam wrapper, when present. */
+function wireCause(error: unknown): ImageMindVisionError | undefined {
+  if (error instanceof ImageMindVisionError) return error
+  const cause = (error as { cause?: unknown } | null)?.cause
+  return cause instanceof ImageMindVisionError ? cause : undefined
 }
 
 /** Strip secret patterns from a provider error excerpt before it reaches a message. */
@@ -262,9 +272,11 @@ async function callVisionOnce(
     // Providers sometimes echo the request (including the key) in error
     // bodies; strip Authorization/Bearer/api_key patterns before surfacing.
     const safeExcerpt = redactExcerpt(excerpt)
+    const modelFallbackEligible = isTextOnlyModelError(safeExcerpt) || isUnknownModelError(safeExcerpt)
     const message = `image-mind: vision endpoint returned HTTP ${status}${safeExcerpt ? `: ${safeExcerpt}` : ''}${responseHint(status, false, safeExcerpt)}`
     throw new ImageMindVisionError(message, code, {
       status,
+      modelFallbackEligible,
       retryAfterMs: response.headers !== undefined ? parseRetryAfter(response.headers.get('retry-after')) : undefined,
     })
   }
@@ -301,12 +313,12 @@ export class OpenAICompatibleVisionAdapter extends VisionAdapter {
     return deepFreeze(this.options.resolveProviderOptions(provider, request))
   }
 
-  override async call(provider: string, request: VisionRequest): Promise<VisionResult> {
-    // One resolution per call: the endpoint snapshot and its key freeze here
-    // and hold for this whole request, so an in-flight request never observes
-    // a configuration change and the next call re-resolves.
-    const options = this.snapshot(provider, request)
-    const apiKey = await this.options.resolveApiKey(options)
+  /** Run one selected model with cache + retry semantics. */
+  private async callSelectedModel(
+    request: VisionRequest,
+    options: Readonly<OpenAICompatibleVisionOptions>,
+    apiKey: string,
+  ): Promise<VisionResult> {
     const cacheMode = request.cache ?? 'use'
     const cacheKey = this.options.cache === undefined || cacheMode === 'no-store'
       ? undefined
@@ -317,6 +329,7 @@ export class OpenAICompatibleVisionAdapter extends VisionAdapter {
         return { text: cached, provider: options.provider, model: options.model }
       }
     }
+
     let attempt = 0
     for (;;) {
       try {
@@ -358,6 +371,40 @@ export class OpenAICompatibleVisionAdapter extends VisionAdapter {
           throw abortError
         }
       }
+    }
+  }
+
+  override async call(provider: string, request: VisionRequest): Promise<VisionResult> {
+    // One resolution per call: the endpoint snapshot and its key freeze here
+    // and hold for this whole request, so an in-flight request never observes
+    // a configuration change and the next call re-resolves.
+    const primary = this.snapshot(provider, request)
+    const apiKey = await this.options.resolveApiKey(primary)
+
+    try {
+      return await this.callSelectedModel(request, primary, apiKey)
+    } catch (primaryError) {
+      // An explicit model override is an instruction, not a suggestion: never
+      // silently substitute another model when the caller selected one.
+      if (request.model !== undefined && request.model.trim().length > 0) throw primaryError
+      if (wireCause(primaryError)?.modelFallbackEligible !== true) throw primaryError
+
+      const candidates = automaticFallbackVisionModels(primary.baseURL, primary.model)
+      let lastError: unknown = primaryError
+      for (const model of candidates) {
+        const fallback = deepFreeze({ ...primary, model })
+        try {
+          return await this.callSelectedModel(request, fallback, apiKey)
+        } catch (error) {
+          lastError = error
+          // Only another model-compatibility failure justifies trying the next
+          // model. Auth/network/5xx/abort failures describe the endpoint, not
+          // this candidate model, so stop immediately instead of multiplying
+          // provider traffic.
+          if (wireCause(error)?.modelFallbackEligible !== true) throw error
+        }
+      }
+      throw lastError
     }
   }
 
