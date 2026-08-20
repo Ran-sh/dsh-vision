@@ -1,12 +1,13 @@
 # Vision quality benchmark
 
-This directory defines the durable corpus/result contract for comparing dsh-vision revisions. The benchmark runner that calls real providers belongs in a controlled DSH environment; the repository scorer is deliberately offline and deterministic.
+This directory defines the durable corpus/result contract for comparing dsh-vision revisions. The benchmark runner that calls real providers belongs in a controlled DSH environment; repository scoring and regression comparison are deliberately offline and deterministic.
 
 ## Files
 
 - `cases.example.jsonl` — schema examples only; **not** the final quality corpus.
 - `results.example.jsonl` — example execution records matching those cases.
 - `../../scripts/vision-benchmark-score.mjs` — deterministic scorer.
+- `../../scripts/vision-benchmark-compare.mjs` — baseline-vs-candidate regression gate.
 - `../../docs/verification-debt.md` — items that still require the unified real-environment validation pass.
 
 ## Case JSONL
@@ -42,7 +43,7 @@ Assertions are intentionally simple and inspectable. Do not hide evaluation poli
 
 ## Result JSONL
 
-The real runner should write one result per case:
+The real runner should write one result per case. Prefer the names below so the scorer can consume `VisionResult.trace` / `usage` directly:
 
 ```json
 {
@@ -52,8 +53,11 @@ The real runner should write one result per case:
   "latencyMs": 814,
   "provider": "opencode-go",
   "model": "mimo-v2.5",
-  "calls": 1,
+  "providerCalls": 1,
   "payloadBytes": 185420,
+  "cacheHits": 0,
+  "inputTokens": 2180,
+  "outputTokens": 164,
   "retries": 0,
   "modelFallbacks": 0,
   "providerFallbacks": 0,
@@ -62,12 +66,14 @@ The real runner should write one result per case:
 }
 ```
 
-If execution fails, preserve the same metadata and put a redacted error string in `error`. Never write API keys, Authorization headers, signed URL query strings, or full local secret-bearing paths into benchmark results.
+`calls` remains accepted as a backward-compatible alias for `providerCalls`. A reusable-evidence hit should normally report `providerCalls: 0` and `cacheHits >= 1`; the scorer exposes this as `zeroProviderReuseRate`.
+
+If execution fails, preserve the same metadata and put a redacted error string in `error`. Never write API keys, Authorization headers, signed URL query strings, prompt text copied from secrets, or full local secret-bearing paths into benchmark results.
 
 ## Scoring
 
 ```sh
-node scripts/vision-benchmark-score.mjs benchmarks/vision/cases.jsonl out/results.jsonl
+npm run benchmark:score -- benchmarks/vision/cases.jsonl out/results.jsonl
 ```
 
 The JSON report contains:
@@ -78,9 +84,34 @@ The JSON report contains:
 - forbidden-term hit count;
 - successful-task latency p50 / p95;
 - total provider calls and payload bytes;
+- semantic/layered cache hits and zero-provider-reuse rate;
+- provider-reported input/output token totals plus token-usage coverage;
 - retry / model-fallback / provider-fallback / split counts;
 - per-category pass rates and missing-result counts;
 - per-case rows for diffing regressions.
+
+## Regression gate
+
+Compare the same frozen corpus against a baseline and a candidate:
+
+```sh
+npm run benchmark:compare -- \
+  benchmarks/vision/cases.jsonl \
+  out/baseline-results.jsonl \
+  out/candidate-results.jsonl
+```
+
+The command exits non-zero when the default gate fails. The default policy intentionally prioritizes quality over savings:
+
+- routing success may regress by at most 1 percentage point;
+- task success may regress by at most 2 percentage points;
+- forbidden/hallucination proxy hits may not increase;
+- token reporting coverage may not drop by more than 10 percentage points;
+- p95 latency gets at most 30% relative headroom or 250 ms absolute headroom;
+- provider calls may grow at most 15%;
+- payload bytes and provider-reported input/output tokens may grow at most 20% when those metrics are available.
+
+The gate also reports baseline/candidate zero-provider-reuse rate, provider calls, and input tokens so layered evidence reuse can be judged on measurable savings rather than anecdotes. Do not loosen quality thresholds merely to make a cost optimization pass.
 
 ## Target corpus
 
@@ -106,6 +137,7 @@ For every baseline/candidate run keep:
 - provider + model configuration;
 - case/result files;
 - scorer JSON report;
+- compare JSON report and exit status;
 - date and environment (Node/OS);
 - whether calls used cache, retry, model fallback, provider fallback, or adaptive split.
 
