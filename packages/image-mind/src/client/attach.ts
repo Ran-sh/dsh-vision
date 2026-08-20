@@ -8,6 +8,13 @@ export const ATTACH_ENDPOINT = '/image-mind/attach'
 export const ACCEPTED_IMAGE_MIME: readonly string[] = ['image/png', 'image/jpeg', 'image/gif', 'image/webp']
 export const CLIENT_MAX_BYTES = 10 * 1024 * 1024
 
+export interface UploadRouting {
+  sessionId: string
+  batchId: string
+  batchIndex: number
+  batchCount: number
+}
+
 export function readFileAsBase64(file: File): Promise<{ ok: true; base64: string } | { ok: false; message: string }> {
   return new Promise((resolve) => {
     const reader = new FileReader()
@@ -29,13 +36,19 @@ export async function uploadImage(
   base64: string,
   mediaType: string,
   name?: string,
+  routing?: UploadRouting,
 ): Promise<{ ok: true; note: string; markdown: string } | { ok: false; message: string }> {
   let response: Response
   try {
     response = await fetch(ATTACH_ENDPOINT, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ data: base64, mediaType, ...name === undefined ? {} : { name } }),
+      body: JSON.stringify({
+        data: base64,
+        mediaType,
+        ...name === undefined ? {} : { name },
+        ...routing === undefined ? {} : routing,
+      }),
     })
   } catch {
     return { ok: false, message: 'network-failed' }
