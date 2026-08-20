@@ -1,7 +1,8 @@
 /** @vitest-environment node */
 
 import { describe, expect, it } from 'vitest'
-import { inferVisionTask, planVisionPrompt } from '../src/runtime/vision-planner.ts'
+import { inferVisionTask } from '@ran-sh/dsh-vision'
+import { planVisionPrompt } from '../src/runtime/vision-planner.ts'
 
 describe('vision planner task inference', () => {
   it('recognizes multilingual specialized tasks', () => {
