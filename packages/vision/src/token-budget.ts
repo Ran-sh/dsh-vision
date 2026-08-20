@@ -27,6 +27,8 @@ const POLICIES: Record<VisionTask, VisionTokenBudget> = {
   chart: { maxPixels: 8_000_000, maxOutputTokens: 2200, detail: 'medium', preferLossless: true },
   compare: { maxPixels: 8_000_000, maxOutputTokens: 2200, detail: 'medium', preferLossless: true },
   photo: { maxPixels: 3_000_000, maxOutputTokens: 1000, detail: 'low', preferLossless: false },
+  screenshot: { maxPixels: 10_000_000, maxOutputTokens: 2200, detail: 'high', preferLossless: true },
+  translate: { maxPixels: 10_000_000, maxOutputTokens: 2600, detail: 'high', preferLossless: true },
   general: DEFAULT,
 }
 
