@@ -18,5 +18,13 @@ export { createMemoryVisionCache, createVisionAnswerKey, createVisionUnderstandi
 export type { VisionUnderstanding, VisionAnswerCacheEntry, VisionCacheLayerMode, VisionCacheStore } from './cache.ts'
 export { createVisionTokenBudget } from './token-budget.ts'
 export type { VisionTokenBudget } from './token-budget.ts'
+export { selectVisionProvider } from './selector.ts'
+export type {
+  VisionSelectionCandidate,
+  VisionSelectionSkipReason,
+  VisionRankedCandidate,
+  VisionSkippedCandidate,
+  VisionSelectionResult,
+} from './selector.ts'
 export type { VisionModel, VisionModelDiscoveryRequest, VisionProbeRequest, VisionProviderDescriptor, VisionRequest, VisionResult, VisionTrace, LoadedImage, VisionImageMimeType, VisionCacheMode } from './types.ts'
 export { VisionRuntime as default } from './runtime.ts'
