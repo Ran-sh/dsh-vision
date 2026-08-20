@@ -28,16 +28,24 @@ function adapter() {
   })
 }
 
-function imageCount(call: unknown[]): number {
+function requestParts(call: unknown[]): Array<{ type: string; text?: string }> {
   const init = call[1] as RequestInit
-  const body = JSON.parse(String(init.body)) as { messages: Array<{ content: Array<{ type: string }> }> }
-  return body.messages[0].content.filter(part => part.type === 'image_url').length
+  const body = JSON.parse(String(init.body)) as { messages: Array<{ content: Array<{ type: string; text?: string }> }> }
+  return body.messages[0].content
+}
+
+function imageCount(call: unknown[]): number {
+  return requestParts(call).filter(part => part.type === 'image_url').length
+}
+
+function plannedText(call: unknown[]): string {
+  return requestParts(call).find(part => part.type === 'text')?.text ?? ''
 }
 
 afterEach(() => vi.unstubAllGlobals())
 
 describe('adaptive 413 splitting', () => {
-  it('bisects a rejected multi-image request and merges evidence', async () => {
+  it('bisects a rejected multi-image request, preserves original labels, and merges evidence', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(tooLarge())
       .mockResolvedValueOnce(ok('left evidence'))
@@ -51,18 +59,27 @@ describe('adaptive 413 splitting', () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(3)
     expect(fetchMock.mock.calls.map(call => imageCount(call))).toEqual([4, 2, 2])
-    expect(result.text).toContain('[Vision batch 1/2; 2 image(s)]')
+
+    const leftPrompt = plannedText(fetchMock.mock.calls[1])
+    const rightPrompt = plannedText(fetchMock.mock.calls[2])
+    expect(leftPrompt).toContain('Image 1, Image 2')
+    expect(leftPrompt).toContain('original 4-image request')
+    expect(rightPrompt).toContain('Image 3, Image 4')
+    expect(rightPrompt).toContain('do not renumber this subset from 1')
+
+    expect(result.text).toContain('[Vision split evidence for original Image 1, Image 2 of 4]')
+    expect(result.text).toContain('[Vision split evidence for original Image 3, Image 4 of 4]')
     expect(result.text).toContain('left evidence')
     expect(result.text).toContain('right evidence')
   })
 
-  it('recursively splits a half when the provider limit is even smaller', async () => {
+  it('recursively preserves labels when a half is split again', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(tooLarge()) // 4
-      .mockResolvedValueOnce(tooLarge()) // first 2
-      .mockResolvedValueOnce(ok('one'))  // 1
-      .mockResolvedValueOnce(ok('two'))  // 1
-      .mockResolvedValueOnce(ok('right')) // second 2
+      .mockResolvedValueOnce(tooLarge()) // original 1,2
+      .mockResolvedValueOnce(ok('one'))  // original 1
+      .mockResolvedValueOnce(ok('two'))  // original 2
+      .mockResolvedValueOnce(ok('right')) // original 3,4
     vi.stubGlobal('fetch', fetchMock)
 
     const result = await adapter().call('p', {
@@ -71,6 +88,12 @@ describe('adaptive 413 splitting', () => {
     })
 
     expect(fetchMock.mock.calls.map(call => imageCount(call))).toEqual([4, 2, 1, 1, 2])
+    expect(plannedText(fetchMock.mock.calls[2])).toContain('Image 1 from the original 4-image request')
+    expect(plannedText(fetchMock.mock.calls[3])).toContain('Image 2 from the original 4-image request')
+    expect(plannedText(fetchMock.mock.calls[4])).toContain('Image 3, Image 4')
+    expect(result.text).toContain('original Image 1 of 4')
+    expect(result.text).toContain('original Image 2 of 4')
+    expect(result.text).toContain('original Image 3, Image 4 of 4')
     expect(result.text).toContain('one')
     expect(result.text).toContain('two')
     expect(result.text).toContain('right')
