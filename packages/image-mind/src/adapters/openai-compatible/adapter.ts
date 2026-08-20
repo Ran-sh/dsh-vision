@@ -145,7 +145,15 @@ export class ImageMindVisionError extends Error {
     this.code = code
     this.status = options?.status
     this.retryAfterMs = options?.retryAfterMs
-    this.retryable = code === 'RATE_LIMITED' || code === 'PROVIDER_ERROR' || code === 'TIMEOUT' || code === 'NETWORK_ERROR'
+    // Generic provider/network failures are retryable, but a concrete HTTP
+    // 4xx (other than RATE_LIMITED, classified above) is deterministic input,
+    // auth, route, or model configuration and must fail fast. Previously every
+    // 400/404 was mapped to PROVIDER_ERROR and retried despite the public
+    // contract saying 4xx would not repeat.
+    this.retryable = code === 'RATE_LIMITED'
+      || code === 'TIMEOUT'
+      || code === 'NETWORK_ERROR'
+      || (code === 'PROVIDER_ERROR' && !(options?.status !== undefined && options.status >= 400 && options.status < 500))
   }
 }
 
