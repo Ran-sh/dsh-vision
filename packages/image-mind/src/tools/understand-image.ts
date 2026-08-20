@@ -18,6 +18,7 @@ import { defineTool, type GenericCallView } from '@deepseek-ai/dsh-tools'
 import { loadImage } from '../media/load.ts'
 import type { LoadedImage } from '../media/types.ts'
 // The `ctx.vision` Context augmentation, owned by the vision service package.
+import type { VisionCacheMode } from '@ran-sh/dsh-vision'
 import type {} from '@ran-sh/dsh-vision'
 
 /** Upper bound on images one call may carry (payload/cost guard). */
@@ -107,6 +108,8 @@ export interface UnderstandImageArgs {
   provider?: string
   /** Model id override; absent uses the provider's configured default. */
   model?: string
+  /** Cache policy for explicit reanalysis/freshness control. */
+  cache?: VisionCacheMode
 }
 
 /**
@@ -145,8 +148,11 @@ export function understandImageTool(
     + 'a much more useful answer. '
     + 'When the task involves several images (compare screenshots, diff two versions, batch-read a '
     + `page of photos), pass them as the \`images\` array in ONE call (up to ${MAX_IMAGES_PER_REQUEST}): the vision model sees them together. `
-    + 'Do NOT re-call this tool for an image whose analysis already appears in the conversation, unless '
-    + 'the user asks for a fresh look.'
+    + 'If the user explicitly asks you to look again, re-read/OCR from the pixels, ignore a previous '
+    + 'analysis, or verify a detail afresh, set `cache` to `refresh`. Use `no-store` only when the '
+    + 'caller specifically needs the result not to enter the short-lived semantic cache. '
+    + 'Do NOT re-call this tool for an image whose analysis already appears in the conversation unless '
+    + 'the user asks for a fresh look or a materially different visual question.'
 
   return defineTool({
     name: 'understand_image',
@@ -179,6 +185,11 @@ export function understandImageTool(
       model: {
         type: 'string',
         description: 'Optional model id override for this call; absent uses the provider\'s configured default model.',
+      },
+      cache: {
+        type: 'string',
+        enum: ['use', 'refresh', 'no-store'],
+        description: 'Optional semantic-cache policy. `use` (default) may reuse a fresh answer; `refresh` forces a new pixel analysis and replaces the cache; `no-store` bypasses cache reads and writes.',
       },
     },
     output: {
@@ -240,6 +251,7 @@ export function understandImageTool(
         model: args.model,
         prompt: args.prompt ?? defaultPrompt(),
         images,
+        ...args.cache === undefined ? {} : { cache: args.cache },
         signal: exec.signal,
       })
       // The model-facing result never echoes full local paths or URL query
