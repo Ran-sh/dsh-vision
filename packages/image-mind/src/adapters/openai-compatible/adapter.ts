@@ -24,6 +24,7 @@ import { buildVisionRequest, extractChatCompletionsContent, extractResponsesCont
 import { discoverEndpointModels } from './discovery.ts'
 import { resolveBackoff, sleepBackoff, type BackoffConfig } from './retry.ts'
 import type { VisionCache } from '../../cache/vision-cache.ts'
+import { globalVisionExecutionGate } from '../../runtime/execution-gate.ts'
 import type { OpenAICompatibleVisionOptions } from './types.ts'
 
 /** Default retry count after the first request, matching the harness default. */
@@ -310,7 +311,10 @@ export class OpenAICompatibleVisionAdapter extends VisionAdapter {
     let attempt = 0
     for (;;) {
       try {
-        const result = await callVisionOnce(request, options, apiKey)
+        const result = await globalVisionExecutionGate.run(
+          () => callVisionOnce(request, options, apiKey),
+          request.signal,
+        )
         if (cacheKey !== undefined) this.options.cache?.set(cacheKey, result.text)
         return result
       } catch (error) {
