@@ -16,7 +16,8 @@
     "diagnose:dsh": "node scripts/diagnose-dsh.mjs",
     "test:package": "vitest run --config vitest.config.ts tests/package.test.ts",
     "test:built": "vitest run --config vitest.config.ts tests/built.test.ts",
-    "benchmark:score": "node scripts/vision-benchmark-score.mjs"
+    "benchmark:score": "node scripts/vision-benchmark-score.mjs",
+    "benchmark:compare": "node scripts/vision-benchmark-compare.mjs"
   },
   "license": "MIT",
   "devDependencies": {
