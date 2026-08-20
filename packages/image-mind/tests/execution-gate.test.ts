@@ -8,9 +8,12 @@ describe('VisionExecutionGate', () => {
     const gate = new VisionExecutionGate(2)
     const started: number[] = []
     const releases: Array<() => void> = []
+    let resolveThirdStarted!: () => void
+    const thirdStarted = new Promise<void>(resolve => { resolveThirdStarted = resolve })
 
     const task = (id: number) => gate.run(async () => {
       started.push(id)
+      if (id === 3) resolveThirdStarted()
       await new Promise<void>(resolve => releases.push(resolve))
       return id
     })
@@ -26,9 +29,14 @@ describe('VisionExecutionGate', () => {
     expect(gate.queuedCount).toBe(1)
 
     releases.shift()!()
-    await Promise.resolve()
-    await Promise.resolve()
+    // Do not assert a particular number of Promise microtasks between the
+    // released operation, run()'s finally, pump(), acquire() continuation and
+    // the queued operation body. Node/V8 scheduling depth is not the gate's
+    // contract; FIFO start order and bounded concurrency are.
+    await thirdStarted
     expect(started).toEqual([1, 2, 3])
+    expect(gate.activeCount).toBe(2)
+    expect(gate.queuedCount).toBe(0)
 
     releases.shift()!()
     releases.shift()!()
