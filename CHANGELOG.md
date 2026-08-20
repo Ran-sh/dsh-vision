@@ -7,6 +7,83 @@ minor version). Package names: `@ran-sh/dsh-vision` (Service) and
 
 ## [Unreleased]
 
+### Added
+
+- Task-aware visual intent routing for OCR, UI review, code/terminal,
+  documents, charts, screenshots, translation, photos, and multi-image
+  compare/diff. One provider-neutral token/pixel policy is now the single
+  source of truth for quality budgets.
+- Reusable visual-evidence cache for stable evidence tasks, with bounded
+  in-memory TTL/LRU storage, `use` / `refresh` / `no-store` semantics, and
+  automatic invalidation after provider/settings changes. Ordinary
+  photo/general questions and explicit provider/model calls stay
+  question-specific and bypass this layer.
+- Provider-neutral execution telemetry: provider calls, serialized payload
+  bytes, cache hits, retries, model fallback, provider fallback, adaptive
+  splits, and provider-reported input/output token usage.
+- Metadata-only `VisionRuntime.subscribeLifecycle()` observers with correlated
+  started/completed/failed events. Lifecycle payloads intentionally exclude
+  prompts, image bytes/references/paths, provider response text, endpoint
+  URLs, credentials, and error messages; observer failures are contained.
+- Provider health scoring, circuit-breaker primitives, and a deterministic
+  selector used by image-mind's reliability layer to rank bounded backup
+  providers after endpoint-level failures.
+- Offline visual benchmark scoring now measures routing/task quality,
+  forbidden-answer hits, p50/p95 latency, trace/token telemetry coverage,
+  provider work, token cost, and zero-provider reusable-evidence hits.
+  `npm run benchmark:compare` adds a baseline-vs-candidate regression gate
+  that refuses to trade quality for lower cost and only compares cost when
+  telemetry coverage is trustworthy.
+- Official OpenAI endpoint-only task-aware image `detail`: high-precision
+  GPT-5.6 OCR/UI/code-style work uses `original`, older OpenAI vision models
+  use `high`, photo work uses `low`, and general work uses `auto`. Generic
+  OpenAI-compatible endpoints never receive this OpenAI-specific field.
+
+### Changed
+
+- Screenshot/document preprocessing is media-, aspect-, and pixel-budget
+  aware: PNG remains lossless with a larger resolution budget and alpha
+  preserved, while photographic JPEG/WebP use the bounded lossy path. Tall
+  screenshots are no longer reduced solely by a 3072-long-edge rule.
+- `understand_image` accepts up to 8 images while retaining the combined byte
+  ceiling and bounded load concurrency. Task classification now flows from the
+  core vision package into the planner, tool budget, selector, and cache
+  policy instead of maintaining duplicate vocabularies.
+- Multi-image HTTP 413 recovery recursively splits oversized batches while
+  preserving original `Image N` identities through every child request and
+  cache key; successful child usage is aggregated.
+- Default provider recovery is now bounded and health-aware. Explicit
+  provider/model intent remains sticky, and provider health is degraded only
+  by endpoint/service failures rather than auth/config/model incompatibility.
+- Semantic caching supports explicit refresh/no-store behavior, while the
+  reusable-evidence layer may satisfy same-image/same-task follow-up questions
+  with zero provider calls when broad evidence is already available.
+
+### Fixed
+
+- Preserve PNG screenshot/OCR fidelity instead of converting every large
+  image to a 2048px JPEG with a white background.
+- Fail closed when image-send rewriting cannot finish; never fall back to
+  sending raw image blocks to the text-only main model, and retain drafts so
+  the user can retry.
+- Keep complete attachment metadata in a hidden conversation note so newly
+  sent images can be re-read after host restart when the attachment backend
+  still retains the bytes.
+- Correct HTTP retry classification: deterministic 400/404 responses are no
+  longer repeatedly retried; caller abort is not counted as retry/fallback,
+  and Node timeout naming is normalized.
+- Add bounded model fallback for explicit model-compatibility failures and
+  bounded cross-provider recovery for retry-exhausted timeout/network/429/5xx
+  and terminal 413 failures, while refusing unsafe rerouting for auth,
+  deterministic 4xx, invalid responses, or explicit routing.
+- Accept common OpenAI-compatible structured response content in both Chat
+  Completions and Responses APIs instead of rejecting text-part arrays as
+  malformed responses.
+- Prevent 413 split children from renumbering their original images or sharing
+  incompatible cache entries with unrelated smaller requests.
+- Distinguish missing benchmark telemetry from genuine zero-cost telemetry;
+  JSON `null` fields no longer count as reported zero token/trace usage.
+
 ## [0.1.1] — 2026-08-20
 
 ### Fixed
