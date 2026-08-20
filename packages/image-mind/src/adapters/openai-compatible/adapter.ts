@@ -10,7 +10,12 @@ import type {
   VisionRequest, VisionResult, VisionTrace,
 } from '@ran-sh/dsh-vision'
 import { readBoundedBody, readBoundedText } from '../../media/load.ts'
-import { buildVisionRequest, extractChatCompletionsContent, extractResponsesContent } from './parse.ts'
+import {
+  buildVisionRequest,
+  extractChatCompletionsContent,
+  extractResponsesContent,
+  extractVisionUsage,
+} from './parse.ts'
 import { automaticFallbackVisionModels, discoverEndpointModels } from './discovery.ts'
 import { resolveBackoff, sleepBackoff, type BackoffConfig } from './retry.ts'
 import type { VisionCache } from '../../cache/vision-cache.ts'
@@ -272,7 +277,13 @@ async function callVisionOnce(
   const text = options.apiStyle === 'responses'
     ? extractResponsesContent(payload)
     : extractChatCompletionsContent(payload)
-  return { text, provider: options.provider, model: options.model }
+  const usage = extractVisionUsage(payload, options.apiStyle)
+  return {
+    text,
+    provider: options.provider,
+    model: options.model,
+    ...usage === undefined ? {} : { usage },
+  }
 }
 
 export class OpenAICompatibleVisionAdapter extends VisionAdapter {
@@ -301,6 +312,10 @@ export class OpenAICompatibleVisionAdapter extends VisionAdapter {
     const chunks = [request.images.slice(0, middle), request.images.slice(middle)].filter(chunk => chunk.length > 0)
     const ordinalChunks = [imageOrdinals.slice(0, middle), imageOrdinals.slice(middle)].filter(chunk => chunk.length > 0)
     const parts: string[] = []
+    let inputTokens = 0
+    let outputTokens = 0
+    let sawInputTokens = false
+    let sawOutputTokens = false
     for (let index = 0; index < chunks.length; index += 1) {
       const ordinals = ordinalChunks[index]
       const result = await this.callSelectedModel(
@@ -308,8 +323,25 @@ export class OpenAICompatibleVisionAdapter extends VisionAdapter {
       )
       const labels = ordinals.map(value => `Image ${value}`).join(', ')
       parts.push(`[Vision split evidence for original ${labels} of ${originalImageCount}]\n${result.text}`)
+      if (result.usage?.inputTokens !== undefined) {
+        sawInputTokens = true
+        inputTokens += result.usage.inputTokens
+      }
+      if (result.usage?.outputTokens !== undefined) {
+        sawOutputTokens = true
+        outputTokens += result.usage.outputTokens
+      }
     }
-    return { text: parts.join('\n\n'), provider: options.provider, model: options.model }
+    const usage = !sawInputTokens && !sawOutputTokens ? undefined : {
+      ...sawInputTokens ? { inputTokens } : {},
+      ...sawOutputTokens ? { outputTokens } : {},
+    }
+    return {
+      text: parts.join('\n\n'),
+      provider: options.provider,
+      model: options.model,
+      ...usage === undefined ? {} : { usage },
+    }
   }
 
   private async callSelectedModel(
@@ -342,8 +374,6 @@ export class OpenAICompatibleVisionAdapter extends VisionAdapter {
         if (cacheKey !== undefined) this.options.cache?.set(cacheKey, result.text)
         return result
       } catch (error) {
-        // Caller cancellation is not a provider/network failure and must not
-        // enter retry accounting or fallback policy at all.
         if (request.signal?.aborted === true) {
           throw request.signal.reason instanceof Error ? request.signal.reason : error
         }
