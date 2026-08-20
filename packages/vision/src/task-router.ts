@@ -4,6 +4,8 @@
  * @module @ran-sh/dsh-vision/task-router
  */
 
+import { createVisionTokenBudget } from './token-budget.ts'
+
 export type VisionTask =
   | 'ocr'
   | 'ui-review'
@@ -27,23 +29,13 @@ export interface VisionTaskRoute {
 }
 
 /**
- * Conservative task policy. Callers may override it after classification.
- * The values intentionally describe budgets rather than a concrete model.
+ * Route one classified task to its provider-neutral quality envelope.
+ *
+ * `token-budget.ts` is deliberately the single source of truth for budget
+ * numbers. Keeping a second policy table here previously allowed the two
+ * modules to drift (for example `compare`, `code`, and `general` had different
+ * values depending on which helper a caller used).
  */
 export function routeVisionTask(task: VisionTask): VisionTaskRoute {
-  switch (task) {
-    case 'ocr':
-    case 'document':
-      return { task, policy: { detail: 'high', preferLossless: true, maxPixels: 12000000, maxOutputTokens: 3000 } }
-    case 'ui-review':
-    case 'code':
-    case 'compare':
-      return { task, policy: { detail: 'high', preferLossless: true, maxPixels: 10000000, maxOutputTokens: 2500 } }
-    case 'chart':
-      return { task, policy: { detail: 'medium', preferLossless: true, maxPixels: 8000000, maxOutputTokens: 2200 } }
-    case 'photo':
-      return { task, policy: { detail: 'low', preferLossless: false, maxPixels: 4000000, maxOutputTokens: 1200 } }
-    default:
-      return { task, policy: { detail: 'medium', preferLossless: false, maxPixels: 6000000, maxOutputTokens: 1800 } }
-  }
+  return { task, policy: createVisionTokenBudget(task) }
 }
