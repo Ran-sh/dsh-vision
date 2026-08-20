@@ -95,25 +95,65 @@ export function createProviderReliabilityTracker(): ProviderReliabilityTracker {
     if (request.provider !== undefined && request.provider.trim().length > 0) return []
     if (request.model !== undefined && request.model.trim().length > 0) return []
 
-    const candidates = Object.entries(config.providers)
-      .filter(([id, spec]) => id !== primaryProvider && isProviderComplete(spec))
-      .map(([provider], index) => {
-        const state = stateFor(provider)
-        // `allow` advances an expired open circuit into half-open so one
-        // recovery probe can re-enter selection after cooldown.
-        state.circuit.allow()
-        return {
-          provider,
-          health: state.health,
-          circuit: state.circuit.snapshot(),
-          // Preserve configuration order as a small stable preference while
-          // allowing health to dominate after real observations accumulate.
-          priority: Math.max(0, 10 - index),
-        }
+    const candidates: Array<{
+      provider: string
+      health: VisionProviderHealthSnapshot
+      circuit: ReturnType<VisionCircuitBreaker['snapshot']>
+      priority: number
+    }> = []
+    const recoveryProbes: string[] = []
+    let fallbackIndex = 0
+
+    for (const [provider, spec] of Object.entries(config.providers)) {
+      if (provider === primaryProvider || !isProviderComplete(spec)) continue
+      const state = stateFor(provider)
+      const before = state.circuit.snapshot()
+      const admitted = state.circuit.allow()
+      const circuit = state.circuit.snapshot()
+
+      // `allow()` is the concurrency gate for open/half-open circuits. An
+      // expired open circuit admits exactly one caller and becomes half-open;
+      // concurrent callers see `half-open` + false and must not route another
+      // probe to the same provider.
+      if (!admitted && circuit.state !== 'closed') {
+        fallbackIndex += 1
+        continue
+      }
+
+      const recoveryProbe = before.state === 'open' && circuit.state === 'half-open'
+      if (recoveryProbe) {
+        recoveryProbes.push(provider)
+        // The health cooldown duplicates circuit state. Once a real half-open
+        // probe has been admitted, clear the stale health-only cooldown so the
+        // selector does not describe an internally contradictory snapshot.
+        state.health = { ...state.health, openedUntil: undefined }
+      }
+
+      candidates.push({
+        provider,
+        health: state.health,
+        circuit,
+        // Preserve configuration order as a small stable preference while
+        // allowing health to dominate after real observations accumulate.
+        priority: Math.max(0, 10 - fallbackIndex),
       })
+      fallbackIndex += 1
+    }
 
     const selected = selectVisionProvider({ task: 'general', candidates })
-    return selected.ranked.slice(0, MAX_RELIABILITY_PROVIDER_FALLBACKS).map(item => item.provider)
+    const ranked = selected.ranked.map(item => item.provider)
+
+    // A provider that has just crossed open -> half-open must actually receive
+    // its one recovery probe. If ordinary health ranking can always fill the
+    // bounded fallback list first, the route can remain half-open forever and
+    // never demonstrate recovery. Recovery probes therefore occupy the front
+    // of this one fallback attempt, preserving config order; healthy ranked
+    // routes fill the remaining bounded slots.
+    const ordered = [
+      ...recoveryProbes,
+      ...ranked.filter(provider => !recoveryProbes.includes(provider)),
+    ]
+    return ordered.slice(0, MAX_RELIABILITY_PROVIDER_FALLBACKS)
   }
 
   const snapshot = (provider: string): ProviderReliabilitySnapshot => {
