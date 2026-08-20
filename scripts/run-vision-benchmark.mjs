@@ -1,5 +1,3 @@
-#!/usr/bin/env node
-
 /**
  * Run the gated tool-direct visual benchmark in a real provider environment.
  *
