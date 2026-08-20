@@ -65,7 +65,28 @@ async function mount(entry: ImageMindConfig): Promise<{ ctx: Context; vision: Vi
 }
 
 afterEach(() => {
+  vi.useRealTimers()
   vi.unstubAllGlobals()
+})
+
+describe('webServer lifecycle integration', () => {
+  it('registers /image-mind after the optional webServer service attaches late', async () => {
+    vi.useFakeTimers()
+    const { ctx } = await mount({})
+    const register = vi.fn()
+
+    expect(register).not.toHaveBeenCalled()
+    ctx.provide('webServer', { register } as never)
+    await vi.advanceTimersByTimeAsync(200)
+
+    expect(register).toHaveBeenCalledTimes(1)
+    expect(register).toHaveBeenCalledWith(expect.objectContaining({
+      kind: 'prefix',
+      path: '/image-mind',
+      handler: expect.any(Function),
+    }))
+    await ctx.fiber.dispose()
+  })
 })
 
 describe('settings → adapter snapshot integration', () => {

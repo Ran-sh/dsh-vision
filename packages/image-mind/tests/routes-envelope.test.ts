@@ -8,7 +8,7 @@
  * @vitest-environment node
  */
 
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Context } from '@deepseek-ai/cordis'
 import { registerAttachRoute } from '../src/attachments/routes.ts'
@@ -25,13 +25,14 @@ function fakeWebServer(): { register: (route: unknown) => void; route?: { handle
 }
 
 /** Build a minimal trusted loopback request (streamable body). */
-function request(method: string, url: string, body?: unknown): IncomingMessage {
+function request(method: string, url: string, body?: unknown, origin?: string): IncomingMessage {
   const payload = body === undefined ? undefined : Buffer.from(JSON.stringify(body))
   const req = {
     method,
     url,
     headers: {
       host: '127.0.0.1:3080',
+      ...origin === undefined ? {} : { origin },
       ...payload === undefined ? {} : { 'content-type': 'application/json' },
     } as Record<string, string>,
     socket: { remoteAddress: '127.0.0.1' },
@@ -44,16 +45,20 @@ function request(method: string, url: string, body?: unknown): IncomingMessage {
 }
 
 /** Capture what the handler writes to the response. */
-function capture(): { res: ServerResponse; json: () => unknown } {
+function capture(): { res: ServerResponse; result: () => { status: number; headers: Record<string, string>; payload: string; body: unknown } } {
   let status = 0
+  let headers: Record<string, string> = {}
   let payload = ''
   const res = {
-    writeHead(code: number) { status = code },
+    writeHead(code: number, nextHeaders?: Record<string, string>) {
+      status = code
+      headers = nextHeaders ?? {}
+    },
     end(text: string) { payload = text },
   } as unknown as ServerResponse
   return {
     res,
-    json: () => ({ status, body: JSON.parse(payload) }),
+    result: () => ({ status, headers, payload, body: JSON.parse(payload) as unknown }),
   }
 }
 
@@ -75,10 +80,12 @@ describe('/image-mind RPC envelope', () => {
     const web = fakeWebServer()
     registerAttachRoute(makeCtx(web), hooks)
     expect(web.route).toBeDefined()
-    const { res, json } = capture()
+    const { res, result } = capture()
     await web.route!.handler(request('POST', '/image-mind/test', { baseURL: 'http://x', model: 'm' }), res)
-    const out = json()
+    const out = result()
     expect(out.status).toBe(200)
+    expect(out.headers['content-type']).toBe('application/json; charset=utf-8')
+    expect(out.payload.trimStart().startsWith('<')).toBe(false)
     expect(out.body).toEqual({ ok: true, value: { text: 'blue', provider: 'test', model: 'mimo-v2.5', latencyMs: 12, visualVerified: true } })
   })
 
@@ -88,9 +95,9 @@ describe('/image-mind RPC envelope', () => {
       ...hooks,
       runConnectionTest: async () => ({ ok: false as const, message: '端点可连接，但视觉验证失败（模型回复 "x"）。', visualFailed: true as const }),
     })
-    const { res, json } = capture()
+    const { res, result } = capture()
     await web.route!.handler(request('POST', '/image-mind/test', { baseURL: 'http://x', model: 'm' }), res)
-    const out = json()
+    const out = result()
     expect(out.body.ok).toBe(false)
     expect(out.body.error.code).toBe('visual')
     expect(out.body.error.message).toContain('视觉验证失败')
@@ -99,9 +106,9 @@ describe('/image-mind RPC envelope', () => {
   it('POST /models wraps the model list into {ok,value:{models,source}}', async () => {
     const web = fakeWebServer()
     registerAttachRoute(makeCtx(web), hooks)
-    const { res, json } = capture()
+    const { res, result } = capture()
     await web.route!.handler(request('POST', '/image-mind/models', { baseURL: 'http://x' }), res)
-    const out = json()
+    const out = result()
     expect(out.status).toBe(200)
     expect(out.body).toEqual({ ok: true, value: { models: ['mimo-v2.5', 'kimi-k3'], source: 'endpoint' } })
   })
@@ -109,8 +116,31 @@ describe('/image-mind RPC envelope', () => {
   it('GET /catalog serves the provider directory', async () => {
     const web = fakeWebServer()
     registerAttachRoute(makeCtx(web), hooks)
-    const { res, json } = capture()
+    const { res, result } = capture()
     await web.route!.handler(request('GET', '/image-mind/catalog'), res)
-    expect(json().body.value.catalog).toEqual([{ id: 'opencode-go' }])
+    expect((result().body as { value: { catalog: unknown } }).value.catalog).toEqual([{ id: 'opencode-go' }])
+  })
+
+  it('returns an intentional JSON 405 for an unsupported method', async () => {
+    const web = fakeWebServer()
+    registerAttachRoute(makeCtx(web), hooks)
+    const { res, result } = capture()
+    await web.route!.handler(request('PUT', '/image-mind/test'), res)
+    const out = result()
+    expect(out.status).toBe(405)
+    expect(out.headers['content-type']).toBe('application/json; charset=utf-8')
+    expect(out.body).toEqual({ ok: false, error: { code: 'internal', message: 'only GET and POST are allowed' } })
+  })
+
+  it('keeps the local-origin security gate on supported RPC routes', async () => {
+    const runConnectionTest = vi.fn(hooks.runConnectionTest)
+    const web = fakeWebServer()
+    registerAttachRoute(makeCtx(web), { ...hooks, runConnectionTest })
+    const { res, result } = capture()
+    await web.route!.handler(request('POST', '/image-mind/test', {}, 'https://evil.example'), res)
+    const out = result()
+    expect(out.status).toBe(403)
+    expect(out.body).toEqual({ ok: false, error: { code: 'rejected', message: 'untrusted origin' } })
+    expect(runConnectionTest).not.toHaveBeenCalled()
   })
 })
