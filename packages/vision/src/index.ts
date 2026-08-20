@@ -28,6 +28,18 @@ export type {
 } from './circuit-breaker.ts'
 export { routeVisionTask } from './task-router.ts'
 export type { VisionTask, VisionQualityPolicy, VisionTaskRoute } from './task-router.ts'
+export {
+  createMemoryVisionCache,
+  createVisionAnswerKey,
+  createVisionUnderstandingKey,
+  normalizeVisionCacheText,
+} from './cache.ts'
+export type {
+  VisionUnderstanding,
+  VisionAnswerCacheEntry,
+  VisionCacheLayerMode,
+  VisionCacheStore,
+} from './cache.ts'
 export type {
   VisionModel, VisionModelDiscoveryRequest, VisionProbeRequest, VisionProviderDescriptor,
   VisionRequest, VisionResult, VisionTrace, LoadedImage, VisionImageMimeType, VisionCacheMode,
