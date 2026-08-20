@@ -26,5 +26,12 @@ export type {
   VisionSkippedCandidate,
   VisionSelectionResult,
 } from './selector.ts'
+export type {
+  VisionRequestLifecycleBase,
+  VisionRequestStartedEvent,
+  VisionRequestCompletedEvent,
+  VisionRequestFailedEvent,
+  VisionRequestLifecycleEvent,
+} from './events.ts'
 export type { VisionModel, VisionModelDiscoveryRequest, VisionProbeRequest, VisionProviderDescriptor, VisionRequest, VisionResult, VisionTrace, LoadedImage, VisionImageMimeType, VisionCacheMode } from './types.ts'
 export { VisionRuntime as default } from './runtime.ts'
