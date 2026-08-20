@@ -19,11 +19,17 @@ interface WireLikeError {
 
 function wireLike(error: unknown): WireLikeError | undefined {
   let current: unknown = error
-  for (let depth = 0; depth < 3; depth += 1) {
+  for (let depth = 0; depth < 4; depth += 1) {
     if (typeof current !== 'object' || current === null) return undefined
     const candidate = current as WireLikeError
-    if (typeof candidate.code === 'string'
-      && ['RATE_LIMITED', 'TIMEOUT', 'NETWORK_ERROR', 'PROVIDER_ERROR'].includes(candidate.code)) {
+    const code = typeof candidate.code === 'string' ? candidate.code : undefined
+    // RATE/TIMEOUT/NETWORK are already specific enough. A generic seam-level
+    // PROVIDER_ERROR is not: it normally wraps the adapter-local error carrying
+    // the concrete HTTP status, so keep walking unless transport detail is
+    // actually present on this object.
+    if (code === 'RATE_LIMITED' || code === 'TIMEOUT' || code === 'NETWORK_ERROR') return candidate
+    if (code === 'PROVIDER_ERROR'
+      && (typeof candidate.status === 'number' || typeof candidate.modelFallbackEligible === 'boolean')) {
       return candidate
     }
     current = candidate.cause
