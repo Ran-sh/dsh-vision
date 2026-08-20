@@ -24,8 +24,10 @@
  *   `DUPLICATE_DEFAULT_PROVIDER` rather than silently overriding), the
  *   disposer withdraws the strategy, and fiber teardown withdraws it too — a
  *   provider plugin unload can never leave a stale resolver behind.
- * - every commit publishes `vision/adapters-updated`; a broken listener is
- *   contained and can never veto the commit.
+ * - every topology commit publishes `vision/adapters-updated`; a broken
+ *   listener is contained and can never veto the commit.
+ * - request lifecycle observers receive metadata-only started/completed/failed
+ *   events and are likewise isolated from request execution.
  *
  * This is the Service Definition for the vision capability seam: the package
  * OWNS `ctx.vision`, and provider plugins inject `['vision']` and register
@@ -36,8 +38,10 @@
 import { Service, type Context } from '@deepseek-ai/cordis'
 import type { VisionAdapter } from './adapter.ts'
 import { VisionError } from './errors.ts'
+import { inferVisionTask } from './task-router.ts'
+import type { VisionLifecycleListener, VisionRequestLifecycleBase } from './events.ts'
 import type {
-  VisionModel, VisionModelDiscoveryRequest, VisionProviderDescriptor, VisionRequest, VisionResult,
+  VisionModel, VisionModelDiscoveryRequest, VisionProviderDescriptor, VisionRequest, VisionResult, VisionTrace,
 } from './types.ts'
 
 declare module '@deepseek-ai/cordis' {
@@ -110,10 +114,43 @@ interface VisionRoute {
 export class VisionRuntime extends Service {
   private readonly adapters = new Map<string, VisionRoute>()
   private readonly directory = new Map<string, VisionProviderDescriptor>()
+  private readonly lifecycleListeners = new Set<VisionLifecycleListener>()
   private defaultProvider: { owner: string; resolve: () => string | undefined } | undefined
+  private lifecycleSequence = 0
 
   constructor(ctx: Context) {
     super(ctx, 'vision')
+  }
+
+  /**
+   * Observe routed request lifecycle metadata. The listener never receives
+   * prompt text, image bytes/paths, endpoint URLs, credentials, or response
+   * text. Listener failures are contained and cannot fail the vision call.
+   */
+  subscribeLifecycle(listener: VisionLifecycleListener): () => void {
+    this.lifecycleListeners.add(listener)
+    return () => { this.lifecycleListeners.delete(listener) }
+  }
+
+  /** Fire-and-contain one metadata-only lifecycle event. */
+  private emitLifecycle(event: Parameters<VisionLifecycleListener>[0]): void {
+    for (const listener of [...this.lifecycleListeners]) {
+      try {
+        const returned = listener(event)
+        if (returned != null && typeof (returned as PromiseLike<unknown>).then === 'function') {
+          void Promise.resolve(returned as PromiseLike<unknown>).then(undefined, (error: unknown) => {
+            this.warnLifecycleListenerFailure(error)
+          })
+        }
+      } catch (error) {
+        this.warnLifecycleListenerFailure(error)
+      }
+    }
+  }
+
+  private warnLifecycleListenerFailure(error: unknown): void {
+    this.ctx.logger.warn('vision: a request lifecycle listener failed')
+    this.ctx.logger.warn(error)
   }
 
   /**
@@ -421,19 +458,61 @@ export class VisionRuntime extends Service {
   }
 
   /**
-   * Run one vision request. The runtime selects the provider in order:
-   * an explicit `request.provider` id, else the default provider (via the
-   * `registerDefaultProviderResolver` strategy, validated to have a live
-   * route), else the single live route when exactly one is registered, else
-   * `PROVIDER_NOT_FOUND`. It then dispatches provider → adapter; the adapter
-   * resolves its own connection facts per call.
-   * @param request - the caller's request (provider/prompt/images/signal).
-   * @returns the model's text answer.
+   * Run one vision request. The runtime selects a provider, emits a
+   * metadata-only lifecycle start, dispatches to the adapter, then emits a
+   * completed/failed event. Observer failures never affect the request.
    */
   async call(request: VisionRequest): Promise<VisionResult> {
     const provider = this.resolveProviderId(request.provider)
     const route = this.route(provider)
-    return route.adapter.call(provider, request)
+    const startedAt = Date.now()
+    const requestId = `vision-${++this.lifecycleSequence}`
+    const explicitProvider = request.provider !== undefined && request.provider.trim().length > 0
+    const explicitModel = request.model !== undefined && request.model.trim().length > 0
+    const base = Object.freeze({
+      requestId,
+      provider,
+      task: inferVisionTask(request.prompt, request.images.length),
+      imageCount: request.images.length,
+      cacheMode: request.cache ?? 'use',
+      ...(request.maxOutputTokens === undefined ? {} : { maxOutputTokens: request.maxOutputTokens }),
+      explicitProvider,
+      explicitModel,
+      startedAt,
+    }) satisfies VisionRequestLifecycleBase
+
+    this.emitLifecycle(Object.freeze({ ...base, phase: 'started' }))
+    try {
+      const result = await route.adapter.call(provider, request)
+      this.emitLifecycle(Object.freeze({
+        ...base,
+        phase: 'completed',
+        elapsedMs: Math.max(0, Date.now() - startedAt),
+        resultProvider: result.provider,
+        model: result.model,
+        ...(result.usage === undefined ? {} : { usage: Object.freeze({ ...result.usage }) }),
+        ...(result.trace === undefined ? {} : { trace: Object.freeze({ ...result.trace }) }),
+      }))
+      return result
+    } catch (error) {
+      const trace = (error as { trace?: VisionTrace } | null)?.trace
+      const errorCode = typeof (error as { code?: unknown } | null)?.code === 'string'
+        ? String((error as { code: string }).code)
+        : error instanceof Error
+          ? error.name
+          : undefined
+      const aborted = request.signal?.aborted === true
+        || (error instanceof Error && error.name === 'AbortError')
+      this.emitLifecycle(Object.freeze({
+        ...base,
+        phase: 'failed',
+        elapsedMs: Math.max(0, Date.now() - startedAt),
+        ...(errorCode === undefined ? {} : { errorCode }),
+        aborted,
+        ...(trace === undefined ? {} : { trace: Object.freeze({ ...trace }) }),
+      }))
+      throw error
+    }
   }
 
   /**
