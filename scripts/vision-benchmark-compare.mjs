@@ -1,5 +1,3 @@
-#!/usr/bin/env node
-
 /**
  * Baseline-vs-candidate regression gate for the vision benchmark.
  *
