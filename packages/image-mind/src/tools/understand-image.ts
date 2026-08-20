@@ -1,18 +1,19 @@
 /**
  * The `understand_image` tool: a thin consumer of `ctx.vision`. It loads one
- * or more images (media layer), classifies broad visual intent through the
- * provider-neutral vision task router, and hands a bounded request to the
- * runtime. Provider/model/wire details remain outside the tool.
+ * or more images, classifies broad visual intent, optionally reuses bounded
+ * task-scoped visual evidence, and hands a budgeted request to the runtime.
+ * Provider/model/wire details remain outside the tool.
  * @module dsh-plugin-image-mind/tools/understand-image
  */
 
 import type { Context } from '@deepseek-ai/cordis'
 import { defineTool, type GenericCallView } from '@deepseek-ai/dsh-tools'
 import { inferVisionTask, routeVisionTask } from '@ran-sh/dsh-vision'
-import type { VisionCacheMode } from '@ran-sh/dsh-vision'
+import type { VisionCacheMode, VisionCacheStore, VisionTrace } from '@ran-sh/dsh-vision'
 import type {} from '@ran-sh/dsh-vision'
 import { loadImage } from '../media/load.ts'
 import type { LoadedImage } from '../media/types.ts'
+import { isReusableEvidenceTask, reusableEvidenceKey, reusableEvidencePrompt } from '../runtime/reusable-evidence.ts'
 
 export const MAX_IMAGES_PER_REQUEST = 8
 export const MAX_TOTAL_IMAGE_BYTES_FACTOR = 2
@@ -95,42 +96,45 @@ export function understandImageCallView(args: UnderstandImageArgs): GenericCallV
   }
 }
 
+function cacheOnlyTrace(): VisionTrace {
+  return {
+    providerCalls: 0,
+    payloadBytes: 0,
+    cacheHits: 1,
+    retries: 0,
+    modelFallbacks: 0,
+    providerFallbacks: 0,
+    splits: 0,
+  }
+}
+
 export function understandImageTool(
   ctx: Context,
   defaultPrompt: () => string,
   mediaOptions: () => { maxBytes: number; allowPrivateNetwork: boolean },
+  evidenceCache?: VisionCacheStore,
 ): ReturnType<typeof defineTool> {
   const DESCRIPTION_HEAD =
     'Inspect one or more images — local absolute paths, http(s) URLs, or the JSON of image attachment '
-    + 'notes — and return the text the user needs. YOU MUST pass either `image` (single) or `images` '
-    + '(array) — never call with neither. Call this when the user references an image file or URL, '
-    + 'or when a task needs OCR, chart or diagram reading, screenshot or UI analysis, translation of '
-    + 'image text, or photo understanding. '
-    + 'Always pass an explicit `prompt` with a precise instruction — e.g. "transcribe all text", '
-    + '"extract the table as CSV", "diagnose the UI layout problems", "translate the text into '
-    + 'Chinese" — instead of leaving it to the default description: a targeted instruction produces '
-    + 'a much more useful answer. '
-    + 'When the task involves several images (compare screenshots, diff two versions, batch-read a '
-    + `page of photos), pass them as the \`images\` array in ONE call (up to ${MAX_IMAGES_PER_REQUEST}): the vision model sees them together. `
+    + 'notes — and return visual evidence the main model can reason over. YOU MUST pass either `image` '
+    + '(single) or `images` (array) — never call with neither. Call this for OCR, charts, screenshots, '
+    + 'UI analysis, translation, code/terminal images, documents, comparisons, or photos. '
+    + 'Always pass an explicit `prompt` describing what the user needs. For stable evidence tasks such as '
+    + 'OCR/UI/code/documents/charts, image-mind may reuse task-scoped visual evidence across later questions. '
     + 'If the user explicitly asks you to look again, re-read/OCR from the pixels, ignore a previous '
     + 'analysis, or verify a detail afresh, set `cache` to `refresh`. Use `no-store` only when the '
-    + 'caller specifically needs the result not to enter the short-lived semantic cache. '
-    + 'Do NOT re-call this tool for an image whose analysis already appears in the conversation unless '
-    + 'the user asks for a fresh look or a materially different visual question.'
+    + 'caller specifically needs the result not to enter either cache layer.'
 
   return defineTool({
     name: 'understand_image',
     description: DESCRIPTION_HEAD
-      + 'Each image may be a local path, an http(s) URL, the JSON object from an `[image attachment …]` '
-      + "note, or — the common case when the user sent an image through this plugin's input rewriting — a "
-      + 'short markdown image reference like `![图片](/image-mind/raw/sha256:abc…)` pasted into '
-      + 'the conversation. Prefer the complete hidden `[image attachment …]` JSON when available '
-      + '(it survives a host restart); otherwise take the attachment id from the markdown URL and pass '
-      + 'that id as the `image`/`images` value. Never pass the whole markdown or invent a path.',
+      + ' Each image may be a local path, an http(s) URL, the JSON object from an `[image attachment …]` '
+      + 'note, or the bare attachment id from `![图片](/image-mind/raw/<id>)`. Prefer the complete hidden '
+      + '`[image attachment …]` JSON when available because it survives a host restart.',
     parameters: {
       image: {
         type: 'string',
-        description: 'REQUIRED unless `images` is passed. Absolute local image path, http(s) URL, complete [image attachment …] JSON object, or bare attachment id from ![图片](/image-mind/raw/<id>).',
+        description: 'REQUIRED unless `images` is passed. Absolute local image path, http(s) URL, complete [image attachment …] JSON object, or bare attachment id.',
       },
       images: {
         type: 'array',
@@ -139,20 +143,20 @@ export function understandImageTool(
       },
       prompt: {
         type: 'string',
-        description: 'Precise instruction for the vision model, e.g. exact OCR, table extraction, UI diagnosis, comparison, or translation.',
+        description: 'Precise instruction for the visual task, e.g. exact OCR, table extraction, UI diagnosis, comparison, or translation.',
       },
       provider: {
         type: 'string',
-        description: 'Optional configured vision-provider id; explicit selection disables automatic cross-provider fallback.',
+        description: 'Optional configured vision-provider id. Explicit selection disables automatic provider substitution and layered evidence reuse.',
       },
       model: {
         type: 'string',
-        description: 'Optional model id override; explicit selection disables automatic model/provider substitution.',
+        description: 'Optional model id override. Explicit selection disables automatic model/provider substitution and layered evidence reuse.',
       },
       cache: {
         type: 'string',
         enum: ['use', 'refresh', 'no-store'],
-        description: 'Semantic-cache policy. `use` (default), `refresh` for a fresh pixel analysis, or `no-store` to bypass reads/writes.',
+        description: 'Cache policy. `use` (default), `refresh` for fresh pixels, or `no-store` to bypass both semantic and layered evidence caches.',
       },
     },
     output: {
@@ -197,34 +201,64 @@ export function understandImageTool(
       const { maxBytes, allowPrivateNetwork } = mediaOptions()
       const hasSingle = args.image !== undefined && args.image.trim().length > 0
       const hasMany = (args.images ?? []).some(ref => ref.trim().length > 0)
-      if (hasSingle && hasMany) {
-        throw new Error('image-mind: pass either `image` (single) or `images` (array), not both')
-      }
+      if (hasSingle && hasMany) throw new Error('image-mind: pass either `image` (single) or `images` (array), not both')
+
       const rawRefs = hasSingle ? [args.image!.trim()] : (args.images ?? []).map(ref => ref.trim())
-      if (rawRefs.some(ref => ref.length === 0)) {
-        throw new Error('image-mind: image references must be non-empty strings')
-      }
+      if (rawRefs.some(ref => ref.length === 0)) throw new Error('image-mind: image references must be non-empty strings')
       const refs = rawRefs.filter(ref => ref.length > 0)
-      if (refs.length === 0) {
-        throw new Error('image-mind: pass `image` (single) or `images` (array) with at least one image reference')
-      }
-      if (refs.length > MAX_IMAGES_PER_REQUEST) {
-        throw new Error(`image-mind: at most ${MAX_IMAGES_PER_REQUEST} images per call; got ${refs.length}`)
-      }
+      if (refs.length === 0) throw new Error('image-mind: pass `image` (single) or `images` (array) with at least one image reference')
+      if (refs.length > MAX_IMAGES_PER_REQUEST) throw new Error(`image-mind: at most ${MAX_IMAGES_PER_REQUEST} images per call; got ${refs.length}`)
 
       const images = await loadImagesConcurrent(ctx, refs, exec.signal, maxBytes, allowPrivateNetwork, MAX_TOTAL_IMAGE_BYTES_FACTOR)
-      const prompt = args.prompt ?? defaultPrompt()
-      const task = inferVisionTask(prompt, images.length)
+      const callerPrompt = args.prompt ?? defaultPrompt()
+      const task = inferVisionTask(callerPrompt, images.length)
       const budget = routeVisionTask(task).policy
+      const cacheMode = args.cache ?? 'use'
+      const explicitRoute = (args.provider?.trim().length ?? 0) > 0 || (args.model?.trim().length ?? 0) > 0
+      const useEvidenceLayer = evidenceCache !== undefined
+        && !explicitRoute
+        && cacheMode !== 'no-store'
+        && isReusableEvidenceTask(task)
+      const understandingKey = useEvidenceLayer ? reusableEvidenceKey(images, task) : undefined
+
+      if (understandingKey !== undefined && cacheMode === 'use') {
+        const hit = evidenceCache!.getUnderstanding(understandingKey)
+        if (hit !== undefined) {
+          return {
+            text: hit.facts,
+            model: hit.model,
+            provider: hit.provider,
+            images: images.map((image, index) => ({
+              source: safeImageIdentity(refs[index]),
+              mimeType: image.mimeType,
+              bytes: image.bytes.length,
+            })),
+            trace: cacheOnlyTrace(),
+          }
+        }
+      }
+
+      const requestPrompt = useEvidenceLayer ? reusableEvidencePrompt(task, images.length) : callerPrompt
       const result = await ctx.vision.call({
         provider: args.provider,
         model: args.model,
-        prompt,
+        prompt: requestPrompt,
         images,
         maxOutputTokens: budget.maxOutputTokens,
         ...args.cache === undefined ? {} : { cache: args.cache },
         signal: exec.signal,
       })
+
+      if (understandingKey !== undefined) {
+        evidenceCache!.setUnderstanding({
+          imageKey: understandingKey,
+          facts: result.text,
+          provider: result.provider,
+          model: result.model,
+          createdAt: Date.now(),
+        })
+      }
+
       return {
         text: result.text,
         model: result.model,
