@@ -7,6 +7,25 @@ minor version). Package names: `@ran-sh/dsh-vision` (Service) and
 
 ## [Unreleased]
 
+## [0.1.1] — 2026-08-20
+
+### Fixed
+
+- Register the `/image-mind/*` Host route after a late `webServer` service
+  attachment, so supported plugin requests no longer fall through to the DSH
+  HTML shell or return the old 405.
+- Return the browser contract's `ok/value` and `ok/error` envelopes from the
+  connection-test and model-discovery Host routes, preserving the actual
+  payload instead of producing an empty/undefined client result.
+- Add deterministic regression coverage for late route registration, JSON
+  content type, intentional unsupported-method handling, local-origin gates,
+  successful RPC payloads, and error envelopes.
+
+`@ran-sh/dsh-vision` remains at 0.1.0; this patch does not change the
+VisionRuntime API or `packages/vision/src`.
+
+## [0.1.0] — 2026-08-20
+
 ### Added
 
 - **Bundle-native distribution**: install is now the DeepSeek Harness
@@ -98,8 +117,6 @@ minor version). Package names: `@ran-sh/dsh-vision` (Service) and
   store.
 - README install section rewritten around the Harness-managed install;
   the old profile-mutating installer path is documented as removed.
-
-## [0.1.0] — 2026-08-18
 
 ### Added
 
