@@ -30,7 +30,7 @@ import { createVisionCache } from './cache/vision-cache.ts'
 import { DEFAULT_MAX_BYTES } from './media/types.ts'
 
 export const name = 'image-mind'
-export const inject = ['vision', 'tools', 'systemPrompt']
+export const inject = ['vision', 'tools']
 
 export { runConnectionTest, listEndpointModels } from './runtime/vision-rpc.ts'
 export { VISUAL_FIXTURES, answerMatches } from './runtime/visual-fixtures.ts'
@@ -160,7 +160,16 @@ export function apply(ctx: Context, config: ConfigType = {}): void {
 
   void migrateLegacyInlineKeys(ctx, current().providers)
 
-  registerImageMindSystemPrompt(ctx)
+  // DSH treats systemPrompt as an optional composition seam. Register the
+  // model-only routing guidance whenever that service is available, without
+  // making headless/test compositions that only provide vision+tools wait
+  // forever on an unnecessary hard dependency.
+  ;(ctx as unknown as {
+    inject(names: string[], callback: (injected: Context) => void): void
+  }).inject(['systemPrompt'], (injected) => {
+    registerImageMindSystemPrompt(injected)
+  })
+
   ctx.tools.register(understandImageTool(
     ctx,
     () => resolved().defaultPrompt,
@@ -228,6 +237,6 @@ function connectionSnapshotOf(
     maxOutputTokens,
     timeoutMs: resolved.timeoutMs,
     ...spec.apiKeyEnv === undefined || spec.apiKeyEnv.length === 0 ? {} : { apiKeyEnv: String(spec.apiKeyEnv) },
-    ...spec.apiKey === undefined || spec.apiKey.length === 0 ? {} : { inlineApiKey: spec.apiKey },
+    ...spec.apiKey === undefined || spec.apiKeyEnv?.length === 0 ? {} : { inlineApiKey: spec.apiKey },
   }
 }
