@@ -3,8 +3,9 @@
  * send that carries draft images is rewritten into a plain-text prompt that
  * carries image-mind references instead. The images are uploaded through the
  * host attach route (so bytes stay out of the conversation log), the draft
- * images are released, and the model analyzes them through the
- * understand_image tool rather than receiving the bytes it cannot read.
+ * images are released only after the rewritten send succeeds, and the model
+ * analyzes them through the understand_image tool rather than receiving bytes
+ * it cannot read.
  *
  * The hook wraps the conversation service's sendSession method in place. It
  * is structural (no dependency on the conversation package's internal
@@ -63,39 +64,44 @@ export function installSendHook(conversation: unknown): void {
     }
     const attachments = face.draftImages(imageIds)
     if (attachments.length !== imageIds.length) {
-      return original.call(face, session, text, imageIds, mode)
+      showToast('图片发送失败：草稿图片已失效，请重新选择图片后再试', 'error')
+      return
     }
     const refs: string[] = []
-    let fallbackReason: string | undefined
+    let failureReason: string | undefined
     for (const attachment of attachments) {
-      // Prelight: downscale oversized images before upload so the vision
-      // model is billed on what it actually needs.
+      // Preflight: use the content-aware image policy before upload so OCR/UI
+      // screenshots retain more detail while photographic payloads stay small.
       const prepared = await prepareImageForDescribe(attachment.file)
       if (!prepared.ok) {
-        fallbackReason = `prepare failed: ${prepared.message}`
+        failureReason = `prepare failed: ${prepared.message}`
         break
       }
       const uploaded = await uploadImage(prepared.base64, prepared.mediaType, attachment.file.name)
       if (!uploaded.ok) {
-        fallbackReason = `upload failed: ${uploaded.message}`
+        failureReason = `upload failed: ${uploaded.message}`
         break
       }
       refs.push(uploaded.markdown)
     }
     if (refs.length !== attachments.length) {
-      // Upload fell short: keep the shell's original behavior (which will
-      // reject the image block for a text-only model), but say why so the
-      // failure is visible instead of silent.
+      // Fail closed. Falling back to the shell's raw image send is a known
+      // failure for text-only main models and can also discard the user's
+      // retry opportunity. Keep every draft image intact so the user can send
+      // again after fixing the transient prepare/upload problem.
       if (typeof console !== 'undefined') {
-        console.warn(`[image-mind] image send not rewritten (${fallbackReason ?? 'unknown'}); falling back to the shell's raw image send`)
+        console.warn(`[image-mind] image send blocked because rewrite did not complete (${failureReason ?? 'unknown'})`)
       }
-      showToast(`图片发送失败：${fallbackReason ?? '未知原因'}`, 'error')
-      return original.call(face, session, text, imageIds, mode)
+      showToast(`图片发送失败：${failureReason ?? '未知原因'}；草稿图片已保留，可直接重试`, 'error')
+      return
     }
     const fullText = [text.trim(), ...refs].filter(part => part !== '').join('\n')
     const result = await session.prompt([{ type: 'text', text: fullText }], mode)
     if (!result.ok) {
-      throw new Error(`conversation.send failed: ${result.error?.code ?? 'unknown'}: ${result.error?.message ?? ''}`)
+      // The rewrite succeeded but the conversation send did not. Keep the
+      // drafts for retry; release only after a successful session.prompt.
+      showToast(`图片发送失败：${result.error?.message ?? result.error?.code ?? '会话发送失败'}；草稿图片已保留`, 'error')
+      return
     }
     for (const id of imageIds) face.releaseDraftImage(id)
     showToast('图片已就绪：发送后模型可通过 understand_image 分析')
