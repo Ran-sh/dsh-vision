@@ -6,7 +6,7 @@
  * by the runtime from its own provider registration. The image never enters
  * the conversation: only the returned text crosses.
  *
- * Multi-image: pass `images` (up to `maxImagesPerRequest`, default 4) for
+ * Multi-image: pass `images` (up to `maxImagesPerRequest`, default 8) for
  * compare/diff/batch tasks — the request carries all of them to the vision
  * model in one call. The legacy single `image` argument remains fully
  * supported; both normalize to the same `LoadedImage[]`.
@@ -21,8 +21,8 @@ import type { LoadedImage } from '../media/types.ts'
 import type { VisionCacheMode } from '@ran-sh/dsh-vision'
 import type {} from '@ran-sh/dsh-vision'
 
-/** Upper bound on images one call may carry (payload/cost guard). */
-export const MAX_IMAGES_PER_REQUEST = 4
+/** Upper bound on image count; the independent combined-byte cap stays lower. */
+export const MAX_IMAGES_PER_REQUEST = 8
 
 /** Total-byte bound across all images: 2x the single-image cap. */
 export const MAX_TOTAL_IMAGE_BYTES_FACTOR = 2
