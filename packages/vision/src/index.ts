@@ -16,6 +16,6 @@ export { VisionError, isVisionError, deepFreeze } from './errors.ts'
 export type { VisionErrorCode } from './errors.ts'
 export type {
   VisionModel, VisionModelDiscoveryRequest, VisionProbeRequest, VisionProviderDescriptor,
-  VisionRequest, VisionResult, LoadedImage, VisionImageMimeType, VisionCacheMode,
+  VisionRequest, VisionResult, VisionTrace, LoadedImage, VisionImageMimeType, VisionCacheMode,
 } from './types.ts'
 export { VisionRuntime as default } from './runtime.ts'
