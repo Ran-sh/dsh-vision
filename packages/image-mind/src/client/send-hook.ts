@@ -45,6 +45,19 @@ interface ConversationSendFace {
 const HOOK_MARKER = '__dshImageMindSendHooked'
 
 /**
+ * Model-facing routing hint hidden by normal Markdown renderers. It does not
+ * force needless image calls: text-only questions can proceed normally, but a
+ * response that depends on pixels must use the perception tool instead of
+ * hallucinating from an opaque sha256 handle.
+ */
+export const VISION_ROUTE_HINT = '<!-- image-mind: The image references below are opaque attachment handles, not visual descriptions. If the answer depends on image contents, call understand_image before answering and never infer pixels from the handle itself. For an image-only message, inspect the image with understand_image before replying. -->'
+
+/** Build the plain-text rewrite sent to the text-only main model. */
+export function buildVisionAwarePrompt(text: string, refs: readonly string[]): string {
+  return [text.trim(), VISION_ROUTE_HINT, ...refs].filter(part => part !== '').join('\n')
+}
+
+/**
  * Wrap the conversation service so image-bearing sends route through the
  * image-mind attach seam. No-op when the service surface is unavailable
  * (older shell) or already wrapped.
@@ -95,7 +108,7 @@ export function installSendHook(conversation: unknown): void {
       showToast(`图片发送失败：${failureReason ?? '未知原因'}；草稿图片已保留，可直接重试`, 'error')
       return
     }
-    const fullText = [text.trim(), ...refs].filter(part => part !== '').join('\n')
+    const fullText = buildVisionAwarePrompt(text, refs)
     const result = await session.prompt([{ type: 'text', text: fullText }], mode)
     if (!result.ok) {
       // The rewrite succeeded but the conversation send did not. Keep the
