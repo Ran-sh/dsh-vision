@@ -9,49 +9,8 @@
  * endpoint, or wire format.
  */
 
-/** Broad task classes that materially change how a VLM should inspect pixels. */
-export type VisionTask =
-  | 'general'
-  | 'ocr'
-  | 'screenshot'
-  | 'ui-review'
-  | 'code'
-  | 'document'
-  | 'chart'
-  | 'compare'
-  | 'translate'
-
-/** Normalize free-form caller text for lightweight multilingual classification. */
-function normalized(text: string): string {
-  return text.normalize('NFKC').toLowerCase()
-}
-
-/** Whether any keyword appears in the normalized caller instruction. */
-function includesAny(text: string, keywords: readonly string[]): boolean {
-  return keywords.some(keyword => text.includes(keyword))
-}
-
-/**
- * Infer the broad visual task from the caller's instruction and image count.
- * This is intentionally conservative: false-general is safer than inventing a
- * specialized task the caller did not ask for.
- */
-export function inferVisionTask(prompt: string, imageCount: number): VisionTask {
-  const p = normalized(prompt)
-
-  if (includesAny(p, ['compare', 'comparison', 'diff', 'difference', 'before/after', '对比', '比较', '差异', '区别', '前后变化'])) {
-    return 'compare'
-  }
-  if (imageCount > 1 && includesAny(p, ['same', 'changed', '变化', '相同', '不同', '哪个'])) return 'compare'
-  if (includesAny(p, ['translate', 'translation', '翻译', '译成', '译为'])) return 'translate'
-  if (includesAny(p, ['ocr', 'transcribe', 'verbatim', 'extract text', 'read all text', '识别文字', '提取文字', '抄录', '逐字', '所有文字'])) return 'ocr'
-  if (includesAny(p, ['chart', 'graph', 'plot', 'trend', 'axis', 'legend', '图表', '趋势', '坐标轴', '柱状图', '折线图', '饼图'])) return 'chart'
-  if (includesAny(p, ['ui', 'ux', 'interface', 'layout', 'spacing', 'alignment', 'design mock', '界面', '布局', '间距', '对齐', '设计稿', '按钮', '交互'])) return 'ui-review'
-  if (includesAny(p, ['code', 'terminal', 'stack trace', 'traceback', 'console', 'ide', 'error message', '代码', '终端', '报错', '错误信息', '日志', '控制台'])) return 'code'
-  if (includesAny(p, ['document', 'invoice', 'receipt', 'form', 'table', 'page', '文档', '发票', '票据', '表格', '表单', '页面'])) return 'document'
-  if (includesAny(p, ['screenshot', 'screen shot', '屏幕截图', '截图'])) return 'screenshot'
-  return 'general'
-}
+import { inferVisionTask } from '@ran-sh/dsh-vision'
+import type { VisionTask } from '@ran-sh/dsh-vision'
 
 /** Task-specific inspection guidance. Kept short to avoid stealing output budget. */
 function guidance(task: VisionTask): string {
@@ -72,6 +31,8 @@ function guidance(task: VisionTask): string {
       return 'Compare images in the supplied order. Separate unchanged facts from additions, removals, and modifications; identify which image supports each difference.'
     case 'screenshot':
       return 'Inspect visible application state, text, controls, notifications, and spatial relationships. Prioritize details that answer the caller instruction.'
+    case 'photo':
+      return 'Describe the relevant people, objects, scene, actions, spatial relationships, and visible text without inventing hidden context.'
     default:
       return 'Describe only details relevant to the caller instruction, including visible text when it materially supports the answer.'
   }
@@ -109,11 +70,6 @@ function imageIdentityContract(
  * Build the final VLM instruction. Image-borne text is always treated as data,
  * never as authority: this prevents screenshots/documents from silently
  * overriding the caller's request with prompt-like text embedded in pixels.
- *
- * `imageOrdinals` / `originalImageCount` are adapter-internal identity hints.
- * They matter when a provider rejects a large multi-image request and the
- * adapter bisects it: a child request containing original images 5-8 must not
- * silently rename them Image 1-4 and corrupt comparison evidence.
  */
 export function planVisionPrompt(
   prompt: string,
