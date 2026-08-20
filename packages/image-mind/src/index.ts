@@ -237,6 +237,6 @@ function connectionSnapshotOf(
     maxOutputTokens,
     timeoutMs: resolved.timeoutMs,
     ...spec.apiKeyEnv === undefined || spec.apiKeyEnv.length === 0 ? {} : { apiKeyEnv: String(spec.apiKeyEnv) },
-    ...spec.apiKey === undefined || spec.apiKeyEnv?.length === 0 ? {} : { inlineApiKey: spec.apiKey },
+    ...spec.apiKey === undefined || spec.apiKey.length === 0 ? {} : { inlineApiKey: spec.apiKey },
   }
 }
