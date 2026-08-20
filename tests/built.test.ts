@@ -8,7 +8,7 @@
  * @vitest-environment node
  */
 
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { beforeAll, describe, expect, it } from 'vitest'
 
@@ -51,6 +51,13 @@ describe('built artifact (packages/image-mind/lib/index.js)', () => {
   it('exports the connection-test RPC', () => {
     expect(typeof lib?.runConnectionTest).toBe('function')
     expect(typeof lib?.listEndpointModels).toBe('function')
+  })
+
+  it('ships a native require bridge for ESM-hosted node built-ins', () => {
+    expect(existsSync(LIB_PATH), 'lib/index.js missing — run npm run build').toBe(true)
+    const source = readFileSync(LIB_PATH, 'utf8')
+    expect(source).toContain("createRequire as __imageMindCreateRequire")
+    expect(source).toContain('const require = __imageMindCreateRequire(import.meta.url)')
   })
 
   it('ships the embedded visual-challenge fixtures as valid 32x32 PNGs', () => {
