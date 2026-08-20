@@ -20,19 +20,12 @@ export interface LoadedImage {
 
 /** One model the adapter can advertise for one provider. */
 export interface VisionModel {
-  /** Model id the endpoint accepts. */
   id: string
-  /** Human-readable name when the endpoint supplies one. */
   name?: string
-  /** Whether the model accepts image input; absent means unknown. */
   vision?: boolean
-  /** Maximum combined request and response context, when disclosed. */
   contextWindow?: number
-  /** Output-token cap this model accepts, when disclosed. */
   maxOutputTokens?: number
-  /** Whether the model can take more than one image per request. */
   supportsMultipleImages?: boolean
-  /** Whether the model exposes a reasoning mode. */
   supportsReasoning?: boolean
 }
 
@@ -40,15 +33,28 @@ export interface VisionModel {
 export type VisionCacheMode = 'use' | 'refresh' | 'no-store'
 
 /**
- * One vision request. `images` is a list so the adapter API can grow to
- * multi-image naturally; the tool consumer still passes one image today.
- *
- * The request names only what the caller wants — which provider/model, what
- * prompt over which images, cache freshness, the output cap the answer may
- * use, and cancellation. It carries NO connection facts: how the provider
- * reaches an endpoint, authenticates, serializes the request, or times it out
- * is the registered adapter's own concern, never the runtime's.
+ * Provider-neutral observability for one completed vision operation.
+ * Counters describe work, not vendor semantics, so every adapter family can
+ * populate them without leaking endpoints, credentials, or protocol details.
  */
+export interface VisionTrace {
+  /** Number of actual provider HTTP/model calls, including retries. */
+  providerCalls: number
+  /** UTF-8 bytes across serialized provider request bodies. */
+  payloadBytes: number
+  /** Semantic-cache hits that avoided a provider call. */
+  cacheHits: number
+  /** Retry attempts after a failed first wire call. */
+  retries: number
+  /** Alternate models attempted on the same provider. */
+  modelFallbacks: number
+  /** Alternate configured provider routes attempted. */
+  providerFallbacks: number
+  /** HTTP-413 adaptive split events, including recursive splits. */
+  splits: number
+}
+
+/** One vision request. */
 export interface VisionRequest {
   /** Provider id to use; absent selects the runtime's active provider. */
   provider?: string
@@ -83,30 +89,25 @@ export interface VisionResult {
     inputTokens?: number
     outputTokens?: number
   }
+  /** Optional provider-neutral execution counters for diagnostics/benchmarks. */
+  trace?: VisionTrace
 }
 
 /** Discovery request: a registered provider route to interrogate. */
 export interface VisionModelDiscoveryRequest {
-  /** Provider route to interrogate. */
   provider: string
-  /** Caller cancellation; adapters must honor it. */
   signal?: AbortSignal
 }
 
 /** Probe request: one provider route to test with a fresh request. */
 export interface VisionProbeRequest {
-  /** Provider route to probe. */
   provider: string
-  /** Caller cancellation; adapters must honor it. */
   signal?: AbortSignal
 }
 
 /** The provider-side display facts a registered adapter serves. */
 export interface VisionProviderDescriptor {
-  /** Provider route key used by {@link VisionRequest.provider}. */
   id: string
-  /** Human-readable provider name for selectors and diagnostics. */
   displayName: string
-  /** One-line description for the directory UI, when the registrant has one. */
   description?: string
 }
