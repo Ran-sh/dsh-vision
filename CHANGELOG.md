@@ -38,6 +38,14 @@ minor version). Package names: `@ran-sh/dsh-vision` (Service) and
   GPT-5.6 OCR/UI/code-style work uses `original`, older OpenAI vision models
   use `high`, photo work uses `low`, and general work uses `auto`. Generic
   OpenAI-compatible endpoints never receive this OpenAI-specific field.
+- A bounded host-side durable attachment-reference/session index lets
+  image-mind recover complete DSH attachment metadata after restart without
+  exposing ids, dimensions, MIME metadata, or raw attachment URLs in the
+  user-visible conversation.
+- Model-only image routing guidance is registered through DSH's optional
+  `systemPrompt` service. User messages now contain only a neutral attachment
+  marker; tool names and routing instructions stay out of the conversation
+  bubble.
 
 ### Changed
 
@@ -58,6 +66,10 @@ minor version). Package names: `@ran-sh/dsh-vision` (Service) and
 - Semantic caching supports explicit refresh/no-store behavior, while the
   reusable-evidence layer may satisfy same-image/same-task follow-up questions
   with zero provider calls when broad evidence is already available.
+- `understand_image` can resolve the current DSH session's latest uploaded
+  image batch when the model omits explicit `image`/`images` arguments. This
+  keeps host attachment references out of user text while preserving normal
+  image-only routing.
 
 ### Fixed
 
@@ -66,9 +78,17 @@ minor version). Package names: `@ran-sh/dsh-vision` (Service) and
 - Fail closed when image-send rewriting cannot finish; never fall back to
   sending raw image blocks to the text-only main model, and retain drafts so
   the user can retry.
-- Keep complete attachment metadata in a hidden conversation note so newly
-  sent images can be re-read after host restart when the attachment backend
-  still retains the bytes.
+- Recover complete attachment references through the host-side durable index
+  so `/image-mind/raw/<id>` and session image resolution can survive host
+  restart when DSH's attachment backend still retains the bytes. Attachment
+  metadata is no longer stored in supposedly hidden conversation comments.
+- Keep image-tool routing instructions out of the rendered user message;
+  neutral attachment markers are paired with a DSH system-prompt section
+  instead of HTML comments that the web UI may display verbatim.
+- Make the built ESM host bundle compatible with Node built-in dynamic
+  `require()` paths via a `createRequire(import.meta.url)` bridge, closing the
+  real-DSH `Dynamic require of "node:crypto" is not supported` blocker; built
+  artifact coverage now guards this source-vs-bundle boundary.
 - Correct HTTP retry classification: deterministic 400/404 responses are no
   longer repeatedly retried; caller abort is not counted as retry/fallback,
   and Node timeout naming is normalized.
@@ -83,6 +103,17 @@ minor version). Package names: `@ran-sh/dsh-vision` (Service) and
   incompatible cache entries with unrelated smaller requests.
 - Distinguish missing benchmark telemetry from genuine zero-cost telemetry;
   JSON `null` fields no longer count as reported zero token/trace usage.
+- Restrict circuit-breaker half-open recovery to one probe and ensure an
+  expired backup can actually re-enter bounded fallback selection instead of
+  being permanently starved by healthier closed candidates.
+- Remove a Node/V8 microtask-count assumption from the execution-gate FIFO
+  regression test; it now waits for the queued operation's actual start event.
+- Bring orchestration integration expectations in line with the public trace
+  contract instead of failing when a successful result correctly contains
+  provider-call/cache/fallback telemetry.
+- Make benchmark runner/scorer/compare modules import-safe for the root Vitest
+  suites by removing unnecessary executable shebangs; the Windows Node 24
+  transform failure still requires an external rerun to confirm this fix.
 
 ## [0.1.1] — 2026-08-20
 
