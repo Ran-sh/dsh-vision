@@ -5,8 +5,8 @@
  *
  * This script does NOT call any provider. It joins a JSONL case manifest with
  * JSONL execution results produced later in a real DSH/provider environment,
- * then computes routing, assertion, latency, and recovery metrics. Keeping
- * scoring offline makes baseline-vs-candidate comparisons reproducible.
+ * then computes routing, assertion, latency, recovery, and cost metrics.
+ * Keeping scoring offline makes baseline-vs-candidate comparisons reproducible.
  */
 
 import { readFile } from 'node:fs/promises'
@@ -64,6 +64,11 @@ export function scoreAssertions(testCase, result) {
   return { assertionPass, forbiddenHits, checks: checks.length }
 }
 
+function finiteNonNegative(value, fallback = 0) {
+  const number = Number(value)
+  return Number.isFinite(number) && number >= 0 ? number : fallback
+}
+
 /** Score all cases and aggregate stable benchmark metrics. */
 export function scoreBenchmark(cases, results) {
   const resultById = new Map(results.map(result => [result.id, result]))
@@ -75,6 +80,13 @@ export function scoreBenchmark(cases, results) {
     const assertion = scoreAssertions(testCase, result)
     const toolCalled = result?.toolCalled === true
     const success = result !== undefined && result.error == null && toolCalled && assertion.assertionPass
+    const calls = finiteNonNegative(result?.providerCalls ?? result?.calls)
+    const cacheHits = finiteNonNegative(result?.cacheHits)
+    const inputTokens = finiteNonNegative(result?.inputTokens)
+    const outputTokens = finiteNonNegative(result?.outputTokens)
+    const usageReported = result !== undefined
+      && (Number.isFinite(Number(result.inputTokens)) || Number.isFinite(Number(result.outputTokens)))
+
     rows.push({
       id: testCase.id,
       category: testCase.category ?? 'uncategorized',
@@ -85,12 +97,17 @@ export function scoreBenchmark(cases, results) {
       assertionPass: assertion.assertionPass,
       forbiddenHits: assertion.forbiddenHits,
       latencyMs: Number(result?.latencyMs),
-      calls: Number(result?.calls ?? 0),
-      payloadBytes: Number(result?.payloadBytes ?? 0),
-      retries: Number(result?.retries ?? 0),
-      modelFallbacks: Number(result?.modelFallbacks ?? 0),
-      providerFallbacks: Number(result?.providerFallbacks ?? 0),
-      splits: Number(result?.splits ?? 0),
+      calls,
+      payloadBytes: finiteNonNegative(result?.payloadBytes),
+      cacheHits,
+      inputTokens,
+      outputTokens,
+      usageReported,
+      zeroProviderReuse: result !== undefined && toolCalled && calls === 0 && cacheHits > 0,
+      retries: finiteNonNegative(result?.retries),
+      modelFallbacks: finiteNonNegative(result?.modelFallbacks),
+      providerFallbacks: finiteNonNegative(result?.providerFallbacks),
+      splits: finiteNonNegative(result?.splits),
     })
   }
 
@@ -113,10 +130,15 @@ export function scoreBenchmark(cases, results) {
     assertionPassRate: weighted(row => row.assertionPass && !row.missing),
     taskSuccessRate: weighted(row => row.success),
     forbiddenHitCount: rows.reduce((sum, row) => sum + row.forbiddenHits, 0),
+    tokenUsageCoverage: weighted(row => row.usageReported && !row.missing),
+    zeroProviderReuseRate: weighted(row => row.zeroProviderReuse),
     latencyMs: { p50: percentile(latencies, 0.5), p95: percentile(latencies, 0.95) },
     totals: {
       calls: rows.reduce((sum, row) => sum + row.calls, 0),
       payloadBytes: rows.reduce((sum, row) => sum + row.payloadBytes, 0),
+      cacheHits: rows.reduce((sum, row) => sum + row.cacheHits, 0),
+      inputTokens: rows.reduce((sum, row) => sum + row.inputTokens, 0),
+      outputTokens: rows.reduce((sum, row) => sum + row.outputTokens, 0),
       retries: rows.reduce((sum, row) => sum + row.retries, 0),
       modelFallbacks: rows.reduce((sum, row) => sum + row.modelFallbacks, 0),
       providerFallbacks: rows.reduce((sum, row) => sum + row.providerFallbacks, 0),
