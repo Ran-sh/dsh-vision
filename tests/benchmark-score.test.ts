@@ -62,6 +62,16 @@ describe('vision benchmark scorer', () => {
     expect(score.routeCoverage).toBe(0.75)
     expect(score.routeTraceConsistencyRate).toBe(1)
     expect(score.routeSources).toEqual({ provider: 2, semanticCache: 0, evidenceCache: 0, unknown: 0 })
+    expect(score.routeSourceOutcomes.provider).toMatchObject({
+      cases: 2,
+      passed: 2,
+      weight: 3,
+      providerCalls: 4,
+      cacheHits: 1,
+      passRate: 1,
+      taskSuccessRate: 1,
+    })
+    expect(score.routeSourceOutcomes.unknown.cases).toBe(0)
     expect(score.rows[1]).toMatchObject({
       requestedProvider: 'primary',
       requestedModel: 'vision-a',
@@ -81,8 +91,12 @@ describe('vision benchmark scorer', () => {
     expect(score.categories.photo.missing).toBe(1)
   })
 
-  it('distinguishes semantic and evidence cache route sources', () => {
-    const score = scoreBenchmark([{ id: 'semantic' }, { id: 'evidence' }], [
+  it('distinguishes semantic and evidence cache route sources and their quality', () => {
+    const score = scoreBenchmark([
+      { id: 'semantic', assertion: { containsAll: ['facts'] } },
+      { id: 'evidence', assertion: { containsAll: ['facts'] } },
+      { id: 'evidence-bad', weight: 2, assertion: { containsAll: ['needed detail'] } },
+    ], [
       {
         id: 'semantic', answer: 'facts', toolCalled: true, providerCalls: 0, cacheHits: 1,
         route: {
@@ -97,10 +111,23 @@ describe('vision benchmark scorer', () => {
           modelFallback: false, providerFallback: false,
         },
       },
+      {
+        id: 'evidence-bad', answer: 'broad facts only', toolCalled: true, providerCalls: 0, cacheHits: 1,
+        route: {
+          source: 'evidence-cache', selectedProvider: 'p', selectedModel: 'm',
+          modelFallback: false, providerFallback: false,
+        },
+      },
     ])
 
     expect(score.routeCoverage).toBe(1)
-    expect(score.routeSources).toEqual({ provider: 0, semanticCache: 1, evidenceCache: 1, unknown: 0 })
+    expect(score.routeSources).toEqual({ provider: 0, semanticCache: 1, evidenceCache: 2, unknown: 0 })
+    expect(score.routeSourceOutcomes.semanticCache).toMatchObject({
+      cases: 1, passed: 1, taskSuccessRate: 1, providerCalls: 0, cacheHits: 1,
+    })
+    expect(score.routeSourceOutcomes.evidenceCache).toMatchObject({
+      cases: 2, passed: 1, weight: 3, taskSuccessRate: 1 / 3, providerCalls: 0, cacheHits: 2,
+    })
     expect(score.zeroProviderReuseRate).toBe(1)
   })
 
@@ -120,6 +147,7 @@ describe('vision benchmark scorer', () => {
     expect(score.routeCoverage).toBe(0.5)
     expect(score.routeTraceConsistencyRate).toBe(0)
     expect(score.routeSources.unknown).toBe(1)
+    expect(score.routeSourceOutcomes.unknown).toMatchObject({ cases: 1, passed: 1, providerCalls: 1 })
   })
 
   it('counts zero-provider cache reuse only when trace telemetry is actually present', () => {
