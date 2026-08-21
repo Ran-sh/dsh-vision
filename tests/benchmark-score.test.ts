@@ -42,7 +42,6 @@ describe('vision benchmark scorer', () => {
         retries: 1, modelFallbacks: 1, providerFallbacks: 1, splits: 1,
         route: {
           source: 'provider', task: 'ui-review', cacheMode: 'use', evidenceLayerEnabled: false,
-          requestedProvider: 'primary', requestedModel: 'vision-a',
           selectedProvider: 'backup', selectedModel: 'vision-b',
           modelFallback: true, providerFallback: true,
         },
@@ -77,8 +76,6 @@ describe('vision benchmark scorer', () => {
       routeTask: 'ui-review',
       routeCacheMode: 'use',
       evidenceLayerEnabled: false,
-      requestedProvider: 'primary',
-      requestedModel: 'vision-a',
       selectedProvider: 'backup',
       selectedModel: 'vision-b',
       routeTraceConsistent: true,
@@ -144,7 +141,8 @@ describe('vision benchmark scorer', () => {
   it('flags impossible route decision combinations', () => {
     const score = scoreBenchmark([
       { id: 'bad-evidence' },
-      { id: 'bad-explicit' },
+      { id: 'bad-explicit-fallback' },
+      { id: 'bad-explicit-evidence' },
       { id: 'good-refresh' },
     ], [
       {
@@ -155,7 +153,16 @@ describe('vision benchmark scorer', () => {
         },
       },
       {
-        id: 'bad-explicit', answer: 'facts', toolCalled: true, providerCalls: 1, cacheHits: 0,
+        id: 'bad-explicit-fallback', answer: 'facts', toolCalled: true,
+        providerCalls: 2, cacheHits: 0, providerFallbacks: 1,
+        route: {
+          source: 'provider', task: 'ocr', cacheMode: 'use', evidenceLayerEnabled: false,
+          requestedProvider: 'p', selectedProvider: 'backup', selectedModel: 'm2',
+          modelFallback: false, providerFallback: true,
+        },
+      },
+      {
+        id: 'bad-explicit-evidence', answer: 'facts', toolCalled: true, providerCalls: 1, cacheHits: 0,
         route: {
           source: 'provider', task: 'ocr', cacheMode: 'use', evidenceLayerEnabled: true,
           requestedProvider: 'p', selectedProvider: 'p', selectedModel: 'm',
@@ -172,9 +179,9 @@ describe('vision benchmark scorer', () => {
     ])
 
     expect(score.routeDecisionCoverage).toBe(1)
-    expect(score.routeDecisionConsistencyRate).toBeCloseTo(1 / 3)
-    expect(score.rows.map(row => row.routeDecisionConsistent)).toEqual([false, false, true])
-    expect(score.routeCacheModes).toEqual({ use: 1, refresh: 1, noStore: 1, unknown: 0 })
+    expect(score.routeDecisionConsistencyRate).toBe(0.25)
+    expect(score.rows.map(row => row.routeDecisionConsistent)).toEqual([false, false, false, true])
+    expect(score.routeCacheModes).toEqual({ use: 2, refresh: 1, noStore: 1, unknown: 0 })
   })
 
   it('flags route/trace fallback disagreement without treating missing route decisions as valid telemetry', () => {
