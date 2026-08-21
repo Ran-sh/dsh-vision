@@ -1,10 +1,28 @@
 # Agent Handoff Protocol
 
-Workflow source: `Ran-sh/chatgpt_workflow` v1.7.0 (`4d41242fc8fc89bb595681047e6e90f460d0d65d`).
+Workflow source: `Ran-sh/chatgpt_workflow` v1.7.0 (`7cf302a982eccf11aad5bfa4d71f5a8efc6d7e5b`).
 
-## 1. Authority model
+## 1. Operating model
 
-GitHub is the shared source of truth. The only authoritative active task is:
+GitHub is the durable source of truth. ChatGPT is the orchestrator; Codex, ZCode, Claude Code, DeepSeek Harness, and other compatible agents are remote execution platforms.
+
+The intended loop is:
+
+```text
+User request
+  -> ChatGPT inspects/changes GitHub directly
+  -> local or real-environment work remains
+  -> ChatGPT commits ACTIVE_TASK.json
+  -> user sends one short executor trigger
+  -> executor performs the task and commits a Result Contract
+  -> ChatGPT reads GitHub and continues
+```
+
+ChatGPT should not create executor work for repository operations it can already complete safely through GitHub.
+
+## 2. Task authority
+
+The only authoritative active task is:
 
 `docs/agent-tasks/ACTIVE_TASK.json`
 
@@ -14,15 +32,23 @@ If `ACTIVE_TASK.json` is missing or invalid, stop. Do not infer work from chat h
 
 `ACTIVE_TASK.md` may exist only as a non-authoritative human companion. JSON wins on conflict.
 
-## 2. Modes
+The normal user-facing trigger is intentionally minimal:
+
+```text
+Execute ACTIVE_TASK.json according to Agent Workflow Protocol.
+```
+
+All project requirements belong in the Task Contract, not in the trigger.
+
+## 3. Modes
 
 - `IMPLEMENT` — implementation changes only inside `allowed_changes`.
 - `TEST_ONLY` — validation/reporting only; writable paths are limited to `docs/agent-results/**`.
 - `REVIEW_ONLY` — inspection/reporting only; writable paths are limited to `docs/agent-results/**`.
 
-The task, not the executor adapter, determines scope.
+The task, not the executor, determines scope.
 
-## 3. Start-of-task protocol
+## 4. Start-of-task protocol
 
 Resolve the equivalent of:
 
@@ -33,7 +59,7 @@ git branch --show-current
 git status --short
 ```
 
-Then validate the task with the installed validator when local Node is available:
+Then validate the task when local Node is available:
 
 ```sh
 node .agent-workflow/validator/validate-contract.mjs task docs/agent-tasks/ACTIVE_TASK.json
@@ -43,7 +69,7 @@ Confirm `source_branch` and `source_commit` before work. A symbolic source such 
 
 Never reset, clean, stash, overwrite, or discard unrelated user changes without explicit task authorization.
 
-## 4. Scope and safety
+## 5. Scope and safety
 
 - Modify only `allowed_changes`.
 - Treat `forbidden_changes` as hard prohibitions.
@@ -53,27 +79,28 @@ Never reset, clean, stash, overwrite, or discard unrelated user changes without 
 - Never expose credentials, bearer tokens, cookies, API keys, signed URLs, credential-file contents, secret environment values, or private local paths.
 - Separate defects discovered during execution belong in the result report, not in opportunistic fixes.
 
-## 5. Validation states
+## 6. Validation states
 
 Use exactly: `PASS`, `FAIL`, `PARTIAL`, `SKIP`, `BLOCKED`, `NOT RUN`.
 
 Never convert a skipped, blocked, partial, or not-run check into PASS.
 
-## 6. Execution lifecycle
+## 7. Execution lifecycle
 
-1. Resolve the requested branch/revision and working-tree state.
-2. Read this workflow.
-3. Read and validate `ACTIVE_TASK.json`.
-4. Execute only authorized work.
+1. Read this workflow.
+2. Read and validate `ACTIVE_TASK.json`.
+3. Confirm source revision and worktree safety.
+4. Execute only authorized work in the real environment.
 5. Run every required validation or record why it is `BLOCKED`, `SKIP`, or `NOT RUN`.
 6. Write the Result Contract/report.
 7. Verify `acceptance_criteria`.
 8. When the task is actually complete and `delete_active_task_on_completion` is true, delete `ACTIVE_TASK.json`; delete `ACTIVE_TASK.md` too when the completion contract includes it.
 9. Commit/push only paths in `completion_commit_contract` and follow repository branch/PR policy.
+10. Stop. Do not self-assign follow-up work.
 
 The completion contract must include the Result Contract and deletion of `docs/agent-tasks/ACTIVE_TASK.json`.
 
-## 7. Result handoff
+## 8. Result handoff
 
 Validate machine-readable JSON results with:
 
@@ -81,9 +108,25 @@ Validate machine-readable JSON results with:
 node .agent-workflow/validator/validate-contract.mjs result <result-json>
 ```
 
-A result must identify the task/source revision, overall status, changed files, validation outcomes, blockers, and result path. ChatGPT or another coordinator decides the next task; executors do not self-assign follow-up work.
+A result must identify the task/source revision, overall status, changed files, validation outcomes, blockers, and result path.
 
-## 8. dsh-vision project facts
+After execution, the user may simply tell ChatGPT that the executor finished. ChatGPT should inspect GitHub directly, evaluate the Result Contract and commit/PR, then continue the next GitHub-side action or create the next Task Contract.
+
+Executors do not self-assign follow-up work.
+
+## 9. When ChatGPT hands off
+
+Create an ACTIVE Task only when meaningful work cannot actually be completed through GitHub or requires the user's real environment, such as:
+
+- local build/test/benchmark/runtime execution;
+- real DSH/plugin/browser/device/GPU/platform behavior;
+- local-only files or workspace state;
+- credentials, accounts, registries, signing keys, release or publishing tooling;
+- runtime truth that repository contents alone cannot establish.
+
+If ChatGPT can safely make and verify the repository change through GitHub, it should do so directly instead of delegating by default.
+
+## 10. dsh-vision project facts
 
 ```text
 Repository: Ran-sh/dsh-vision
@@ -132,7 +175,7 @@ npm test
 
 For package/release changes, also consider the configured package/built checks and GitHub Actions matrix. Platform-specific behavior must be validated on the relevant platform.
 
-## 9. Installation/removal
+## 11. Installation/removal
 
 This repository was migrated from a pre-v1.7 workflow. `docs/.agent-workflow-install.json` records newly generated files separately from pre-existing workflow files that were modified/adopted. Automated uninstall may remove only `generated_files`; migrated/adopted files require explicit review before deletion.
 
