@@ -1,0 +1,110 @@
+{
+  "schema_version": 2,
+  "task_id": "DSH-VISION-DSH-WEB-ROOTCAUSE-005",
+  "source_commit": "856b8b71f4c0679e6227466dbf99c17f18e87f84",
+  "result_commit": null,
+  "status": "PARTIAL",
+  "summary": "The concrete blocker is the transient npm/npx dependency-resolution path, not DSH profile loading or dsh-vision runtime code. On Windows 10.0.22631 x64 with Node 24.18.1 and npm 11.16.0, exact `npx @deepseek-ai/dsh@0.1.1-rc.1 web` remained inside npm Arborist ideal-tree construction with no CLI output or listener for 180-300 seconds in both the normal environment and a clean isolated DSH_HOME/cache. In the controlled A/B, pnpm 11.7.0 resolved and installed the same exact top-level DSH package in 74.6 seconds; the installed DSH then reached HTTP 200 with both an empty DSH_HOME and the unchanged real profile, and the exact npx command reached HTTP 200 in 9.173 seconds when it could reuse that local installation. Confidence is high that npm/npx transient resolution is causal. A durable arbitrary-directory npx repair requires an upstream DSH packaging/dependency-locking or npm resolver change outside dsh-vision ownership, so no dsh-vision source fix was made.",
+  "timeline": {
+    "started_at": "2026-08-21T20:48:27+08:00",
+    "completed_at": "2026-08-21T21:26:07+08:00"
+  },
+  "changed_files": [
+    "docs/agent-results/DSH-VISION-DSH-WEB-ROOTCAUSE-005-result.json",
+    "docs/agent-tasks/ACTIVE_TASK.json"
+  ],
+  "tests": [
+    {
+      "name": "node .agent-workflow/validator/validate-contract.mjs task docs/agent-tasks/ACTIVE_TASK.json",
+      "status": "PASS",
+      "evidence": "Exit 0: VALID TASK CONTRACT. main/LATEST resolved to 856b8b71f4c0679e6227466dbf99c17f18e87f84 after a clean fast-forward pull."
+    },
+    {
+      "name": "node --version && npm --version",
+      "status": "PASS",
+      "evidence": "Exit 0: Node v24.18.1 and npm 11.16.0 on Microsoft Windows NT 10.0.22631.0 x64. DSH_HOME was unset, so the default user-home DSH location applied; npm cache was under the user home; registry was https://registry.npmjs.org/; HTTP_PROXY, HTTPS_PROXY, NO_PROXY, NPM_CONFIG_PROXY, and NPM_CONFIG_HTTPS_PROXY were unset."
+    },
+    {
+      "name": "npm run typecheck",
+      "status": "PASS",
+      "evidence": "Exit 0: both @ran-sh/dsh-vision and dsh-plugin-image-mind TypeScript checks passed."
+    },
+    {
+      "name": "npm run build",
+      "status": "PASS",
+      "evidence": "Exit 0: both workspace packages built successfully; no tracked build output changed."
+    },
+    {
+      "name": "npm test",
+      "status": "PASS",
+      "evidence": "Exit 0: 62 test files passed, 2 skipped; 389 tests passed, 7 skipped, 0 failed. Existing ES2024 target and DEP0190 warnings did not affect status."
+    },
+    {
+      "name": "npm run test:package",
+      "status": "PASS",
+      "evidence": "Exit 0: 1 file and 11 package-integrity tests passed."
+    },
+    {
+      "name": "npm run test:built",
+      "status": "PASS",
+      "evidence": "Exit 0: 1 file and 5 built-artifact tests passed."
+    },
+    {
+      "name": "bounded current-environment startup probe for exact @deepseek-ai/dsh@0.1.1-rc.1 web",
+      "status": "FAIL",
+      "evidence": "With the normal DSH_HOME and npm cache, exact npx produced no stdout/stderr, opened no HTTP endpoint on the dedicated localhost port, and was terminated with its task-owned process tree after 180.132 seconds. The server was not misclassified merely for remaining alive: readiness was polled by HTTP and never observed."
+    },
+    {
+      "name": "bounded clean temporary DSH_HOME startup probe for exact @deepseek-ai/dsh@0.1.1-rc.1 web using an isolated npm cache",
+      "status": "FAIL",
+      "evidence": "A newly created empty DSH_HOME and empty npm cache behaved the same: no stdout/stderr and no HTTP listener for 300.006 seconds. The isolated npm debug log showed successful registry GETs followed by npm Arborist `idealTree buildDeps` / `placeDep` work; it never reached package extraction or DSH execution before the bounded termination. This A/B rejects the real profile as the initiating cause."
+    },
+    {
+      "name": "npm resolution/acquisition boundary and competing-hypothesis A/B probes",
+      "status": "PASS",
+      "evidence": "Top-level rc.1 registry metadata returned successfully. A publish-time cutoff that excluded all rc.2 internal packages still timed out at 240.499 seconds; temporary npm 10.9.9 still timed out at 240.189 seconds; an empty working directory outside the repository workspace still timed out at 240.261 seconds. Thus rc.2 drift, npm 11 alone, and repository workspace context were rejected. In contrast, pnpm 11.7.0 resolved 504 packages and installed exact top-level rc.1 in 74.6 seconds, proving registry acquisition and the package graph were reachable through an alternate resolver."
+    },
+    {
+      "name": "direct installed-package startup with clean and real DSH state",
+      "status": "PASS",
+      "evidence": "The pnpm-resolved exact rc.1 binary reached HTTP 200 in 8.620 seconds with an empty DSH_HOME and in 5.630 seconds with the unchanged real DSH_HOME. The real profile contained the official base/web-app bundles plus @ran-sh/dsh-crew, no dsh-vision/image-mind bundle, and an empty cordis.patch.yml overlay. A minimal temporary profile without the crew layer also reached HTTP 200 in 8.256 seconds. Both the presence and absence of crew passed, rejecting crew/profile loading as causal."
+    },
+    {
+      "name": "controlled startup probes against temporary copies with suspected layers varied one factor at a time",
+      "status": "PARTIAL",
+      "evidence": "The reliable minimal temporary-profile variation (official base/web-app only, crew removed, empty patch) passed in 8.256 seconds, while the unchanged real profile including crew passed in 5.630 seconds. No dsh-vision layer existed to remove. A byte-for-byte recursive copy attempt was stopped because copying pnpm-linked node_modules was slow and did not preserve equivalent link semantics; it was not used as evidence. Clean-home npx had already failed before DSH configuration loading, so binary profile isolation was not the causal branch."
+    },
+    {
+      "name": "read-only dsh-vision and dsh-crew current/history mutation search",
+      "status": "PASS",
+      "evidence": "dsh-vision historical commits 36722676caa49ac4088cf4924e145224c9f84182 and 8ff86e29265a11a1ca5f9b243a548bd79e6a4e22 contained scripts/install-dsh.mjs that linked packages and directly rewrote/backup-copied the selected profile's cordis.patch.yml; commit 7123643b1ecebfe02a1237f1658df4206399c712 deleted that profile-mutating installer and tests. Current dsh-vision retains only read-only diagnose-dsh behavior plus official plugin commands in docs. dsh-crew commit 1f6c977cd774b16af61a079bccbb3f4e30131345 introduced setup through `dsh plugin --profile web add/remove`; current code and full-history search found no direct cordis.patch.yml write path in dsh-crew. The historical dsh-vision mutator is real but is not the present startup cause because the real patch is empty and the real profile starts when npm resolution is bypassed."
+    },
+    {
+      "name": "post-remediation exact @deepseek-ai/dsh@0.1.1-rc.1 npx web probe in the intended real environment",
+      "status": "PASS",
+      "evidence": "After exact rc.1 was safely pre-resolved in an isolated launcher directory without modifying DSH_HOME, the original system npm 11 exact npx command reused the local package, loaded the real profile, printed `dsh web: http://127.0.0.1:<dedicated-port>`, and returned HTTP 200 in 9.173 seconds. The probe then terminated only its own process tree. This proves the runtime/profile path works once transient npm resolution is removed. The launcher directory was diagnostic and was deleted; a durable arbitrary-directory npx fix remains upstream."
+    },
+    {
+      "name": "real official DSH profile before/after integrity",
+      "status": "PASS",
+      "evidence": "Before/after SHA-256 and byte lengths were identical for profiles/web/cordis.patch.yml (43FB097A..., 113), package.json (CE55E3AD..., 287), cordis.yml (C300DCF2..., 223), pnpm-workspace.yaml (794E4C65..., 144), and pnpm-lock.yaml (17AFBA60..., 25283). No real DSH profile, DSH_HOME, credentials, or settings content was manually edited."
+    }
+  ],
+  "blockers": [
+    "A durable fix for exact npx startup from an arbitrary directory is outside dsh-vision ownership. The minimum upstream follow-up is for @deepseek-ai/dsh to make the rc dependency closure deterministic (for example exact internal prerelease versions plus a validated lock/install strategy) and/or for npm Arborist to address the observed ideal-tree construction stall on this approximately 500-package graph. Until then, a locally pre-resolved exact package or pnpm-based launcher avoids the failing transient npm path without touching the official profile."
+  ],
+  "result_path": "docs/agent-results/DSH-VISION-DSH-WEB-ROOTCAUSE-005-result.json",
+  "notes": [
+    "Issue #13 and Issue #21 were read before diagnosis. Their separation between startup/profile investigation and later real-provider work was preserved.",
+    "Causal conclusion in plain language: npx is waiting in npm's dependency-tree construction before DSH starts. Removing the npx transient install step flips failure to success; changing DSH_HOME/profile contents does not. Confidence: high.",
+    "The rc.2 publication race was investigated but rejected: rc.1 declares 54 caret-based internal dependency ranges and normally selected many rc.2 packages after rc.2 was published, but a cutoff forcing rc.1-only resolution still stalled at the same npm phase.",
+    "No dsh-vision implementation fix or regression test was appropriate because no dsh-vision code ran on the failing path. No files were written in dsh-crew. Diagnostic caches, package trees, profile copies, and logs were deleted and were not committed.",
+    "The result is PARTIAL rather than PASS because the concrete cause and safe working A/B were proven, and exact npx reached readiness after local pre-resolution, but the upstream arbitrary-directory npx defect could not be durably repaired inside the authorized repository."
+  ],
+  "result_validation": {
+    "status": "PASS",
+    "validator": "node .agent-workflow/validator/validate-contract.mjs result docs/agent-results/DSH-VISION-DSH-WEB-ROOTCAUSE-005-result.json --stamp",
+    "validated_at": "2026-08-21T13:28:18Z",
+    "evidence": "Exit 0: VALID RESULT CONTRACT: docs/agent-results/DSH-VISION-DSH-WEB-ROOTCAUSE-005-result.json"
+  }
+}
