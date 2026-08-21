@@ -137,7 +137,7 @@ function effectivePortOf(url: URL): number {
   return 80
 }
 
-/** Local trust fence for settings plus raw/preview image metadata and bytes. */
+/** Local trust fence for settings plus attachment/preview metadata and bytes. */
 export function isTrustedLocalRequest(req: IncomingMessage): boolean {
   return isLoopbackSocket(req) && isLoopbackHost(req) && isSameOrigin(req)
 }
@@ -178,6 +178,10 @@ export function registerAttachRoute(
       const pathname = parsedUrl.pathname
 
       if (req.method === 'GET' && pathname === `${ROUTE_PREFIX}/config`) {
+        if (!isTrustedLocalRequest(req)) {
+          json(res, { ok: false, error: { code: 'rejected', message: 'untrusted origin' } }, 403)
+          return
+        }
         const view = await hooks.readConfigView()
         if (view === undefined) {
           json(res, { ok: false, error: { code: 'internal', message: 'image-mind settings section is not registered' } }, 500)
@@ -291,6 +295,10 @@ export function registerAttachRoute(
       }
       if (req.method !== 'POST') {
         json(res, { ok: false, error: { code: 'internal', message: 'only GET and POST are allowed' } }, 405)
+        return
+      }
+      if (!isTrustedLocalRequest(req)) {
+        json(res, { ok: false, error: { code: 'rejected', message: 'untrusted origin' } }, 403)
         return
       }
 
