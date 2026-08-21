@@ -12,7 +12,7 @@ import { inferVisionTask, routeVisionTask } from '@ran-sh/dsh-vision'
 import type { VisionCacheMode, VisionCacheStore, VisionTask, VisionTrace } from '@ran-sh/dsh-vision'
 import { loadImage } from '../media/load.ts'
 import type { LoadedImage } from '../media/types.ts'
-import { latestSessionAttachmentRefs } from '../attachments/ref-index.ts'
+import { MAX_SESSION_BATCH_OFFSET, sessionAttachmentRefsByOffset } from '../attachments/session-history.ts'
 import { isReusableEvidenceTask, reusableEvidenceKey, reusableEvidencePrompt } from '../runtime/reusable-evidence.ts'
 
 export const MAX_IMAGES_PER_REQUEST = 8
@@ -79,6 +79,8 @@ export function safeImageIdentity(ref: string): string {
 export interface UnderstandImageArgs {
   image?: string
   images?: string[]
+  /** 0 = latest session image batch, 1 = previous distinct batch, etc. */
+  sessionBatchOffset?: number
   prompt?: string
   provider?: string
   model?: string
@@ -175,14 +177,15 @@ export function understandImageTool(
 ): ReturnType<typeof defineTool> {
   const DESCRIPTION_HEAD =
     'Inspect one or more images and return visual evidence the main model can reason over. When the current '
-    + 'DSH user message has uploaded images, call this tool without `image`/`images` to inspect that session’s '
-    + 'latest image batch. Explicit references are also supported: local absolute paths, http(s) URLs, complete '
-    + 'image attachment JSON, or bare attachment ids. Call this for OCR, charts, screenshots, UI analysis, '
-    + 'translation, code/terminal images, documents, comparisons, or photos. Always pass an explicit `prompt` '
-    + 'describing what the user needs. For stable evidence tasks such as OCR/UI/code/documents/charts, image-mind '
-    + 'may reuse task-scoped visual evidence across later questions. If the user explicitly asks you to look again, '
-    + 're-read/OCR from the pixels, ignore a previous analysis, or verify a detail afresh, set `cache` to `refresh`. '
-    + 'Use `no-store` only when the caller specifically needs the result not to enter either cache layer.'
+    + 'DSH session has uploaded images, omit `image`/`images` and use `sessionBatchOffset` to select a recent '
+    + 'session batch (`0` latest, `1` previous, and so on). Explicit references are also supported: local absolute '
+    + 'paths, http(s) URLs, complete image attachment JSON, or bare attachment ids. Call this for OCR, charts, '
+    + 'screenshots, UI analysis, translation, code/terminal images, documents, comparisons, or photos. Always pass '
+    + 'an explicit `prompt` describing what the user needs. For stable evidence tasks such as OCR/UI/code/documents/'
+    + 'charts, image-mind may reuse task-scoped visual evidence across later questions. If the user explicitly asks '
+    + 'you to look again, re-read/OCR from the pixels, ignore a previous analysis, or verify a detail afresh, set '
+    + '`cache` to `refresh`. Use `no-store` only when the caller specifically needs the result not to enter either '
+    + 'cache layer.'
 
   return defineTool({
     name: 'understand_image',
@@ -190,12 +193,16 @@ export function understandImageTool(
     parameters: {
       image: {
         type: 'string',
-        description: 'Optional explicit single image reference. Omit when inspecting the current DSH session’s latest uploaded image batch.',
+        description: 'Optional explicit single image reference. Omit when selecting an uploaded session image batch.',
       },
       images: {
         type: 'array',
         items: { type: 'string' },
-        description: `Optional explicit image references. At most ${MAX_IMAGES_PER_REQUEST}. Mutually exclusive with \`image\`; omit both for the current DSH session batch.`,
+        description: `Optional explicit image references. At most ${MAX_IMAGES_PER_REQUEST}. Mutually exclusive with \`image\`; omit both when selecting a session image batch.`,
+      },
+      sessionBatchOffset: {
+        type: 'integer',
+        description: `Optional session-relative batch selector used only when image/images are omitted: 0 = latest, 1 = previous, up to ${MAX_SESSION_BATCH_OFFSET}.`,
       },
       prompt: {
         type: 'string',
@@ -286,6 +293,14 @@ export function understandImageTool(
       const hasMany = (args.images ?? []).some(ref => ref.trim().length > 0)
       if (hasSingle && hasMany) throw new Error('image-mind: pass either `image` (single) or `images` (array), not both')
 
+      const batchOffset = args.sessionBatchOffset ?? 0
+      if (!Number.isSafeInteger(batchOffset) || batchOffset < 0 || batchOffset > MAX_SESSION_BATCH_OFFSET) {
+        throw new Error(`image-mind: sessionBatchOffset must be an integer from 0 to ${MAX_SESSION_BATCH_OFFSET}`)
+      }
+      if ((hasSingle || hasMany) && args.sessionBatchOffset !== undefined) {
+        throw new Error('image-mind: sessionBatchOffset is only valid when `image` and `images` are omitted')
+      }
+
       const explicitRawRefs = hasSingle ? [args.image!.trim()] : (args.images ?? []).map(ref => ref.trim())
       if (explicitRawRefs.some(ref => ref.length === 0)) throw new Error('image-mind: image references must be non-empty strings')
       let refs = explicitRawRefs.filter(ref => ref.length > 0)
@@ -294,13 +309,13 @@ export function understandImageTool(
       if (refs.length === 0) {
         const sessionId = exec.agent?.id
         if (sessionId !== undefined) {
-          const sessionRefs = await latestSessionAttachmentRefs(ctx, String(sessionId))
+          const sessionRefs = await sessionAttachmentRefsByOffset(ctx, String(sessionId), batchOffset)
           refs = sessionRefs.map(ref => JSON.stringify(ref))
           sourceLabels = sessionRefs.map((_ref, index) => `session-image-${index + 1}`)
         }
       }
       if (refs.length === 0) {
-        throw new Error('image-mind: pass at least one image reference, or call from a DSH session with an uploaded image batch')
+        throw new Error(`image-mind: no complete session image batch exists at offset ${batchOffset}; upload/re-send the image or choose a newer batch`)
       }
       if (refs.length > MAX_IMAGES_PER_REQUEST) throw new Error(`image-mind: at most ${MAX_IMAGES_PER_REQUEST} images per call; got ${refs.length}`)
 
