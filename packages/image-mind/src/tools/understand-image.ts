@@ -9,8 +9,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import { defineTool, type GenericCallView } from '@deepseek-ai/dsh-tools'
 import { inferVisionTask, routeVisionTask } from '@ran-sh/dsh-vision'
-import type { VisionCacheMode, VisionCacheStore, VisionTrace } from '@ran-sh/dsh-vision'
-import type {} from '@ran-sh/dsh-vision'
+import type { VisionCacheMode, VisionCacheStore, VisionTask, VisionTrace } from '@ran-sh/dsh-vision'
 import { loadImage } from '../media/load.ts'
 import type { LoadedImage } from '../media/types.ts'
 import { latestSessionAttachmentRefs } from '../attachments/ref-index.ts'
@@ -86,7 +85,13 @@ export interface UnderstandImageArgs {
 
 export type UnderstandImageRouteSource = 'provider' | 'semantic-cache' | 'evidence-cache'
 
-export interface UnderstandImageRoute {
+export interface UnderstandImageDecision {
+  task: VisionTask
+  cacheMode: VisionCacheMode
+  evidenceLayerEnabled: boolean
+}
+
+export interface UnderstandImageRoute extends UnderstandImageDecision {
   source: UnderstandImageRouteSource
   requestedProvider?: string
   requestedModel?: string
@@ -105,6 +110,7 @@ export function understandImageRoute(
   args: Pick<UnderstandImageArgs, 'provider' | 'model'>,
   selectedProvider: string,
   selectedModel: string,
+  decision: UnderstandImageDecision,
   trace?: VisionTrace,
   sourceOverride?: UnderstandImageRouteSource,
 ): UnderstandImageRoute {
@@ -114,6 +120,7 @@ export function understandImageRoute(
     ?? (trace !== undefined && trace.providerCalls === 0 && trace.cacheHits > 0 ? 'semantic-cache' : 'provider')
   return {
     source,
+    ...decision,
     ...requestedProvider === undefined ? {} : { requestedProvider },
     ...requestedModel === undefined ? {} : { requestedModel },
     selectedProvider,
@@ -210,6 +217,9 @@ export function understandImageTool(
             additionalProperties: false,
             properties: {
               source: { type: 'string', required: true, enum: ['provider', 'semantic-cache', 'evidence-cache'] },
+              task: { type: 'string', required: true, enum: ['ocr', 'ui-review', 'code', 'document', 'chart', 'compare', 'photo', 'screenshot', 'translate', 'general'] },
+              cacheMode: { type: 'string', required: true, enum: ['use', 'refresh', 'no-store'] },
+              evidenceLayerEnabled: { type: 'boolean', required: true },
               requestedProvider: { type: 'string' },
               requestedModel: { type: 'string' },
               selectedProvider: { type: 'string', required: true },
@@ -292,6 +302,11 @@ export function understandImageTool(
         && !explicitRoute
         && cacheMode !== 'no-store'
         && isReusableEvidenceTask(task)
+      const decision: UnderstandImageDecision = {
+        task,
+        cacheMode,
+        evidenceLayerEnabled: useEvidenceLayer,
+      }
       const understandingKey = useEvidenceLayer ? reusableEvidenceKey(images, task) : undefined
 
       if (understandingKey !== undefined && cacheMode === 'use') {
@@ -302,7 +317,7 @@ export function understandImageTool(
             text: hit.facts,
             model: hit.model,
             provider: hit.provider,
-            route: understandImageRoute(args, hit.provider, hit.model, trace, 'evidence-cache'),
+            route: understandImageRoute(args, hit.provider, hit.model, decision, trace, 'evidence-cache'),
             images: images.map((image, index) => ({
               source: sourceLabels[index],
               mimeType: image.mimeType,
@@ -338,7 +353,7 @@ export function understandImageTool(
         text: result.text,
         model: result.model,
         provider: result.provider,
-        route: understandImageRoute(args, result.provider, result.model, result.trace),
+        route: understandImageRoute(args, result.provider, result.model, decision, result.trace),
         images: images.map((image, index) => ({
           source: sourceLabels[index],
           mimeType: image.mimeType,
