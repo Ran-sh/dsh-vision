@@ -1,0 +1,69 @@
+{
+  "id": "DSH-VISION-DSH-WEB-ROOTCAUSE-005",
+  "mode": "IMPLEMENT",
+  "source_branch": "main",
+  "source_commit": "LATEST",
+  "objective": "Determine the concrete cause that prevents `npx @deepseek-ai/dsh web` from starting in the user's real environment, prove the causal factor with controlled A/B evidence, apply the smallest safe fix when it is within dsh-vision or official DSH plugin ownership, and verify `@deepseek-ai/dsh@0.1.1-rc.1 web` starts successfully afterward.",
+  "context": "Issue #13 tracks a recurring failure where `npx @deepseek-ai/dsh web` does not start. Earlier diagnostics found rc.7 and rc.8 dependency-only installs could both hang on this Windows environment, so the problem is not proven rc.8-specific or dsh-vision runtime incompatibility. The user reports the same startup symptom existed before and suspects an older dsh-vision or dsh-crew workflow may have modified the official DSH profile. The user has repeatedly required that projects do not directly edit the official DSH profile. DeepSeek Harness 0.1.1-rc.1 is now the current compatibility target. This task must identify WHAT actually affects startup, not merely report whether startup succeeds or times out. Read Issue #13 and #21 before execution. Inspect Ran-sh/dsh-vision and Ran-sh/dsh-crew history for historical profile/DSH_HOME/cordis patch mutations. Use controlled temporary copies and isolated caches to establish causality. Do not assume the user's profile is at fault without A/B proof.",
+  "allowed_changes": [
+    "packages/**",
+    "scripts/**",
+    "tests/**",
+    "docs/compatibility.md",
+    "docs/verification-debt.md",
+    "docs/agent-results/DSH-VISION-DSH-WEB-ROOTCAUSE-005-result.json"
+  ],
+  "forbidden_changes": [
+    "direct manual edits to the user's real official DSH profile/config/profile manifests/cordis.patch.yml",
+    "direct manual edits to the user's real DSH_HOME files",
+    "writes to Ran-sh/dsh-crew or any repository other than Ran-sh/dsh-vision",
+    "credentials, API keys, credential files, secret values, or unredacted secret-bearing paths",
+    "package release/version metadata unless strictly required by a proven dsh-vision code fix",
+    "unrelated files"
+  ],
+  "validation": [
+    "node .agent-workflow/validator/validate-contract.mjs task docs/agent-tasks/ACTIVE_TASK.json",
+    "node --version && npm --version",
+    "npm run typecheck",
+    "npm run build",
+    "npm test",
+    "npm run test:package",
+    "npm run test:built",
+    "bounded current-environment startup probe for exact @deepseek-ai/dsh@0.1.1-rc.1 web with safe/redacted logs",
+    "bounded clean temporary DSH_HOME startup probe for exact @deepseek-ai/dsh@0.1.1-rc.1 web using an isolated npm cache",
+    "controlled startup probes against temporary copies of the current DSH profile/state with suspected dsh-vision/dsh-crew/custom layers varied one factor at a time",
+    "read-only git/history search in Ran-sh/dsh-vision and Ran-sh/dsh-crew for code or historical commits that write DSH_HOME, official profiles, profile manifests, cordis.patch.yml, plugin layers, or startup configuration",
+    "post-fix bounded startup probe proving exact @deepseek-ai/dsh@0.1.1-rc.1 web reaches a ready/listening state in the intended real environment without direct manual profile editing"
+  ],
+  "acceptance_criteria": [
+    "Before changing anything, capture a redacted baseline: OS, Node, npm, exact DSH target, relevant environment-variable names/values where non-secret, npm cache location class, DSH_HOME/profile location class, startup exit/timeout behavior, elapsed time, and safe logs.",
+    "Do not treat a long-running web server as a failure merely because it does not exit. Define startup success by an observable ready/listening signal, reachable local endpoint, or other official DSH readiness evidence; terminate the probe cleanly after readiness is proven.",
+    "Run exact @deepseek-ai/dsh@0.1.1-rc.1 in a newly created isolated temporary DSH_HOME and isolated npm cache. This clean control must be compared against the user's normal environment.",
+    "If clean startup succeeds while the normal environment fails, copy the relevant normal DSH state into a temporary diagnostic directory and vary one suspected factor at a time until the smallest factor whose removal/change flips startup from fail to pass is identified. Never perform this binary isolation by manually editing the real official profile.",
+    "If clean startup also fails, separately compare npm resolution/acquisition from startup/config loading: use an isolated npm cache and direct package metadata/tarball checks as needed so a registry/resolver problem is not misattributed to profile state.",
+    "Inspect both Ran-sh/dsh-vision and Ran-sh/dsh-crew current code AND git history read-only for historical writes/mutations involving DSH_HOME, official profiles, profile manifests, cordis.patch.yml, plugin layers, startup scripts, or commands. Record concrete repository/path/commit evidence for any candidate mutation source; absence of evidence must also be stated.",
+    "The Result Contract must include a causal conclusion in plain language: the specific factor that affected `npx @deepseek-ai/dsh web`, the A/B observation proving it, confidence level, and why competing hypotheses were rejected. A statement such as 'it timed out' or 'profile may be broken' is NOT sufficient for PASS.",
+    "If the proven root cause is dsh-vision code/install behavior, implement the smallest repository fix plus deterministic regression coverage preventing recurrence, without broad unrelated refactors.",
+    "If a stale dsh-vision installation/layer in the real DSH environment is proven causal, repair it only through the official DSH/Harness plugin mechanism or another documented Harness-owned command; record the exact command and before/after relative-file/hash evidence without exposing secrets. Do not manually rewrite the official profile.",
+    "If the proven root cause is dsh-crew or upstream DSH rather than dsh-vision, do not write that other repository from this task. Still identify the exact repository/path/commit or upstream boundary and, where possible without unsafe profile edits, restore the user's DSH startup through documented official mechanisms. If a code fix outside dsh-vision is required, report BLOCKED or PARTIAL with the minimal exact follow-up change needed rather than making unauthorized cross-repository edits.",
+    "After any repair, exact @deepseek-ai/dsh@0.1.1-rc.1 web must be re-probed in the intended real environment and must reach an observable ready/listening state within a bounded window, or the Result Contract must truthfully report why safe remediation could not complete.",
+    "Verify that the user's real official DSH profile was not manually edited by this task. Record before/after hashes or equivalent metadata for relevant non-secret profile files; content and credentials must not be copied into the Result Contract.",
+    "Repository validation after any dsh-vision code change must include typecheck, build, full tests, package integrity, and built-artifact verification and must report each command truthfully.",
+    "The new Result Contract must use schema_version 2 with second-precision timezone-aware timeline.started_at/timeline.completed_at and validator-owned result_validation evidence produced by `node .agent-workflow/validator/validate-contract.mjs result docs/agent-results/DSH-VISION-DSH-WEB-ROOTCAUSE-005-result.json --stamp` after timeline.completed_at is final.",
+    "On completion, delete docs/agent-tasks/ACTIVE_TASK.json. Commit/push only authorized dsh-vision fixes/tests/docs (if actually needed), the Result Contract, and ACTIVE task deletion. Do not commit diagnostic dumps, caches, profile copies, logs containing secrets, or temporary environment state."
+  ],
+  "result_contract": "docs/agent-results/DSH-VISION-DSH-WEB-ROOTCAUSE-005-result.json",
+  "completion_commit_contract": [
+    "authorized dsh-vision fix/test/doc paths if and only if a proven root cause requires them",
+    "docs/agent-results/DSH-VISION-DSH-WEB-ROOTCAUSE-005-result.json",
+    "docs/agent-tasks/ACTIVE_TASK.json"
+  ],
+  "delete_active_task_on_completion": true,
+  "metadata": {
+    "executor": "CODEX",
+    "purpose": "dsh-web-root-cause-and-safe-repair",
+    "related_issues": [13, 21, 29],
+    "compatibility_target": "@deepseek-ai/dsh@0.1.1-rc.1",
+    "prepared_from_commit": "9ab2a5610c4473ff0ab18f638a78b9991b8bd178"
+  }
+}
