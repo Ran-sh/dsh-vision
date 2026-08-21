@@ -9,9 +9,9 @@
     "packages/image-mind"
   ],
   "scripts": {
-    "typecheck": "npm -ws run typecheck",
-    "test": "npm -ws run test && vitest run --config vitest.config.ts",
-    "build": "npm -ws run build",
+    "typecheck": "npm --workspaces run typecheck",
+    "test": "npm --workspaces run test && vitest run --config vitest.config.ts",
+    "build": "npm --workspaces run build",
     "test:e2e": "node scripts/run-e2e.mjs",
     "diagnose:dsh": "node scripts/diagnose-dsh.mjs",
     "test:package": "vitest run --config vitest.config.ts tests/package.test.ts",
