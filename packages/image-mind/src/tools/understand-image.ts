@@ -84,6 +84,45 @@ export interface UnderstandImageArgs {
   cache?: VisionCacheMode
 }
 
+export type UnderstandImageRouteSource = 'provider' | 'semantic-cache' | 'evidence-cache'
+
+export interface UnderstandImageRoute {
+  source: UnderstandImageRouteSource
+  requestedProvider?: string
+  requestedModel?: string
+  selectedProvider: string
+  selectedModel: string
+  modelFallback: boolean
+  providerFallback: boolean
+}
+
+function explicitValue(value: string | undefined): string | undefined {
+  const normalized = value?.trim()
+  return normalized !== undefined && normalized.length > 0 ? normalized : undefined
+}
+
+export function understandImageRoute(
+  args: Pick<UnderstandImageArgs, 'provider' | 'model'>,
+  selectedProvider: string,
+  selectedModel: string,
+  trace?: VisionTrace,
+  sourceOverride?: UnderstandImageRouteSource,
+): UnderstandImageRoute {
+  const requestedProvider = explicitValue(args.provider)
+  const requestedModel = explicitValue(args.model)
+  const source = sourceOverride
+    ?? (trace !== undefined && trace.providerCalls === 0 && trace.cacheHits > 0 ? 'semantic-cache' : 'provider')
+  return {
+    source,
+    ...requestedProvider === undefined ? {} : { requestedProvider },
+    ...requestedModel === undefined ? {} : { requestedModel },
+    selectedProvider,
+    selectedModel,
+    modelFallback: (trace?.modelFallbacks ?? 0) > 0,
+    providerFallback: (trace?.providerFallbacks ?? 0) > 0,
+  }
+}
+
 export function understandImageCallView(args: UnderstandImageArgs): GenericCallView {
   const refs = args.image !== undefined ? [args.image] : args.images ?? []
   return {
@@ -165,6 +204,20 @@ export function understandImageTool(
           text: { type: 'string', required: true },
           model: { type: 'string', required: true },
           provider: { type: 'string' },
+          route: {
+            type: 'object',
+            required: true,
+            additionalProperties: false,
+            properties: {
+              source: { type: 'string', required: true, enum: ['provider', 'semantic-cache', 'evidence-cache'] },
+              requestedProvider: { type: 'string' },
+              requestedModel: { type: 'string' },
+              selectedProvider: { type: 'string', required: true },
+              selectedModel: { type: 'string', required: true },
+              modelFallback: { type: 'boolean', required: true },
+              providerFallback: { type: 'boolean', required: true },
+            },
+          },
           images: {
             type: 'array',
             required: true,
@@ -201,8 +254,8 @@ export function understandImageTool(
           },
         },
       },
-      // UI remains answer-only; usage/trace are structured diagnostics for
-      // benchmark/debug consumers and are not rendered into the conversation.
+      // UI remains answer-only; usage/trace/route are structured diagnostics
+      // for benchmark/debug consumers and are not rendered into the conversation.
       render: (_args, value) => [{ type: 'text', text: value.text }],
     },
     async execute(args, exec) {
@@ -244,16 +297,18 @@ export function understandImageTool(
       if (understandingKey !== undefined && cacheMode === 'use') {
         const hit = evidenceCache!.getUnderstanding(understandingKey)
         if (hit !== undefined) {
+          const trace = cacheOnlyTrace()
           return {
             text: hit.facts,
             model: hit.model,
             provider: hit.provider,
+            route: understandImageRoute(args, hit.provider, hit.model, trace, 'evidence-cache'),
             images: images.map((image, index) => ({
               source: sourceLabels[index],
               mimeType: image.mimeType,
               bytes: image.bytes.length,
             })),
-            trace: cacheOnlyTrace(),
+            trace,
           }
         }
       }
@@ -283,6 +338,7 @@ export function understandImageTool(
         text: result.text,
         model: result.model,
         provider: result.provider,
+        route: understandImageRoute(args, result.provider, result.model, result.trace),
         images: images.map((image, index) => ({
           source: sourceLabels[index],
           mimeType: image.mimeType,
