@@ -13,6 +13,12 @@ function score(overrides: Record<string, unknown> = {}) {
     traceCoverage: 1,
     routeCoverage: 1,
     routeSources: { provider: 100, semanticCache: 0, evidenceCache: 0, unknown: 0 },
+    routeSourceOutcomes: {
+      provider: { cases: 100, passed: 90, weight: 100, providerCalls: 100, cacheHits: 0, passRate: 0.9, taskSuccessRate: 0.9 },
+      semanticCache: { cases: 0, passed: 0, weight: 0, providerCalls: 0, cacheHits: 0 },
+      evidenceCache: { cases: 0, passed: 0, weight: 0, providerCalls: 0, cacheHits: 0 },
+      unknown: { cases: 0, passed: 0, weight: 0, providerCalls: 0, cacheHits: 0 },
+    },
     tokenUsageCoverage: 0.8,
     zeroProviderReuseRate: 0,
     latencyMs: { p50: 500, p95: 1000 },
@@ -38,6 +44,12 @@ describe('vision benchmark regression gate', () => {
       taskSuccessRate: 0.91,
       zeroProviderReuseRate: 0.25,
       routeSources: { provider: 75, semanticCache: 0, evidenceCache: 25, unknown: 0 },
+      routeSourceOutcomes: {
+        provider: { cases: 75, passed: 69, weight: 75, providerCalls: 75, cacheHits: 0, passRate: 0.92, taskSuccessRate: 0.92 },
+        semanticCache: { cases: 0, passed: 0, weight: 0, providerCalls: 0, cacheHits: 0 },
+        evidenceCache: { cases: 25, passed: 22, weight: 25, providerCalls: 0, cacheHits: 25, passRate: 0.88, taskSuccessRate: 0.88 },
+        unknown: { cases: 0, passed: 0, weight: 0, providerCalls: 0, cacheHits: 0 },
+      },
       totals: { ...score().totals, calls: 75, payloadBytes: 800_000, inputTokens: 72_000 },
     })
 
@@ -46,6 +58,11 @@ describe('vision benchmark regression gate', () => {
     expect(comparison.summary.candidateCalls).toBe(75)
     expect(comparison.summary.candidateZeroProviderReuseRate).toBe(0.25)
     expect(comparison.summary.candidateRouteSources).toMatchObject({ evidenceCache: 25 })
+    expect(comparison.summary.candidateRouteSourceOutcomes.evidenceCache).toMatchObject({
+      cases: 25,
+      taskSuccessRate: 0.88,
+      providerCalls: 0,
+    })
   })
 
   it('fails when task quality regresses beyond the default tolerance', () => {
@@ -124,6 +141,11 @@ describe('vision benchmark regression gate', () => {
     expect(report.comparison.pass).toBe(true)
     expect(report.candidate.zeroProviderReuseRate).toBe(1)
     expect(report.candidate.routeSources.evidenceCache).toBe(1)
+    expect(report.candidate.routeSourceOutcomes.evidenceCache).toMatchObject({
+      cases: 1,
+      passed: 1,
+      taskSuccessRate: 1,
+    })
     expect(report.candidate.totals.calls).toBe(0)
   })
 })
