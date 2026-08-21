@@ -50,6 +50,7 @@ describe('layered reusable evidence cache', () => {
     expect(firstRequest.prompt).toContain('OCR evidence extraction')
     expect(first.text).toBe(second.text)
     expect(second.trace).toMatchObject({ providerCalls: 0, cacheHits: 1 })
+    expect(second.route).toMatchObject({ source: 'evidence-cache' })
   })
 
   it('refresh bypasses reusable evidence and replaces it', async () => {
@@ -65,6 +66,31 @@ describe('layered reusable evidence cache', () => {
     expect(refreshed.text).not.toBe(first.text)
     expect(reused.text).toBe(refreshed.text)
     expect(reused.trace).toMatchObject({ providerCalls: 0, cacheHits: 1 })
+  })
+
+  it('no-store refocus uses the precise caller prompt without replacing broad reusable evidence', async () => {
+    const { call, tool } = setup()
+    const file = imageFile()
+    const exec = { signal: new AbortController().signal } as never
+
+    const broad = await tool.execute({ image: file, prompt: 'OCR all visible text' }, exec)
+    const cached = await tool.execute({ image: file, prompt: 'what is the tiny value in row 3 column 2?' }, exec)
+    const refocused = await tool.execute({
+      image: file,
+      prompt: 'Inspect row 3, column 2 only and report the exact visible value; mark it unclear rather than guessing.',
+      cache: 'no-store',
+    }, exec)
+    const reused = await tool.execute({ image: file, prompt: 'read all text again' }, exec)
+
+    expect(cached.route).toMatchObject({ source: 'evidence-cache' })
+    expect(call).toHaveBeenCalledTimes(2)
+    expect(call.mock.calls[1][0]).toMatchObject({
+      prompt: 'Inspect row 3, column 2 only and report the exact visible value; mark it unclear rather than guessing.',
+      cache: 'no-store',
+    })
+    expect(refocused.text).not.toBe(broad.text)
+    expect(reused.text).toBe(broad.text)
+    expect(reused.route).toMatchObject({ source: 'evidence-cache' })
   })
 
   it('does not layer-cache ordinary photo questions', async () => {
