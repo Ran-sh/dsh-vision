@@ -1,0 +1,142 @@
+{
+  "schema_version": 2,
+  "task_id": "DSH-VISION-RC1-ISOLATED-COMPAT-006",
+  "source_commit": "53c7d2ab0283274bbabc6efd4e70fd446a7b1124",
+  "result_commit": null,
+  "status": "PARTIAL",
+  "summary": "The authorized real-environment lifecycle action completed: the real local dsh-vision plugin installation was removed through the official DeepSeek Harness plugin manager, and after completion the real local Harness composes neither dsh-plugin-image-mind nor @ran-sh/dsh-vision anywhere (real_local_installation_after_task: absent). The mandatory compatibility target is BLOCKED by a publishing gap, not by DSH/plugin incompatibility: dsh-plugin-image-mind@0.2.0 is NOT on the npm registry (published versions are only 0.1.0 and 0.1.1; @ran-sh/dsh-vision is only 0.1.0), so 'official add of published dsh-plugin-image-mind@0.2.0' fails with pnpm ERR_PNPM_NO_MATCHING_VERSION before any DSH code runs. Using only the task-owned temporary environment and explicit published pins (dsh-plugin-image-mind@0.1.1 + its @ran-sh/dsh-vision@0.1.0 dependency), the entire rc.1 lifecycle works: official add -> pnpm install -> both bundle layers compose -> exact @deepseek-ai/dsh@0.1.1-rc.1 web reaches HTTP 200 -> official remove leaves no plugin/bundle layer behind. Repository typecheck/build/tests/package/built checks all pass. A real vision call was NOT executed: an existing VISION_API_KEY environment variable is present but its provider/baseURL provenance cannot be established without reading real Harness settings (forbidden), and no keyless endpoint exists locally, so that sub-check is PARTIAL with the exact blocker recorded; all keyless compatibility checks completed. Concurrent external activity during execution: @ran-sh/dsh-crew was removed from the real web profile roster at 22:23 by an actor outside this task (documented by T1-vs-T2 hashes; none of this executor's operations wrote real Harness state except the single authorized official uninstall).",
+  "timeline": {
+    "started_at": "2026-08-21T22:19:38+08:00",
+    "completed_at": "2026-08-21T22:53:18+08:00"
+  },
+  "changed_files": [
+    "docs/agent-results/DSH-VISION-RC1-ISOLATED-COMPAT-006-result.json",
+    "docs/agent-tasks/ACTIVE_TASK.json"
+  ],
+  "tests": [
+    {
+      "name": "node .agent-workflow/validator/validate-contract.mjs task docs/agent-tasks/ACTIVE_TASK.json",
+      "status": "PASS",
+      "evidence": "Exit 0: VALID TASK CONTRACT. main/LATEST resolved to 53c7d2ab0283274bbabc6efd4e70fd446a7b1124 with a clean worktree (git status empty) after a fast-forward pull from origin/main."
+    },
+    {
+      "name": "node --version && npm --version && pnpm --version",
+      "status": "PASS",
+      "evidence": "Node v24.18.1, npm 11.16.0, pnpm 11.7.0 on Windows 10.0.22631 x64. DSH_HOME was unset, so the default user-home DSH location applied (a bounded read-only set of its non-secret profile files was hash-baselined)."
+    },
+    {
+      "name": "read-only real plugin/roster determination for dsh-plugin-image-mind / @ran-sh/dsh-vision before any mutation",
+      "status": "PASS",
+      "evidence": "Real web profile roster composes only @deepseek-ai/dsh-base + @deepseek-ai/dsh-web-app (+ @ran-sh/dsh-crew until an external 22:23 change removed it); package.json/lockfile/cordis contain no image-mind/vision entry, but an orphaned node_modules symlink web/node_modules/dsh-plugin-image-mind -> repository packages/image-mind (created Aug 21 00:16) exists as inert residue, not composed. The real github-e2e profile DID have dsh-plugin-image-mind installed in its official roster: bundles [@deepseek-ai/dsh-base, dsh-plugin-image-mind] and dependency 'dsh-plugin-image-mind': 'link:D:/Users/48376/Desktop/dsh/packages/image-mind'. Safe package/version identifiers only were recorded; no credentials or file contents were captured. Scan of real settings.yaml matched exactly one image-mind/dsh-vision token occurrence (identifier-level only; no values printed)."
+    },
+    {
+      "name": "official plugin-manager uninstall of dsh-plugin-image-mind from the real profile that had it installed (github-e2e)",
+      "status": "PASS",
+      "evidence": "Because the plugin was installed in the real github-e2e profile (not the real web profile, where it was already absent), the officially pre-resolved exact rc.1 CLI (pnpm-installed launcher; DSH_HOME unset) ran: node <launcher>/node_modules/@deepseek-ai/dsh/lib/bin.js plugin --profile github-e2e remove dsh-plugin-image-mind. Result exit 0 in 641 ms using pnpm v11.7.0; output confirmed removal of the link: dependency. Exact before evidence: github-e2e/package.json bundles [@deepseek-ai/dsh-base, dsh-plugin-image-mind] + dependency 'dsh-plugin-image-mind': 'link:D:.../packages/image-mind'. After: bundles [@deepseek-ai/dsh-base], no dependencies, lockfile has 0 image-mind/vision references. The real web profile had nothing to uninstall, so no uninstall was fabricated there. No fresh transient npx resolution was used."
+    },
+    {
+      "name": "post-uninstall proof: real Harness no longer composes image-mind/@ran-sh/dsh-vision and residual layers are enumerated, not manually edited",
+      "status": "PASS",
+      "evidence": "After uninstall, grep for image-mind|dsh-vision across web/package.json, web/pnpm-lock.yaml, github-e2e/package.json, github-e2e/pnpm-lock.yaml returns 0 matches. Inert leftovers are explicitly recorded and left untouched (manual deletion is forbidden): (1) web/node_modules/dsh-plugin-image-mind orphan symlink (not in any roster/lockfile/composition); (2) github-e2e/node_modules/dsh-plugin-image-mind -> repository link remaining in node_modules after the official remove pruned the roster/lockfile; (3) shared store profiles/node_modules still lists @ran-sh/dsh-vision and dsh-plugin-image-mind directories (not composed by any roster). A read-only diagnostic of the real settings.yaml was limited to identifier-level token count and printed nothing confidential."
+    },
+    {
+      "name": "real Harness web readiness without the plugin (existing listener and task-owned fresh boot)",
+      "status": "PASS",
+      "evidence": "The existing real web server (node <dsh> web --host 127.0.0.1 --port 3080, PID 11720, launched from npx cache and left untouched by this task) returned HTTP 200 at both task start and task end. Additionally, a task-owned fresh boot of the pre-resolved exact rc.1 CLI against the real default profile on dedicated port 38418 returned HTTP 200 in 3.095 s; the task-owned process tree was then terminated (taskkill /F /T rc=0) and the port was confirmed free. No real profile/config file was manually edited; before/after hashes of the bounded real file set were identical for every boot (T4 == T3 == T5 for web files)."
+    },
+    {
+      "name": "npm run typecheck",
+      "status": "PASS",
+      "evidence": "Exit 0: TypeScript checks passed for @ran-sh/dsh-vision 0.2.0 (workspace) and dsh-plugin-image-mind 0.2.0."
+    },
+    {
+      "name": "npm run build",
+      "status": "PASS",
+      "evidence": "Exit 0: both workspace packages built successfully; no tracked build output changed."
+    },
+    {
+      "name": "npm test",
+      "status": "PASS",
+      "evidence": "Exit 0: workspace suites 6 files/63 tests + 49 files/279 tests (2 skipped files, 7 skipped tests) and root suite 8 files/51 tests; totals 63 files/393 tests passed, 7 skipped, 2 files skipped, 0 failed. Existing ES2024 target and DEP0190 notices did not affect status."
+    },
+    {
+      "name": "npm run test:package",
+      "status": "PASS",
+      "evidence": "Exit 0: 1 file, 11 package-integrity tests passed."
+    },
+    {
+      "name": "npm run test:built",
+      "status": "PASS",
+      "evidence": "Exit 0: 1 file, 5 built-artifact tests passed."
+    },
+    {
+      "name": "exact published-target add: official plugin add of dsh-plugin-image-mind@0.2.0 in isolated temporary DSH_HOME",
+      "status": "BLOCKED",
+      "evidence": "A freshly created task-owned temporary launcher, pnpm store, and DSH_HOME were used, and the official plugin command was run with the exact rc.1 binary: DSH_HOME=<temp> node <launcher>/.../dsh/lib/bin.js plugin --profile web add dsh-plugin-image-mind@0.2.0 -> pnpm ERR_PNPM_NO_MATCHING_VERSION: 'No matching version found for dsh-plugin-image-mind@0.2.0 while fetching it from https://registry.npmjs.org/; The latest release of dsh-plugin-image-mind is 0.1.1'. Registry cross-check (npm view versions + dist-tags): dsh-plugin-image-mind published = [0.1.0, 0.1.1] (latest 0.1.1); @ran-sh/dsh-vision published = [0.1.0] (latest 0.1.0). Neither 0.2.0 package is published, so the exact mandated target cannot be composed by any official path; this is a release/publishing gap upstream of DSH, not an rc.1 plugin incompatibility (no DSH code ran before the failure)."
+    },
+    {
+      "name": "informative published-line check: official add of explicit dsh-plugin-image-mind@0.1.1 (latest published) in the same isolated temporary DSH_HOME",
+      "status": "PASS",
+      "evidence": "To keep rc.1 compatibility observable for the shipped published line without touching any real state, the explicit published pin dsh-plugin-image-mind@0.1.1 was added through the same official command: exit 0 in 6.4 s (pnpm v11.7.0, +5 packages). The temp profile roster then contained bundles [@deepseek-ai/dsh-base, @deepseek-ai/dsh-web-app, dsh-plugin-image-mind] + dependency dsh-plugin-image-mind 0.1.1; node_modules contained both dsh-plugin-image-mind@0.1.1 AND @ran-sh/dsh-vision@0.1.0 (image-mind 0.1.1 declares dependency @ran-sh/dsh-vision ^0.1.0), so the service layer is pulled in by the official add. This check is labeled informative and is NOT substituted for the blocked 0.2.0 verdict."
+    },
+    {
+      "name": "composed config proof in isolated rc.1: --dump-config and installed layers",
+      "status": "PASS",
+      "evidence": "DSH_HOME=<temp> node <launcher>/.../dsh/lib/bin.js --profile web --dump-config shows the composed rows: '# == dsh-plugin-image-mind', '- id: vision-runtime, name: @ran-sh/dsh-vision' and '- id: image-mind, name: dsh-plugin-image-mind'. Both the @ran-sh/dsh-vision service layer and the dsh-plugin-image-mind provider/tool layer are therefore part of the composed profile tree in the isolated rc.1 environment."
+    },
+    {
+      "name": "exact rc.1 web readiness in isolated state (real listener/HTTP signal)",
+      "status": "PASS",
+      "evidence": "With DSH_HOME=<temp> (image-mind 0.1.1 composed), exact rc.1 web bound http://127.0.0.1:38419 and returned HTTP 200 on two independent bounded runs (task-owned PIDs 18144 and 20280; readiness polled by HTTP, not assumed from a long-running process). Each task-owned process tree was terminated with taskkill /F /T (rc=0) and the port was confirmed free afterward. Boot reached readiness in a few seconds (consistent with the 3.095 s direct real-profile boot)."
+    },
+    {
+      "name": "prove both layers are loaded and understand_image is registered/available in the isolated rc.1 environment",
+      "status": "PASS",
+      "evidence": "Evidence is assembled from the exact published artifacts that the composed profile boots: (1) --dump-config composes both vision-runtime (@ran-sh/dsh-vision) and image-mind (dsh-plugin-image-mind) rows; (2) the real pnpm install in the temp profile contains both packages at the declared versions; (3) the published dsh-plugin-image-mind@0.1.1 bundle patch and lib registers 'understand_image' (occurrences in its cordis.patch.yml, lib/index.js, lib/client.js) and the published @ran-sh/dsh-vision@0.1.0 injection contract is ctx.vision (types inject ['vision']); (4) the composed world boots cleanly to HTTP 200 on rc.1, meaning the bundle layers loaded without composition/bootstrap failure. Honest limitation: rc.1's web surface exposes no public read-only tool-listing endpoint (candidate GET paths /api/tools, /api/tool, /tools, /api/, /api/plugin, /api/agent, /api/agent/tools, /api/settings all return 404; the /api browser-trust fence requires an interactive browser handshake, not available here) and the rc.1 CLI has no tool-listing subcommand, so a live interactive tool-call listing could not be captured; the registration proof is configuration/bundle-plus-load based and is not over-claimed as an interactive runtime call."
+    },
+    {
+      "name": "bounded real image understanding call OR exact credential/provider blocker",
+      "status": "PARTIAL",
+      "evidence": "An environment variable named VISION_API_KEY is set (name recorded only; its value was never read, logged, or exported anywhere). However, its provider identity, baseURL, and model cannot be established without reading real Harness settings/credentials (forbidden by this task), and no keyless endpoint is available (probes for local listeners on 11434/1234/4000/8080 found none). A blind paid call against an unknown provider would be neither bounded nor safe, so no real image understanding call was executed. All keyless compatibility checks continued and completed; only this sub-check is PARTIAL, exactly as the contract allows."
+    },
+    {
+      "name": "official plugin remove in isolated state and absence proof",
+      "status": "PASS",
+      "evidence": "DSH_HOME=<temp> node <launcher>/.../dsh/lib/bin.js plugin --profile web remove dsh-plugin-image-mind -> exit 0 in 713 ms. After removal the temp profile roster returned to bundles [@deepseek-ai/dsh-base, @deepseek-ai/dsh-web-app] with no dependencies; node_modules no longer contains dsh-plugin-image-mind or @ran-sh/dsh-vision (pnpm-managed install fully pruned); pnpm-lock.yaml has 0 references; --dump-config shows no image-mind/vision rows. No bundle layer or task-owned plugin installation remains."
+    },
+    {
+      "name": "task-owned temporary launcher/cache/DSH_HOME deletion after evidence capture",
+      "status": "PASS",
+      "evidence": "The entire task-owned temporary directory tree (launcher, pnpm store, DSH_HOME, logs, probe scripts) was deleted and confirmed absent; nothing task-owned remains on the filesystem."
+    },
+    {
+      "name": "final read-only real-Harness state: plugin still uninstalled, no reinstall, hash integrity",
+      "status": "PASS",
+      "evidence": "After all isolated work and cleanup, the real roster/lockfile set again shows 0 image-mind/vision references for both web and github-e2e; the live real web on 127.0.0.1:3080 still returns HTTP 200; the bounded real-file hash set is identical to the post-uninstall baseline (T5 == T4); residuals (web orphan symlink, github-e2e node_modules link, shared-store directories) are unchanged and were never manually edited; no real profile add/install/reinstall command was ever issued; real_local_installation_after_task is absent at the composition/roster level and explicitly NB-verified otherwise."
+    },
+    {
+      "name": "concurrent external mutation documentation and non-attribution",
+      "status": "PASS",
+      "evidence": "The real web profile was rewritten by an external actor while this task was running: @ran-sh/dsh-crew disappeared from web/package.json (287 -> 185 bytes, mtime 22:23:28) at 22:23, web/pnpm-lock.yaml was regenerated (25283 -> 115 bytes, 22:23:27), and cordis.yml was touched to identical 223-byte content at 22:25:12. This is documented by the T1 (first read ~22:20) vs T2 (22:30) baseline chain in this report and is attributable to an actor other than this executor. Every operation this executor ran was read-only (cat/ls/grep/sha256sum/cmp/netstat/tasklist/date/localhost curl) except the single authorized official uninstall on github-e2e (roster+lockfile change at 22:32, hashed separately as T3/T4/T5). None of the executor's actions caused the crew change."
+    }
+  ],
+  "blockers": [
+    "The mandatory isolated-add target dsh-plugin-image-mind@0.2.0 (and its service dependency @ran-sh/dsh-vision@0.2.0) is not published on the npm registry; only 0.1.0/0.1.1 (image-mind) and 0.1.0 (vision) exist. Exact rc.1 compatibility of the 0.2.0 artifact therefore cannot be verified by any official path until the maintainer publishes 0.2.0. This is a publishing gap outside this repository's commit scope for this TEST_ONLY task."
+  ],
+  "result_path": "docs/agent-results/DSH-VISION-RC1-ISOLATED-COMPAT-006-result.json",
+  "notes": [
+    "Plain-language verdict: exact rc.1 Harness/plugin composition and web readiness are demonstrated PASS for the latest PUBLISHED image-mind line (0.1.1 with @ran-sh/dsh-vision 0.1.0); the mandated PUBLISHED 0.2.0 target is BLOCKED solely because it is not on npm; the real provider-image sub-check is PARTIAL because VISION_API_KEY's provider/baseURL provenance is not safely discoverable and no keyless endpoint exists; the known npm/npx transient resolver defect was intentionally bypassed via pnpm pre-resolution exactly as the contract prescribes and is NOT counted as a plugin incompatibility.",
+    "real_local_installation_after_task: absent at the composition/roster level. Explicitly enumerated inert leftovers (not composed, never manually deleted): web/node_modules/dsh-plugin-image-mind orphan symlink into the repository, github-e2e/node_modules/dsh-plugin-image-mind link: residue left by the official remove, and shared store profiles/node_modules entries @ran-sh/dsh-vision + dsh-plugin-image-mind.",
+    "Exact authorized uninstall record: node <launcher>/node_modules/@deepseek-ai/dsh/lib/bin.js plugin --profile github-e2e remove dsh-plugin-image-mind (exit 0, 641 ms, pnpm v11.7.0). No other real-Harness write was performed.",
+    "Host-health checks were observational/task-owned only: the existing real web (PID 11720, port 3080) was never killed or modified; task-owned probes on ports 38418/38419 were terminated including their process trees and the ports verified free.",
+    "Observed registry facts: dsh-plugin-image-mind versions [0.1.0, 0.1.1] (latest 0.1.1); @ran-sh/dsh-vision versions [0.1.0] (latest 0.1.0). Registry is https://registry.npmjs.org/.",
+    "No dsh-vision source, tests, scripts, CI, package metadata, README, or docs/compatibility.md files were changed; no credentials or unredacted secret-bearing material appear anywhere in this report.",
+    "VERSION SAFETY: VISION_API_KEY presence is mentioned by name only; its value was never inspected, logged, copied, or transmitted."
+  ],
+  "result_validation": {
+    "status": "PASS",
+    "validator": "node .agent-workflow/validator/validate-contract.mjs result docs/agent-results/DSH-VISION-RC1-ISOLATED-COMPAT-006-result.json --stamp",
+    "validated_at": "2026-08-21T14:54:29Z",
+    "evidence": "Exit 0: VALID RESULT CONTRACT: docs/agent-results/DSH-VISION-RC1-ISOLATED-COMPAT-006-result.json"
+  }
+}
