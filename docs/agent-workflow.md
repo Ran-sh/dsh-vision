@@ -1,6 +1,6 @@
 # Agent Handoff Protocol
 
-Workflow source: `Ran-sh/chatgpt_workflow` v1.7.0 (`7cf302a982eccf11aad5bfa4d71f5a8efc6d7e5b`).
+Workflow source: `Ran-sh/chatgpt_workflow` v1.7.0 (`375be55ad6e6131e350107f090de33cb29670b65`).
 
 ## 1. Operating model
 
@@ -65,7 +65,11 @@ Then validate the task when local Node is available:
 node .agent-workflow/validator/validate-contract.mjs task docs/agent-tasks/ACTIVE_TASK.json
 ```
 
-Confirm `source_branch` and `source_commit` before work. A symbolic source such as `LATEST_DEFAULT_BRANCH` must be explicitly present in the task and resolved to the actual commit used.
+Confirm `source_branch` and `source_commit` before work.
+
+`source_commit: LATEST` means: after fetching/pulling according to repository policy, resolve and execute the current tip of `source_branch`, and record the exact SHA actually used in the Result Contract. This is the normal value for a task committed to the same branch because the task commit itself moves the branch tip.
+
+Use an explicit SHA only when ChatGPT intentionally pins execution to an immutable revision. Never silently substitute another revision for an explicit SHA.
 
 Never reset, clean, stash, overwrite, or discard unrelated user changes without explicit task authorization.
 
