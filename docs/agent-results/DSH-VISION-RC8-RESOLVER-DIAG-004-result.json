@@ -1,0 +1,75 @@
+{
+  "schema_version": 2,
+  "task_id": "DSH-VISION-RC8-RESOLVER-DIAG-004",
+  "source_commit": "d532af01fcc4d628f84950bb87fae6c920fa2b6e",
+  "result_commit": null,
+  "status": "PARTIAL",
+  "summary": "Both rc.7 and rc.8 registry metadata and package tarballs were retrieved successfully, but both clean dependency-only installs timed out at 180 seconds with no stdout/stderr. The evidence does not isolate an rc.8-specific regression and does not reach DSH runtime compatibility.",
+  "timeline": {
+    "started_at": "2026-08-21T17:00:24+08:00",
+    "completed_at": "2026-08-21T17:12:41+08:00"
+  },
+  "changed_files": [
+    "docs/agent-results/DSH-VISION-RC8-RESOLVER-DIAG-004-result.json",
+    "docs/agent-tasks/ACTIVE_TASK.json"
+  ],
+  "tests": [
+    {
+      "name": "node .agent-workflow/validator/validate-contract.mjs task docs/agent-tasks/ACTIVE_TASK.json",
+      "status": "PASS",
+      "evidence": "Exit 0: VALID TASK CONTRACT. main/LATEST resolved to d532af01fcc4d628f84950bb87fae6c920fa2b6e from a clean worktree."
+    },
+    {
+      "name": "node --version && npm --version && npm config get registry",
+      "status": "PASS",
+      "evidence": "Exit 0 in 1.524 seconds: Node v24.18.1, npm 11.16.0, registry https://registry.npmjs.org/. Host was Windows 10.0.22631 x64 with PowerShell 7.6.4; proxy-related npm/environment configuration was not present."
+    },
+    {
+      "name": "npm view @deepseek-ai/dsh@0.1.0-rc.7 version dist.tarball dist.integrity dependencies optionalDependencies peerDependencies --json",
+      "status": "PASS",
+      "evidence": "Exit 0 in 3.117 seconds: version 0.1.0-rc.7, registry tarball metadata and sha512 integrity returned, with 61 top-level dependencies."
+    },
+    {
+      "name": "npm view @deepseek-ai/dsh@0.1.0-rc.8 version dist.tarball dist.integrity dependencies optionalDependencies peerDependencies --json",
+      "status": "PASS",
+      "evidence": "Exit 0 in 2.388 seconds: version 0.1.0-rc.8, registry tarball metadata and sha512 integrity returned, with 62 top-level dependencies. Compared with rc.7: one added dependency, @deepseek-ai/dsh-tool-pwsh-persistent@^0.1.0-rc.8; zero removed; 53 internal dependency ranges changed only from rc.7 to rc.8; no other version-pattern changes were observed."
+    },
+    {
+      "name": "npm pack @deepseek-ai/dsh@0.1.0-rc.7 --ignore-scripts --json",
+      "status": "PASS",
+      "evidence": "Exit 0 in 3.520 seconds: deepseek-ai-dsh-0.1.0-rc.7.tgz downloaded, 32,872 bytes, integrity sha512-ZceDCJ8FAywih+USW/OMk9jEhunlvJBGEz4kqrhau23hPzbciOazZrywH0nBRsaalSeAJ1JGBmjtw4OSjToStw==. The temporary tarball and directory were removed."
+    },
+    {
+      "name": "npm pack @deepseek-ai/dsh@0.1.0-rc.8 --ignore-scripts --json",
+      "status": "PASS",
+      "evidence": "Exit 0 in 3.275 seconds: deepseek-ai-dsh-0.1.0-rc.8.tgz downloaded, 33,651 bytes, integrity sha512-VQU5NlomrKLRgcXuOf+sxWFvqxPA8q9vMhrKPlPPXiOJEhGlGlAdiyxZvZxkCVI+v0zbhe21cY3/luLyxpSzzA==. The temporary tarball and directory were removed."
+    },
+    {
+      "name": "Separate temporary-project dependency-only installs for @deepseek-ai/dsh@0.1.0-rc.7 and @deepseek-ai/dsh@0.1.0-rc.8 with 180-second limits",
+      "status": "BLOCKED",
+      "evidence": "Both installs used distinct new empty projects outside any parent workspace and the exact command flags --ignore-scripts --no-audit --no-fund. rc.7: TIMEOUT at 180.333 seconds, no stdout/stderr. rc.8: TIMEOUT at 180.340 seconds, no stdout/stderr. Only each task-owned process tree was terminated; both temporary projects were removed. Registry metadata and direct tarball access succeeded, lifecycle scripts were disabled, and the remaining boundary is dependency graph resolution or transitive acquisition; the exact substage is inconclusive from the bounded output."
+    },
+    {
+      "name": "Conditional rc.8 npm timing/verbose retry",
+      "status": "SKIP",
+      "evidence": "Not run by contract: the extra retry is permitted only when rc.8 alone times out, but both rc.7 and rc.8 timed out."
+    }
+  ],
+  "blockers": [
+    "Both clean dependency-only installs timed out after 180 seconds without output, so the exact dependency resolver or transitive network stage could not be identified and no rc.8-specific difference was established."
+  ],
+  "result_path": "docs/agent-results/DSH-VISION-RC8-RESOLVER-DIAG-004-result.json",
+  "notes": [
+    "Observed environment: Node v24.18.1, npm 11.16.0, Windows 10.0.22631 x64, PowerShell 7.6.4, registry https://registry.npmjs.org/, no proxy-related configuration present.",
+    "A preliminary pair of directories under the system temporary root was discarded after detecting an unrelated parent package.json; authoritative install evidence comes only from the reruns outside any parent workspace.",
+    "The evidence rules out failure to retrieve the top-level package metadata or tarball and excludes lifecycle scripts, but it cannot distinguish dependency graph computation from transitive package acquisition because both clean installs produced no bounded output before timeout.",
+    "The result does not establish dsh-vision runtime incompatibility: no DSH CLI, dsh plugin command, DSH_HOME/profile, credentialed service, or paid provider call was used.",
+    "No product source, tests, scripts, CI, package metadata, README, or docs/compatibility.md files were modified."
+  ],
+  "result_validation": {
+    "status": "PASS",
+    "validator": "node .agent-workflow/validator/validate-contract.mjs result docs/agent-results/DSH-VISION-RC8-RESOLVER-DIAG-004-result.json --stamp",
+    "validated_at": "2026-08-21T09:13:22Z",
+    "evidence": "Exit 0: VALID RESULT CONTRACT: docs/agent-results/DSH-VISION-RC8-RESOLVER-DIAG-004-result.json"
+  }
+}
