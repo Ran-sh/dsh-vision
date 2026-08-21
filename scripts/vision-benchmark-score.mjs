@@ -86,8 +86,10 @@ const CACHE_MODES = new Set(['use', 'refresh', 'no-store'])
 
 function routeDecisionConsistent(route) {
   if (!route.decisionReported) return undefined
+  const explicitRoute = route.requestedProvider !== undefined || route.requestedModel !== undefined
   if (route.evidenceLayerEnabled && route.cacheMode === 'no-store') return false
-  if ((route.requestedProvider !== undefined || route.requestedModel !== undefined) && route.evidenceLayerEnabled) return false
+  if (explicitRoute && route.evidenceLayerEnabled) return false
+  if (explicitRoute && (route.modelFallback || route.providerFallback)) return false
   if (route.source === 'evidence-cache' && (!route.evidenceLayerEnabled || route.cacheMode !== 'use')) return false
   if (route.source !== 'provider' && route.cacheMode !== 'use') return false
   return true
