@@ -80,6 +80,9 @@ describe('understand_image execute (behavioral)', () => {
       provider: 'a',
       route: {
         source: 'provider',
+        task: 'general',
+        cacheMode: 'use',
+        evidenceLayerEnabled: false,
         selectedProvider: 'a',
         selectedModel: 'm1',
         modelFallback: false,
@@ -110,6 +113,7 @@ describe('understand_image execute (behavioral)', () => {
       { source: 'img-0.png', mimeType: 'image/png', bytes: PNG.length },
       { source: 'img-1.png', mimeType: 'image/png', bytes: PNG.length },
     ])
+    expect(result.route).toMatchObject({ task: 'compare', cacheMode: 'use', evidenceLayerEnabled: false })
     expect(JSON.stringify(result)).not.toContain(dir)
     const request = called[0] as { images: unknown[]; prompt: string }
     expect(request.images).toHaveLength(2)
@@ -145,12 +149,13 @@ describe('understand_image execute (behavioral)', () => {
     const ctx = contextWithVision(called)
     const { files } = imageFiles(1)
 
-    await toolFor(ctx).execute(
+    const result = await toolFor(ctx).execute(
       { image: files[0], prompt: 'read again', cache: 'refresh' },
       { signal: new AbortController().signal } as never,
     )
 
     expect(called[0]).toMatchObject({ cache: 'refresh', prompt: 'read again' })
+    expect(result.route).toMatchObject({ cacheMode: 'refresh' })
   })
 
   it('rejects an empty image reference set', async () => {

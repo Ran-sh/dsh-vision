@@ -13,6 +13,9 @@ minor version). Package names: `@ran-sh/dsh-vision` (Service) and
   consumers can distinguish provider responses, semantic-cache hits, reusable
   evidence-cache hits, explicit route intent, and automatic model/provider
   fallback without exposing endpoint or credential data.
+- Route diagnostics now also record the inferred visual task, effective cache
+  mode, and whether task-scoped evidence reuse was enabled. This makes cache
+  misses explainable without exposing prompt text, endpoint data, or secrets.
 - Model-only image routing guidance now treats cached evidence as evidence, not
   authority: when a cache hit lacks the exact visual detail needed for a narrow
   follow-up, the main model is instructed to issue a focused `cache: "no-store"`
@@ -23,6 +26,9 @@ minor version). Package names: `@ran-sh/dsh-vision` (Service) and
   source counts, requested/selected provider/model identities, and route-vs-
   trace fallback consistency; the compare gate rejects material route-coverage
   regressions.
+- Benchmark scoring reports per-route-source quality and provider/cache work so
+  evidence-cache savings can be compared against the correctness of answers
+  produced by provider, semantic-cache, and evidence-cache paths.
 
 ## [0.2.0] — 2026-08-21
 
@@ -196,8 +202,6 @@ VisionRuntime API or `packages/vision/src`.
   (add/active/model/remove flow); credential integration tests
   (set → resolve → missing, secrets never in settings/browser replies).
 - Docs: architecture.md, provider-development.md, release-checklist.md.
-- Provider list ordering (active first) and an advanced-settings disclosure
-  in the settings card.
 
 ### Fixed
 
@@ -259,8 +263,6 @@ VisionRuntime API or `packages/vision/src`.
   replace the single `image` field.
 - `deriveKeyRef` now has one host-side owner re-exported by the browser
   store.
-- README install section rewritten around the Harness-managed install;
-  the old profile-mutating installer path is documented as removed.
 
 ### Added
 

@@ -14,7 +14,7 @@ const PNG = Buffer.from([
 ])
 
 describe('understand_image diagnostics passthrough', () => {
-  it('keeps execution trace, token usage, and selected route in the structured tool result', async () => {
+  it('keeps execution trace, token usage, selected route, and route decisions in the structured tool result', async () => {
     const ctx = new Context()
     const trace = {
       providerCalls: 3,
@@ -43,6 +43,9 @@ describe('understand_image diagnostics passthrough', () => {
     expect(result.provider).toBe('backup')
     expect(result.route).toEqual({
       source: 'provider',
+      task: 'general',
+      cacheMode: 'use',
+      evidenceLayerEnabled: false,
       selectedProvider: 'backup',
       selectedModel: 'vision',
       modelFallback: false,
@@ -66,9 +69,13 @@ describe('understand_image diagnostics passthrough', () => {
       { provider: ' primary ', model: ' vision-v1 ' },
       'primary',
       'vision-v1',
+      { task: 'ocr', cacheMode: 'use', evidenceLayerEnabled: false },
       trace,
     )).toEqual({
       source: 'semantic-cache',
+      task: 'ocr',
+      cacheMode: 'use',
+      evidenceLayerEnabled: false,
       requestedProvider: 'primary',
       requestedModel: 'vision-v1',
       selectedProvider: 'primary',
@@ -89,8 +96,18 @@ describe('understand_image diagnostics passthrough', () => {
       splits: 0,
     }
 
-    expect(understandImageRoute({}, 'cached-provider', 'cached-model', trace, 'evidence-cache')).toEqual({
+    expect(understandImageRoute(
+      {},
+      'cached-provider',
+      'cached-model',
+      { task: 'ocr', cacheMode: 'use', evidenceLayerEnabled: true },
+      trace,
+      'evidence-cache',
+    )).toEqual({
       source: 'evidence-cache',
+      task: 'ocr',
+      cacheMode: 'use',
+      evidenceLayerEnabled: true,
       selectedProvider: 'cached-provider',
       selectedModel: 'cached-model',
       modelFallback: false,
