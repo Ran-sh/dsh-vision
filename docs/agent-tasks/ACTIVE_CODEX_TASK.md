@@ -1,59 +1,36 @@
-# ACTIVE Codex Task — Fix NEW-R1 Runtime History Preview Alignment
+# ACTIVE Codex Task — Final NEW-R1 Real DSH Retest
 
 Protocol: Agent Handoff Protocol v1  
 Agent: CODEX  
-Mode: IMPLEMENT  
-Source Branch: main  
-Source Commit: LATEST_MAIN  
-Result Path: `docs/agent-results/codex-new-r1-history-preview-fix.md`  
+Mode: TEST_ONLY  
+Source Branch: fix/new-r1-history-preview-runtime  
+Source Commit: 2021551bff392be3c890c01eb6dfcb191185218e  
+Result Path: `docs/test-results/dsh-vision-codex-new-r1-final-retest.md`  
 Delete Active Task On Completion: YES
 
 ## Goal
 
-Fix the HIGH-severity NEW-R1 release failure where sent image thumbnails do not render in real DSH conversation history.
-
-## Context
-
-The release retest found:
-
-- NEW-R1 FAIL
-- FR-001 PASS
-- BLOCKER 0
-- HIGH 1
-
-Root cause evidence:
-
-- draft previews render before send;
-- image understanding and restart reuse work;
-- historical preview groups/buttons remain zero;
-- real DSH user rows append host timestamp text after the neutral attachment marker;
-- current alignment logic incorrectly requires the marker to be the final text of the whole row.
-
-## Allowed Changes
-
-- Fix the runtime history preview alignment implementation.
-- Add or adjust targeted tests required to prove the fix.
-- Add the result report.
+Validate the completed NEW-R1 runtime history preview fix in real DSH.
 
 ## Forbidden Changes
 
-- Do not weaken F002 secrecy.
-- Do not add raw attachment identifiers or raw image URLs into conversation text.
-- Do not change unrelated features.
+- Do not modify source code.
+- Do not modify tests, assertions, configuration, CI, dependencies, or build scripts.
+- Do not fix failures.
 
-## Required Tests
+## Required Validation
 
-- targeted history preview tests
-- typecheck
-- relevant release regression checks
-
-## Acceptance Criteria
-
-- [ ] NEW-R1 one-image history preview works.
-- [ ] NEW-R1 two-image ordered preview works.
-- [ ] Session switch and restart preserve preview behavior.
-- [ ] F002/F003 behavior remains intact.
+- NEW-R1 one-image history preview.
+- NEW-R1 two-image ordered history preview.
+- Session switch isolation.
+- Restart/reopen history preview persistence.
+- Thumbnail open/lightbox behavior.
+- F002 secrecy.
+- F003 old-image reuse after restart.
+- No duplicate user messages.
+- FR-001 regression status.
+- Release safety checks.
 
 ## Result Contract
 
-Return source SHA, result SHA, tests, blockers, and result path.
+Return Source Commit SHA, Report Commit SHA, test summary, PASS/FAIL/PARTIAL-BLOCKED counts, severity counts, and result path.
