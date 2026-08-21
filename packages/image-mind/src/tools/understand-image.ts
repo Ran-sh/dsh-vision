@@ -315,7 +315,7 @@ export function understandImageTool(
         }
       }
       if (refs.length === 0) {
-        throw new Error(`image-mind: no complete session image batch exists at offset ${batchOffset}; upload/re-send the image or choose a newer batch`)
+        throw new Error(`image-mind: pass at least one image reference, or upload/re-send a session image; no complete session image batch exists at offset ${batchOffset}`)
       }
       if (refs.length > MAX_IMAGES_PER_REQUEST) throw new Error(`image-mind: at most ${MAX_IMAGES_PER_REQUEST} images per call; got ${refs.length}`)
 
