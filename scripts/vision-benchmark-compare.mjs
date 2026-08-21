@@ -148,6 +148,8 @@ export function compareBenchmarkScores(baseline, candidate, thresholds = {}) {
       candidateRouteCoverage,
       baselineRouteSources: baseline.routeSources ?? {},
       candidateRouteSources: candidate.routeSources ?? {},
+      baselineRouteSourceOutcomes: baseline.routeSourceOutcomes ?? {},
+      candidateRouteSourceOutcomes: candidate.routeSourceOutcomes ?? {},
       baselineTokenUsageCoverage: baselineTokenCoverage,
       candidateTokenUsageCoverage: candidateTokenCoverage,
       baselineZeroProviderReuseRate: baseline.zeroProviderReuseRate ?? 0,
