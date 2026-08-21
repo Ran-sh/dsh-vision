@@ -1,25 +1,34 @@
-# Agent task queue
+# Agent Task Contracts
 
-This directory contains per-run task instructions for Agent Handoff Protocol v1.
+Task Contracts define work; executors only execute it.
 
-Permanent rules live in `../agent-workflow.md`.
+Canonical active task:
 
-## Active task names
+`docs/agent-tasks/ACTIVE_TASK.json`
 
-- `ACTIVE_ZCODE_TASK.md`
-- `ACTIVE_CODEX_TASK.md`
-- `ACTIVE_DEEPSEEK_HARNESS_TASK.md`
+`ACTIVE_TASK.md` is optional and non-authoritative. Never create an ACTIVE task as part of workflow installation/migration.
 
-An ACTIVE file exists only while that agent has a task. The executing agent deletes it in the completion commit/result handoff.
+Modes:
 
-If an expected ACTIVE file does not exist, the agent must stop. It must not infer a task from old reports, chat history, issues, or nearby repository changes.
+- `IMPLEMENT` — may write only explicitly allowed paths.
+- `TEST_ONLY` — result/report writes only under `docs/agent-results/**`.
+- `REVIEW_ONLY` — result/report writes only under `docs/agent-results/**`.
 
-An agent must not consume another agent's ACTIVE file unless that file explicitly declares `Agent: ANY` and the user directs that agent to execute it.
+Any compatible executor may execute any mode. If the active task is missing/invalid, stop rather than infer work.
 
-## Templates
+## Generate a task
 
-- `TEMPLATE_IMPLEMENT.md` — implementation task, normally used for ZCode.
-- `TEMPLATE_TEST_ONLY.md` — independent verification task, normally used for Codex.
-- `TEMPLATE_DEEPSEEK_HARNESS.md` — runtime/operator task, normally used for real Harness interaction and agent-routing verification.
+From a machine with Node 20+:
 
-Templates are permanent and must not be deleted when a task completes.
+```sh
+npm exec --yes --package=github:Ran-sh/chatgpt_workflow -- agent-workflow task create --target . \
+  --mode TEST_ONLY \
+  --objective "Run the requested verification" \
+  --validate "npm test" \
+  --accept "All required checks are reported" \
+  --companion
+```
+
+For `IMPLEMENT`, add one or more explicit `--allow <path>` entries. The generator refuses to overwrite an existing ACTIVE task and validates before activation.
+
+Manual authors may start from `TEMPLATE_TASK.json`, replace every placeholder with project facts, then validate it with `.agent-workflow/validator/validate-contract.mjs`.

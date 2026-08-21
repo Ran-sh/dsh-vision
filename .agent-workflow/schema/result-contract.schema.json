@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Ran-sh/chatgpt_workflow/schema/result-contract.schema.json",
+  "title": "Agent Workflow Result Contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["task_id","source_commit","status","changed_files","tests","blockers","result_path"],
+  "properties": {
+    "task_id": {"type":"string","minLength":1},
+    "source_commit": {"type":"string","minLength":1},
+    "result_commit": {"type":["string","null"]},
+    "status": {"type":"string","enum":["PASS","FAIL","PARTIAL","SKIP","BLOCKED","NOT RUN"]},
+    "summary": {"type":"string"},
+    "changed_files": {"type":"array","items":{"type":"string"},"uniqueItems":true},
+    "tests": {"type":"array","items":{"type":"object","additionalProperties":false,"required":["name","status"],"properties":{"name":{"type":"string","minLength":1},"status":{"type":"string","enum":["PASS","FAIL","PARTIAL","SKIP","BLOCKED","NOT RUN"]},"evidence":{"type":"string"}}}},
+    "blockers": {"type":"array","items":{"type":"string"}},
+    "result_path": {"type":"string","minLength":1,"pattern":"^docs/agent-results/"},
+    "notes": {"type":"array","items":{"type":"string"}}
+  }
+}
