@@ -78,6 +78,13 @@ describe('understand_image execute (behavioral)', () => {
       text: 'the answer',
       model: 'm1',
       provider: 'a',
+      route: {
+        source: 'provider',
+        selectedProvider: 'a',
+        selectedModel: 'm1',
+        modelFallback: false,
+        providerFallback: false,
+      },
       images: [{ source: 'img-0.png', mimeType: 'image/png', bytes: PNG.length }],
     })
     expect(JSON.stringify(result)).not.toContain(dir)
