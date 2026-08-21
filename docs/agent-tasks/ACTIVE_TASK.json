@@ -1,0 +1,49 @@
+{
+  "id": "DSH-VISION-WORKFLOW-E2E-001",
+  "mode": "TEST_ONLY",
+  "source_branch": "main",
+  "source_commit": "2d896d89629245b25ee6c50ed1b691dcd74fda03",
+  "objective": "Run the first real local-machine validation of the ChatGPT-orchestrator / remote-executor workflow on dsh-vision without modifying product code.",
+  "context": "This task validates the handoff model after syncing dsh-vision to Ran-sh/chatgpt_workflow@7cf302a982eccf11aad5bfa4d71f5a8efc6d7e5b. Execute from the real local checkout. The purpose is to prove that a one-line executor trigger can drive the repository-defined task and return machine-readable evidence to ChatGPT through GitHub.",
+  "allowed_changes": [
+    "docs/agent-results/DSH-VISION-WORKFLOW-E2E-001-result.json"
+  ],
+  "forbidden_changes": [
+    "packages/**",
+    "tests/**",
+    "scripts/**",
+    ".github/**",
+    "package.json",
+    "package-lock.json",
+    "tsconfig.json",
+    "vitest.config.ts",
+    "release/version metadata",
+    "credentials, secrets, local DSH configuration, and unrelated files"
+  ],
+  "validation": [
+    "node .agent-workflow/validator/validate-contract.mjs task docs/agent-tasks/ACTIVE_TASK.json",
+    "npm run typecheck",
+    "npm run build",
+    "npm test",
+    "npm run test:package",
+    "npm run test:built"
+  ],
+  "acceptance_criteria": [
+    "The Task Contract validates successfully before execution.",
+    "Every listed validation command is actually executed and reported with one of PASS, FAIL, PARTIAL, SKIP, BLOCKED, or NOT RUN.",
+    "No product source, tests, scripts, CI, package/version metadata, credentials, or unrelated files are modified.",
+    "A valid Result Contract is written to docs/agent-results/DSH-VISION-WORKFLOW-E2E-001-result.json with source commit, overall status, changed files, test evidence, blockers, and result path.",
+    "The Result Contract is validated with the installed result validator before completion.",
+    "On completion, ACTIVE_TASK.json is deleted and the result plus task deletion are committed/pushed according to repository policy."
+  ],
+  "result_contract": "docs/agent-results/DSH-VISION-WORKFLOW-E2E-001-result.json",
+  "completion_commit_contract": [
+    "docs/agent-results/DSH-VISION-WORKFLOW-E2E-001-result.json",
+    "docs/agent-tasks/ACTIVE_TASK.json"
+  ],
+  "delete_active_task_on_completion": true,
+  "metadata": {
+    "executor": "ANY",
+    "purpose": "remote-executor-e2e"
+  }
+}
