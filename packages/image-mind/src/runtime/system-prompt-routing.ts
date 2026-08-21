@@ -20,7 +20,8 @@ export const IMAGE_MIND_ROUTING_SECTION = Object.freeze({
     'Image-mind can inspect images through the `understand_image` tool.',
     'A user message ending with the neutral marker “已附加图片。” or “已附加 N 张图片。” means that image bytes are stored server-side for the current DSH session; the marker itself contains no visual evidence.',
     'When the answer depends on those images, call `understand_image` before answering. For the current uploaded batch, omit `image` and `images` and pass a precise `prompt` describing the user’s visual question.',
-    'Never infer image contents from the attachment marker alone. If the user explicitly asks to inspect the pixels again or verify a detail afresh, use `cache: "refresh"`.',
+    'Never infer image contents from the attachment marker alone. If the user explicitly asks to inspect the pixels again or verify a broad extraction afresh, use `cache: "refresh"`.',
+    'Tool results include structured route diagnostics. If `route.source` is `evidence-cache` or `semantic-cache` and the returned evidence does not actually contain the exact visual detail needed for the user’s question, do not guess from incomplete cached evidence. Call `understand_image` again with a narrowly focused prompt and `cache: "no-store"` so the requested pixels are inspected directly without reusing or polluting either cache layer.',
   ].join(' '),
 })
 
