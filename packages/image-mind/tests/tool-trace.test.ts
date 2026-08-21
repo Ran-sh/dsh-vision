@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import { understandImageTool } from '../src/tools/understand-image.ts'
+import { understandImageRoute, understandImageTool } from '../src/tools/understand-image.ts'
 
 const PNG = Buffer.from([
   0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
@@ -14,7 +14,7 @@ const PNG = Buffer.from([
 ])
 
 describe('understand_image diagnostics passthrough', () => {
-  it('keeps execution trace and provider token usage in the structured tool result', async () => {
+  it('keeps execution trace, token usage, and selected route in the structured tool result', async () => {
     const ctx = new Context()
     const trace = {
       providerCalls: 3,
@@ -41,6 +41,60 @@ describe('understand_image diagnostics passthrough', () => {
     expect(result.trace).toEqual(trace)
     expect(result.usage).toEqual(usage)
     expect(result.provider).toBe('backup')
+    expect(result.route).toEqual({
+      source: 'provider',
+      selectedProvider: 'backup',
+      selectedModel: 'vision',
+      modelFallback: false,
+      providerFallback: true,
+    })
     expect(result.text).toBe('answer')
+  })
+
+  it('marks zero-call runtime cache hits as semantic-cache and preserves explicit intent', () => {
+    const trace = {
+      providerCalls: 0,
+      payloadBytes: 0,
+      cacheHits: 1,
+      retries: 0,
+      modelFallbacks: 0,
+      providerFallbacks: 0,
+      splits: 0,
+    }
+
+    expect(understandImageRoute(
+      { provider: ' primary ', model: ' vision-v1 ' },
+      'primary',
+      'vision-v1',
+      trace,
+    )).toEqual({
+      source: 'semantic-cache',
+      requestedProvider: 'primary',
+      requestedModel: 'vision-v1',
+      selectedProvider: 'primary',
+      selectedModel: 'vision-v1',
+      modelFallback: false,
+      providerFallback: false,
+    })
+  })
+
+  it('distinguishes layered reusable evidence from the runtime semantic cache', () => {
+    const trace = {
+      providerCalls: 0,
+      payloadBytes: 0,
+      cacheHits: 1,
+      retries: 0,
+      modelFallbacks: 0,
+      providerFallbacks: 0,
+      splits: 0,
+    }
+
+    expect(understandImageRoute({}, 'cached-provider', 'cached-model', trace, 'evidence-cache')).toEqual({
+      source: 'evidence-cache',
+      selectedProvider: 'cached-provider',
+      selectedModel: 'cached-model',
+      modelFallback: false,
+      providerFallback: false,
+    })
   })
 })
