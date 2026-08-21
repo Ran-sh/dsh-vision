@@ -62,7 +62,7 @@
   "metadata": {
     "executor": "CODEX",
     "purpose": "dsh-web-root-cause-and-safe-repair",
-    "related_issues": [13, 21, 29],
+    "related_issues": "13,21,29",
     "compatibility_target": "@deepseek-ai/dsh@0.1.1-rc.1",
     "prepared_from_commit": "9ab2a5610c4473ff0ab18f638a78b9991b8bd178"
   }
