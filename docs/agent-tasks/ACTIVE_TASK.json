@@ -46,6 +46,6 @@
   "metadata": {
     "executor": "ANY",
     "purpose": "remote-executor-e2e",
-    "prepared_from_commit": "2d896d89629245b25ee6c50ed1b691dcd74fda03"
+    "prepared_from_commit": "bc582256d7fabb5f0c9707ef51d90a61e0ab3e5d"
   }
 }
