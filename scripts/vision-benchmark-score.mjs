@@ -98,6 +98,42 @@ function routeTelemetry(result) {
   }
 }
 
+function routeSourceBucket(row) {
+  if (row.routeSource === 'provider') return 'provider'
+  if (row.routeSource === 'semantic-cache') return 'semanticCache'
+  if (row.routeSource === 'evidence-cache') return 'evidenceCache'
+  return 'unknown'
+}
+
+function routeSourceOutcomes(rows) {
+  const buckets = {
+    provider: { cases: 0, passed: 0, weight: 0, passedWeight: 0, providerCalls: 0, cacheHits: 0 },
+    semanticCache: { cases: 0, passed: 0, weight: 0, passedWeight: 0, providerCalls: 0, cacheHits: 0 },
+    evidenceCache: { cases: 0, passed: 0, weight: 0, passedWeight: 0, providerCalls: 0, cacheHits: 0 },
+    unknown: { cases: 0, passed: 0, weight: 0, passedWeight: 0, providerCalls: 0, cacheHits: 0 },
+  }
+
+  for (const row of rows) {
+    if (row.missing) continue
+    const bucket = buckets[routeSourceBucket(row)]
+    bucket.cases += 1
+    bucket.weight += row.weight
+    bucket.providerCalls += row.calls
+    bucket.cacheHits += row.cacheHits
+    if (row.success) {
+      bucket.passed += 1
+      bucket.passedWeight += row.weight
+    }
+  }
+
+  for (const bucket of Object.values(buckets)) {
+    bucket.passRate = bucket.cases === 0 ? undefined : bucket.passed / bucket.cases
+    bucket.taskSuccessRate = bucket.weight === 0 ? undefined : bucket.passedWeight / bucket.weight
+    delete bucket.passedWeight
+  }
+  return buckets
+}
+
 /** Score all cases and aggregate stable benchmark metrics. */
 export function scoreBenchmark(cases, results) {
   const resultById = new Map(results.map(result => [result.id, result]))
@@ -196,6 +232,7 @@ export function scoreBenchmark(cases, results) {
       row => row.routeTraceConsistent === true,
     ),
     routeSources,
+    routeSourceOutcomes: routeSourceOutcomes(rows),
     tokenUsageCoverage: weighted(row => row.usageReported && !row.missing),
     zeroProviderReuseRate: weighted(row => row.zeroProviderReuse),
     latencyMs: { p50: percentile(latencies, 0.5), p95: percentile(latencies, 0.95) },
