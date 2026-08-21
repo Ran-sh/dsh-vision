@@ -5,6 +5,8 @@
  */
 
 export const ATTACH_ENDPOINT = '/image-mind/attach'
+export const PREVIEW_COMMIT_ENDPOINT = '/image-mind/preview/commit'
+export const PREVIEW_LIST_ENDPOINT = '/image-mind/previews'
 export const ACCEPTED_IMAGE_MIME: readonly string[] = ['image/png', 'image/jpeg', 'image/gif', 'image/webp']
 export const CLIENT_MAX_BYTES = 10 * 1024 * 1024
 
@@ -13,6 +15,16 @@ export interface UploadRouting {
   batchId: string
   batchIndex: number
   batchCount: number
+}
+
+export interface SessionPreviewBatch {
+  batchId: string
+  count: number
+  updatedAt: number
+}
+
+export function previewImageUrl(batchId: string, batchIndex: number): string {
+  return `/image-mind/preview/${encodeURIComponent(batchId)}/${batchIndex}`
 }
 
 export function readFileAsBase64(file: File): Promise<{ ok: true; base64: string } | { ok: false; message: string }> {
@@ -70,6 +82,70 @@ export async function uploadImage(
   }
   const message = (record.error as { message?: unknown } | null)?.message
   return { ok: false, message: typeof message === 'string' && message !== '' ? message : 'server-failed' }
+}
+
+/** Commit a just-admitted image batch to the display-only preview ledger. */
+export async function commitImagePreviewBatch(
+  sessionId: string,
+  batchId: string,
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  let response: Response
+  try {
+    response = await fetch(PREVIEW_COMMIT_ENDPOINT, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ sessionId, batchId }),
+    })
+  } catch {
+    return { ok: false, message: 'network-failed' }
+  }
+  let envelope: unknown
+  try {
+    envelope = await response.json()
+  } catch {
+    return { ok: false, message: 'bad-response' }
+  }
+  const record = envelope as { ok?: unknown; error?: unknown } | null
+  if (typeof record === 'object' && record !== null && record.ok === true) return { ok: true }
+  const message = (record?.error as { message?: unknown } | null)?.message
+  return { ok: false, message: typeof message === 'string' && message !== '' ? message : 'server-failed' }
+}
+
+/** Fetch committed preview batches for one currently selected DSH session. */
+export async function loadSessionPreviewBatches(sessionId: string): Promise<SessionPreviewBatch[]> {
+  let response: Response
+  try {
+    response = await fetch(`${PREVIEW_LIST_ENDPOINT}?sessionId=${encodeURIComponent(sessionId)}`, {
+      method: 'GET',
+      headers: { accept: 'application/json' },
+    })
+  } catch {
+    return []
+  }
+  if (!response.ok) return []
+  let envelope: unknown
+  try {
+    envelope = await response.json()
+  } catch {
+    return []
+  }
+  const record = envelope as { ok?: unknown; value?: unknown } | null
+  if (typeof record !== 'object' || record === null || record.ok !== true) return []
+  const value = record.value as { batches?: unknown } | null
+  if (typeof value !== 'object' || value === null || !Array.isArray(value.batches)) return []
+  const batches: SessionPreviewBatch[] = []
+  for (const raw of value.batches) {
+    if (typeof raw !== 'object' || raw === null) continue
+    const batch = raw as Record<string, unknown>
+    const batchId = batch['batchId']
+    const count = batch['count']
+    const updatedAt = batch['updatedAt']
+    if (typeof batchId !== 'string' || batchId.length === 0) continue
+    if (!Number.isSafeInteger(count) || (count as number) <= 0 || (count as number) > 8) continue
+    if (!Number.isSafeInteger(updatedAt) || (updatedAt as number) < 0) continue
+    batches.push({ batchId, count: count as number, updatedAt: updatedAt as number })
+  }
+  return batches
 }
 
 /** Normal photo/panoramic edge budget. */
