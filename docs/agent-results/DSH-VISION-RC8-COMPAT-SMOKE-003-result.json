@@ -1,0 +1,76 @@
+{
+  "schema_version": 2,
+  "task_id": "DSH-VISION-RC8-COMPAT-SMOKE-003",
+  "source_commit": "b8450f6e21f716c0d562d344b25724503b192327",
+  "result_commit": null,
+  "status": "PARTIAL",
+  "summary": "Repository release-safety validation passed, but DSH 0.1.0-rc.8 compatibility remains blocked because both the fixed-version probe and isolated plugin installation failed to complete dependency resolution within a 10-minute observation window.",
+  "timeline": {
+    "started_at": "2026-08-21T16:20:54+08:00",
+    "completed_at": "2026-08-21T16:44:34+08:00"
+  },
+  "changed_files": [
+    "docs/agent-results/DSH-VISION-RC8-COMPAT-SMOKE-003-result.json",
+    "docs/agent-tasks/ACTIVE_TASK.json"
+  ],
+  "tests": [
+    {
+      "name": "node .agent-workflow/validator/validate-contract.mjs task docs/agent-tasks/ACTIVE_TASK.json",
+      "status": "PASS",
+      "evidence": "Exit 0: VALID TASK CONTRACT. main/LATEST resolved to b8450f6e21f716c0d562d344b25724503b192327 with a clean worktree before the result draft was created."
+    },
+    {
+      "name": "node --version && npm --version && npx -y @deepseek-ai/dsh@0.1.0-rc.8 --version",
+      "status": "BLOCKED",
+      "evidence": "Node v24.18.1 and npm 11.16.0 printed successfully. The exact pinned npx DSH command produced no DSH version and did not finish after 607 seconds; the task-owned process was terminated at the bounded 10-minute threshold (exit 1)."
+    },
+    {
+      "name": "npm run typecheck",
+      "status": "PASS",
+      "evidence": "Exit 0: TypeScript checks passed for @ran-sh/dsh-vision 0.2.0 and dsh-plugin-image-mind 0.2.0."
+    },
+    {
+      "name": "npm run build",
+      "status": "PASS",
+      "evidence": "Exit 0: Both workspace packages built successfully."
+    },
+    {
+      "name": "npm test",
+      "status": "PASS",
+      "evidence": "Exit 0: 61 test files passed, 2 skipped; 376 tests passed, 7 skipped, 0 failed."
+    },
+    {
+      "name": "npm run test:package",
+      "status": "PASS",
+      "evidence": "Exit 0: 1 test file and all 11 package-integrity tests passed."
+    },
+    {
+      "name": "npm run test:built",
+      "status": "PASS",
+      "evidence": "Exit 0: 1 test file and all 5 built-artifact tests passed."
+    },
+    {
+      "name": "bash -lc 'set -euo pipefail; export DSH_HOME=\"$(mktemp -d)\"; START=$(date +%s); npx -y @deepseek-ai/dsh@0.1.0-rc.8 plugin --profile smoke add dsh-plugin-image-mind@0.2.0; END=$(date +%s); echo \"INSTALL_SECONDS=$((END-START))\"; OUT=$(npx -y @deepseek-ai/dsh@0.1.0-rc.8 --profile smoke --dump-config); printf \"%s\\n\" \"$OUT\" | grep -q \"image-mind\"; printf \"%s\\n\" \"$OUT\" | grep -q \"vision-runtime\"; test -d \"$DSH_HOME/profiles/smoke/node_modules/dsh-plugin-image-mind\"; test -d \"$DSH_HOME/profiles/smoke/node_modules/@ran-sh/dsh-vision\"; npx -y @deepseek-ai/dsh@0.1.0-rc.8 plugin --profile smoke remove dsh-plugin-image-mind; OUT2=$(npx -y @deepseek-ai/dsh@0.1.0-rc.8 --profile smoke --dump-config || true); if printf \"%s\\n\" \"$OUT2\" | grep -qE \"vision-runtime|image-mind\"; then echo \"stale bundle layer remains after remove\" >&2; exit 1; fi; echo \"RC8_COMPAT_SMOKE=PASS\"'",
+      "status": "BLOCKED",
+      "evidence": "A newly created temporary DSH_HOME and exact @deepseek-ai/dsh@0.1.0-rc.8 were used. The official plugin add command produced no output and remained in dependency resolution for at least 647 seconds, so the task-owned process tree was terminated at the bounded 10-minute threshold (exit 1). INSTALL_SECONDS was never emitted; install completion, dump-config composition, package-directory checks, official removal, and stale-layer checks were therefore not reached. The Windows bash.cmd wrapper first misparsed shell pipes, so the unchanged script body was rerun through its backing Git Bash executable."
+    }
+  ],
+  "blockers": [
+    "Exact DSH 0.1.0-rc.8 dependency resolution did not complete within 10 minutes in either the version probe or isolated plugin installation, preventing runtime compatibility and uninstall verification."
+  ],
+  "result_path": "docs/agent-results/DSH-VISION-RC8-COMPAT-SMOKE-003-result.json",
+  "notes": [
+    "Observed versions: Node v24.18.1; npm 11.16.0; DSH version unavailable because the exact pinned npx command did not complete.",
+    "Dependency resolution did not complete without timeout. The isolated install elapsed at least 647 seconds before termination and never emitted INSTALL_SECONDS.",
+    "The smoke command exported a newly generated temporary DSH_HOME and used profile smoke; no user DSH profile was targeted.",
+    "No API key or credential was read or exposed, and no paid real-provider vision call was made.",
+    "Non-blocking repository-check warnings included npm's future removal of the single-hyphen -ws flag, ES2024 target compatibility notices, and Node DEP0190.",
+    "No product source, tests, scripts, CI, package metadata, README, or docs/compatibility.md files were modified."
+  ],
+  "result_validation": {
+    "status": "PASS",
+    "validator": "node .agent-workflow/validator/validate-contract.mjs result docs/agent-results/DSH-VISION-RC8-COMPAT-SMOKE-003-result.json --stamp",
+    "validated_at": "2026-08-21T08:45:12Z",
+    "evidence": "Exit 0: VALID RESULT CONTRACT: docs/agent-results/DSH-VISION-RC8-COMPAT-SMOKE-003-result.json"
+  }
+}
