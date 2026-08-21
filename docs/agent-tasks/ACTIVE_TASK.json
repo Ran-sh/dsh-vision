@@ -1,0 +1,53 @@
+{
+  "id": "DSH-VISION-RESULT-V2-E2E-002",
+  "mode": "TEST_ONLY",
+  "source_branch": "main",
+  "source_commit": "LATEST",
+  "objective": "Validate the Result Contract v2 timeline and validator-owned evidence flow on the real local dsh-vision checkout while preserving legacy Result Contract v1 compatibility.",
+  "context": "The project workflow is synced to Ran-sh/chatgpt_workflow@c38d94c48ebb1c48cff2eeba685dea69667f9998. This is a focused workflow E2E only: prove that a new Result Contract uses schema_version 2, records second-precision timezone-aware started/completed timestamps, is stamped by the installed result validator, and that the previous DSH-VISION-WORKFLOW-E2E-001 legacy v1 result still validates. Do not modify product code.",
+  "allowed_changes": [
+    "docs/agent-results/DSH-VISION-RESULT-V2-E2E-002-result.json"
+  ],
+  "forbidden_changes": [
+    "packages/**",
+    "tests/**",
+    "scripts/**",
+    ".github/**",
+    "package.json",
+    "package-lock.json",
+    "tsconfig.json",
+    "vitest.config.ts",
+    "release/version metadata",
+    "credentials, secrets, local DSH configuration, and unrelated files"
+  ],
+  "validation": [
+    "node .agent-workflow/validator/validate-contract.mjs task docs/agent-tasks/ACTIVE_TASK.json",
+    "node .agent-workflow/validator/validate-contract.mjs result docs/agent-results/DSH-VISION-WORKFLOW-E2E-001-result.json",
+    "npm run typecheck",
+    "npm test"
+  ],
+  "acceptance_criteria": [
+    "The Task Contract validates successfully before execution.",
+    "source_commit LATEST resolves to the current tip of main after pull/fetch and the exact source SHA used is recorded in the new Result Contract.",
+    "The historical DSH-VISION-WORKFLOW-E2E-001 Result Contract validates successfully as legacy v1 without being rewritten.",
+    "The new Result Contract contains schema_version 2.",
+    "The new Result Contract records timeline.started_at and timeline.completed_at using ISO 8601 year-month-day hour:minute:second with timezone and no milliseconds.",
+    "Every listed validation command is actually executed and reported with one of PASS, FAIL, PARTIAL, SKIP, BLOCKED, or NOT RUN.",
+    "After timeline.completed_at is final, run node .agent-workflow/validator/validate-contract.mjs result docs/agent-results/DSH-VISION-RESULT-V2-E2E-002-result.json --stamp.",
+    "The installed validator writes result_validation.status PASS, validator command, result_validation.validated_at to second precision with timezone, and success evidence into the new Result Contract.",
+    "result_validation.validated_at is not earlier than timeline.completed_at.",
+    "No product source, tests, scripts, CI, package/version metadata, credentials, or unrelated files are modified.",
+    "On completion, ACTIVE_TASK.json is deleted and only the Result Contract plus task deletion are committed/pushed."
+  ],
+  "result_contract": "docs/agent-results/DSH-VISION-RESULT-V2-E2E-002-result.json",
+  "completion_commit_contract": [
+    "docs/agent-results/DSH-VISION-RESULT-V2-E2E-002-result.json",
+    "docs/agent-tasks/ACTIVE_TASK.json"
+  ],
+  "delete_active_task_on_completion": true,
+  "metadata": {
+    "executor": "ANY",
+    "purpose": "result-v2-evidence-e2e",
+    "prepared_from_commit": "90bc6b3f79a054cb144927882d11c5659b14252d"
+  }
+}
