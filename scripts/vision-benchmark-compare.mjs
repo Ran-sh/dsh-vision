@@ -17,6 +17,7 @@ export const DEFAULT_BENCHMARK_THRESHOLDS = Object.freeze({
   maxForbiddenHitIncrease: 0,
   maxTraceCoverageRegression: 0.10,
   maxRouteCoverageRegression: 0.10,
+  maxRouteDecisionCoverageRegression: 0.10,
   maxTokenCoverageRegression: 0.10,
   minComparableCoverage: 0.80,
   maxP95LatencyRatio: 1.30,
@@ -91,6 +92,8 @@ export function compareBenchmarkScores(baseline, candidate, thresholds = {}) {
   const candidateTraceCoverage = finite(candidate.traceCoverage) ?? 0
   const baselineRouteCoverage = finite(baseline.routeCoverage) ?? 0
   const candidateRouteCoverage = finite(candidate.routeCoverage) ?? 0
+  const baselineRouteDecisionCoverage = finite(baseline.routeDecisionCoverage) ?? 0
+  const candidateRouteDecisionCoverage = finite(candidate.routeDecisionCoverage) ?? 0
   const baselineTokenCoverage = finite(baseline.tokenUsageCoverage) ?? 0
   const candidateTokenCoverage = finite(candidate.tokenUsageCoverage) ?? 0
 
@@ -101,6 +104,7 @@ export function compareBenchmarkScores(baseline, candidate, thresholds = {}) {
     checkUpper('forbidden-hit-count', baseline.forbiddenHitCount, candidate.forbiddenHitCount, baseline.forbiddenHitCount + t.maxForbiddenHitIncrease),
     checkLower('trace-coverage', baselineTraceCoverage, candidateTraceCoverage, t.maxTraceCoverageRegression),
     checkLower('route-coverage', baselineRouteCoverage, candidateRouteCoverage, t.maxRouteCoverageRegression),
+    checkLower('route-decision-coverage', baselineRouteDecisionCoverage, candidateRouteDecisionCoverage, t.maxRouteDecisionCoverageRegression),
     checkLower('token-usage-coverage', baselineTokenCoverage, candidateTokenCoverage, t.maxTokenCoverageRegression),
   ]
 
@@ -146,8 +150,18 @@ export function compareBenchmarkScores(baseline, candidate, thresholds = {}) {
       candidateTraceCoverage,
       baselineRouteCoverage,
       candidateRouteCoverage,
+      baselineRouteDecisionCoverage,
+      candidateRouteDecisionCoverage,
+      baselineRouteDecisionConsistencyRate: baseline.routeDecisionConsistencyRate,
+      candidateRouteDecisionConsistencyRate: candidate.routeDecisionConsistencyRate,
+      baselineEvidenceLayerEnabledRate: baseline.evidenceLayerEnabledRate,
+      candidateEvidenceLayerEnabledRate: candidate.evidenceLayerEnabledRate,
       baselineRouteSources: baseline.routeSources ?? {},
       candidateRouteSources: candidate.routeSources ?? {},
+      baselineRouteTasks: baseline.routeTasks ?? {},
+      candidateRouteTasks: candidate.routeTasks ?? {},
+      baselineRouteCacheModes: baseline.routeCacheModes ?? {},
+      candidateRouteCacheModes: candidate.routeCacheModes ?? {},
       baselineRouteSourceOutcomes: baseline.routeSourceOutcomes ?? {},
       candidateRouteSourceOutcomes: candidate.routeSourceOutcomes ?? {},
       baselineTokenUsageCoverage: baselineTokenCoverage,
