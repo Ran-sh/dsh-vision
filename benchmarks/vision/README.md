@@ -43,7 +43,7 @@ Assertions are intentionally simple and inspectable. Do not hide evaluation poli
 
 ## Result JSONL
 
-The real runner should write one result per case. Prefer the names below so the scorer can consume `VisionResult.trace` / `usage` directly:
+The real runner should write one result per case. Prefer the names below so the scorer can consume `understand_image.route`, `VisionResult.trace`, and `usage` directly:
 
 ```json
 {
@@ -53,22 +53,33 @@ The real runner should write one result per case. Prefer the names below so the 
   "latencyMs": 814,
   "provider": "opencode-go",
   "model": "mimo-v2.5",
+  "route": {
+    "source": "provider",
+    "requestedProvider": "primary",
+    "requestedModel": "vision-a",
+    "selectedProvider": "opencode-go",
+    "selectedModel": "mimo-v2.5",
+    "modelFallback": true,
+    "providerFallback": true
+  },
   "providerCalls": 1,
   "payloadBytes": 185420,
   "cacheHits": 0,
   "inputTokens": 2180,
   "outputTokens": 164,
   "retries": 0,
-  "modelFallbacks": 0,
-  "providerFallbacks": 0,
+  "modelFallbacks": 1,
+  "providerFallbacks": 1,
   "splits": 0,
   "error": null
 }
 ```
 
-`calls` remains accepted as a backward-compatible alias for `providerCalls`. A reusable-evidence hit should normally report `providerCalls: 0` and `cacheHits >= 1`; the scorer exposes this as `zeroProviderReuseRate`.
+`route.source` is one of `provider`, `semantic-cache`, or `evidence-cache`. `requestedProvider` / `requestedModel` are optional and are present only when the caller explicitly requested them; `selectedProvider` / `selectedModel` record the route actually used. The scorer reports route coverage, route-source counts, and whether route fallback booleans agree with trace fallback counters.
 
-If execution fails, preserve the same metadata and put a redacted error string in `error`. Never write API keys, Authorization headers, signed URL query strings, prompt text copied from secrets, or full local secret-bearing paths into benchmark results.
+`calls` remains accepted as a backward-compatible alias for `providerCalls`. A reusable-evidence hit should normally report `providerCalls: 0`, `cacheHits >= 1`, and `route.source: "evidence-cache"`; the scorer exposes zero-provider reuse separately from semantic-cache and evidence-cache route counts.
+
+If execution fails, preserve the same metadata that is safely available and put a redacted error string in `error`. Never write API keys, Authorization headers, signed URL query strings, prompt text copied from secrets, or full local secret-bearing paths into benchmark results.
 
 ## Scoring
 
@@ -85,10 +96,12 @@ The JSON report contains:
 - successful-task latency p50 / p95;
 - total provider calls and payload bytes;
 - semantic/layered cache hits and zero-provider-reuse rate;
+- route telemetry coverage plus provider / semantic-cache / evidence-cache source counts;
+- route-vs-trace fallback consistency when both telemetry layers are present;
 - provider-reported input/output token totals plus token-usage coverage;
 - retry / model-fallback / provider-fallback / split counts;
 - per-category pass rates and missing-result counts;
-- per-case rows for diffing regressions.
+- per-case rows with requested/selected route identities for diffing regressions.
 
 ## Regression gate
 
@@ -139,6 +152,8 @@ For every baseline/candidate run keep:
 - scorer JSON report;
 - compare JSON report and exit status;
 - date and environment (Node/OS);
+- whether each answer came from provider, semantic cache, or evidence cache;
+- requested/selected provider/model when applicable;
 - whether calls used cache, retry, model fallback, provider fallback, or adaptive split.
 
 The benchmark is a decision aid, not a substitute for the browser/install/provider matrix in `docs/verification-debt.md`.
