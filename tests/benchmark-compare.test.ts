@@ -12,7 +12,12 @@ function score(overrides: Record<string, unknown> = {}) {
     forbiddenHitCount: 1,
     traceCoverage: 1,
     routeCoverage: 1,
+    routeDecisionCoverage: 1,
+    routeDecisionConsistencyRate: 1,
+    evidenceLayerEnabledRate: 0.5,
     routeSources: { provider: 100, semanticCache: 0, evidenceCache: 0, unknown: 0 },
+    routeTasks: { ocr: 50, 'ui-review': 50, unknown: 0 },
+    routeCacheModes: { use: 90, refresh: 10, noStore: 0, unknown: 0 },
     routeSourceOutcomes: {
       provider: { cases: 100, passed: 90, weight: 100, providerCalls: 100, cacheHits: 0, passRate: 0.9, taskSuccessRate: 0.9 },
       semanticCache: { cases: 0, passed: 0, weight: 0, providerCalls: 0, cacheHits: 0 },
@@ -43,7 +48,10 @@ describe('vision benchmark regression gate', () => {
     const candidate = score({
       taskSuccessRate: 0.91,
       zeroProviderReuseRate: 0.25,
+      evidenceLayerEnabledRate: 0.75,
       routeSources: { provider: 75, semanticCache: 0, evidenceCache: 25, unknown: 0 },
+      routeTasks: { ocr: 60, 'ui-review': 40, unknown: 0 },
+      routeCacheModes: { use: 95, refresh: 5, noStore: 0, unknown: 0 },
       routeSourceOutcomes: {
         provider: { cases: 75, passed: 69, weight: 75, providerCalls: 75, cacheHits: 0, passRate: 0.92, taskSuccessRate: 0.92 },
         semanticCache: { cases: 0, passed: 0, weight: 0, providerCalls: 0, cacheHits: 0 },
@@ -58,6 +66,9 @@ describe('vision benchmark regression gate', () => {
     expect(comparison.summary.candidateCalls).toBe(75)
     expect(comparison.summary.candidateZeroProviderReuseRate).toBe(0.25)
     expect(comparison.summary.candidateRouteSources).toMatchObject({ evidenceCache: 25 })
+    expect(comparison.summary.candidateRouteTasks).toMatchObject({ ocr: 60 })
+    expect(comparison.summary.candidateRouteCacheModes).toMatchObject({ use: 95 })
+    expect(comparison.summary.candidateEvidenceLayerEnabledRate).toBe(0.75)
     expect(comparison.summary.candidateRouteSourceOutcomes.evidenceCache).toMatchObject({
       cases: 25,
       taskSuccessRate: 0.88,
@@ -118,28 +129,41 @@ describe('vision benchmark regression gate', () => {
     })
   })
 
+  it('fails when route decision telemetry coverage regresses materially', () => {
+    const comparison = compareBenchmarkScores(score(), score({ routeDecisionCoverage: 0.7 }))
+    expect(comparison.pass).toBe(false)
+    expect(comparison.checks.find(check => check.name === 'route-decision-coverage')).toMatchObject({
+      pass: false,
+      baseline: 1,
+      candidate: 0.7,
+    })
+  })
+
   it('scores baseline and candidate from the same frozen corpus', () => {
     const cases = [{ id: 'ocr', category: 'ocr', assertion: { containsAll: ['ERROR 42'] } }]
     const baseline = [{
       id: 'ocr', answer: 'ERROR 42', toolCalled: true, latencyMs: 1000,
       providerCalls: 1, payloadBytes: 1000, cacheHits: 0, inputTokens: 100, outputTokens: 20,
       route: {
-        source: 'provider', selectedProvider: 'p', selectedModel: 'm',
-        modelFallback: false, providerFallback: false,
+        source: 'provider', task: 'ocr', cacheMode: 'use', evidenceLayerEnabled: true,
+        selectedProvider: 'p', selectedModel: 'm', modelFallback: false, providerFallback: false,
       },
     }]
     const candidate = [{
       id: 'ocr', answer: 'ERROR 42', toolCalled: true, latencyMs: 100,
       providerCalls: 0, payloadBytes: 0, cacheHits: 1, inputTokens: 0, outputTokens: 0,
       route: {
-        source: 'evidence-cache', selectedProvider: 'p', selectedModel: 'm',
-        modelFallback: false, providerFallback: false,
+        source: 'evidence-cache', task: 'ocr', cacheMode: 'use', evidenceLayerEnabled: true,
+        selectedProvider: 'p', selectedModel: 'm', modelFallback: false, providerFallback: false,
       },
     }]
 
     const report = compareBenchmarkRuns(cases, baseline, candidate)
     expect(report.comparison.pass).toBe(true)
     expect(report.candidate.zeroProviderReuseRate).toBe(1)
+    expect(report.candidate.routeDecisionCoverage).toBe(1)
+    expect(report.candidate.routeDecisionConsistencyRate).toBe(1)
+    expect(report.candidate.routeTasks.ocr).toBe(1)
     expect(report.candidate.routeSources.evidenceCache).toBe(1)
     expect(report.candidate.routeSourceOutcomes.evidenceCache).toMatchObject({
       cases: 1,
