@@ -33,6 +33,15 @@ interface ToolResult {
   text: string
   provider?: string
   model: string
+  route?: {
+    source: 'provider' | 'semantic-cache' | 'evidence-cache'
+    requestedProvider?: string
+    requestedModel?: string
+    selectedProvider: string
+    selectedModel: string
+    modelFallback: boolean
+    providerFallback: boolean
+  }
   usage?: { inputTokens?: number; outputTokens?: number }
   trace?: {
     providerCalls: number
@@ -189,6 +198,7 @@ describe.skipIf(!RUN)('real visual benchmark corpus', () => {
           latencyMs: elapsed,
           provider: result.provider,
           model: result.model,
+          ...(result.route === undefined ? {} : { route: result.route }),
           ...(result.trace === undefined ? {} : result.trace),
           ...(result.usage?.inputTokens === undefined ? {} : { inputTokens: result.usage.inputTokens }),
           ...(result.usage?.outputTokens === undefined ? {} : { outputTokens: result.usage.outputTokens }),
