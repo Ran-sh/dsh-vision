@@ -7,6 +7,8 @@ minor version). Package names: `@ran-sh/dsh-vision` (Service) and
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-08-21
+
 ### Added
 
 - Task-aware visual intent routing for OCR, UI review, code/terminal,
@@ -46,6 +48,8 @@ minor version). Package names: `@ran-sh/dsh-vision` (Service) and
   `systemPrompt` service. User messages now contain only a neutral attachment
   marker; tool names and routing instructions stay out of the conversation
   bubble.
+- Sent-image history previews now survive admission, session switching and
+  host restart/reopen while keeping the user-visible marker strict and opaque.
 
 ### Changed
 
@@ -70,6 +74,9 @@ minor version). Package names: `@ran-sh/dsh-vision` (Service) and
   image batch when the model omits explicit `image`/`images` arguments. This
   keeps host attachment references out of user text while preserving normal
   image-only routing.
+- Release metadata aligns the root workspace, `@ran-sh/dsh-vision`, and
+  `dsh-plugin-image-mind` on version 0.2.0; the plugin depends on
+  `@ran-sh/dsh-vision@^0.2.0`.
 
 ### Fixed
 
@@ -114,6 +121,18 @@ minor version). Package names: `@ran-sh/dsh-vision` (Service) and
 - Make benchmark runner/scorer/compare modules import-safe for the root Vitest
   suites by removing unnecessary executable shebangs; the Windows Node 24
   transform failure still requires an external rerun to confirm this fix.
+- Match committed history-preview markers against the rendered message stack
+  rather than host timestamp chrome, restoring NEW-R1 historical thumbnails
+  without weakening the strict neutral-marker parser.
+- Run build-dependent package/built-artifact tests after `npm run build` in CI.
+
+### Verification
+
+- Final real-DSH release retest: 10 PASS / 0 FAIL / 0 PARTIAL-BLOCKED.
+- Severity counts: BLOCKER 0 / HIGH 0 / MEDIUM 0.
+- NEW-R1, F002, F003, FR-001 and release safety all PASS.
+- Release PR CI: Node 22, Node 24, Windows, install/package roundtrip,
+  built-artifact verification and secret scan all PASS.
 
 ## [0.1.1] — 2026-08-20
 

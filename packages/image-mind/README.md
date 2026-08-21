@@ -23,12 +23,12 @@ Use the DeepSeek Harness official plugin mechanism. The release-tested web
 profile command is:
 
 ```sh
-npx @deepseek-ai/dsh plugin --profile web add dsh-plugin-image-mind@0.1.1
+npx @deepseek-ai/dsh plugin --profile web add dsh-plugin-image-mind@0.2.0
 ```
 
 It installs this plugin through the profile's package manager, and its
 `dsh.bundle` declaration joins the profile bundle stack automatically. The
-`@ran-sh/dsh-vision@0.1.0` service dependency installs with it; users do not
+`@ran-sh/dsh-vision@0.2.0` service dependency installs with it; users do not
 install vision separately.
 
 Remove it with:
@@ -49,5 +49,9 @@ plugin.
   model to name its color — a text-only model fails the test.
 - Built-in provider templates are configuration hints, not long-term
   compatibility guarantees.
+- `0.2.0` adds durable host-side image reference recovery, neutral attachment
+  markers, historical sent-image previews, task-aware routing/reliability,
+  and the expanded multi-image/release-safety work documented in the root
+  changelog.
 
 Full documentation lives in the repository README.
