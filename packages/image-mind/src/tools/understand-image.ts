@@ -139,14 +139,19 @@ export function understandImageCallView(args: UnderstandImageArgs): GenericCallV
     ...args.image === undefined ? {} : { image: safeImageIdentity(args.image) },
     ...args.images === undefined ? {} : { images: args.images.map(safeImageIdentity) },
   }
+  const localRefs = refs.filter((ref) => {
+    const normalized = ref.trim()
+    return !/^https?:\/\//i.test(normalized)
+      && !/^[a-z][a-z0-9+.-]*:\/\//i.test(normalized)
+      && !normalized.startsWith('{')
+      && !/^sha256:/i.test(normalized)
+  })
   return {
     card: 'generic',
     title: 'Understand image',
     kind: 'read',
     rawInput,
-    ...refs.filter(ref => !/^https?:\/\//i.test(ref)).length > 0
-      ? { locations: refs.filter(ref => !/^https?:\/\//i.test(ref)).map(ref => ({ path: ref })) }
-      : {},
+    ...localRefs.length > 0 ? { locations: localRefs.map(path => ({ path })) } : {},
   }
 }
 
