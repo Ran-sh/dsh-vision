@@ -8,6 +8,7 @@
  * @module dsh-plugin-image-mind/client/send_hook
  */
 
+import { MAX_IMAGES_PER_REQUEST } from '../shared/image-limits.ts'
 import { commitImagePreviewBatch, prepareImageForDescribe, uploadImage } from './attach.ts'
 import { showToast } from './toast.ts'
 
@@ -57,6 +58,10 @@ export function installSendHook(conversation: unknown): void {
   face.sendSession = async (session, text, imageIds, mode, signal): Promise<void> => {
     if (imageIds.length === 0) {
       await original.call(face, session, text, imageIds, mode, signal)
+      return
+    }
+    if (imageIds.length > MAX_IMAGES_PER_REQUEST) {
+      showToast(`图片发送失败：一次最多 ${MAX_IMAGES_PER_REQUEST} 张；草稿图片已保留，请减少后重试`, 'error')
       return
     }
     const attachments = face.draftImages(imageIds)

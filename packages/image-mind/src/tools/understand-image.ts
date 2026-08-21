@@ -14,8 +14,9 @@ import { loadImage } from '../media/load.ts'
 import type { LoadedImage } from '../media/types.ts'
 import { MAX_SESSION_BATCH_OFFSET, sessionAttachmentRefsByOffset } from '../attachments/session-history.ts'
 import { isReusableEvidenceTask, reusableEvidenceKey, reusableEvidencePrompt } from '../runtime/reusable-evidence.ts'
+import { MAX_IMAGES_PER_REQUEST } from '../shared/image-limits.ts'
 
-export const MAX_IMAGES_PER_REQUEST = 8
+export { MAX_IMAGES_PER_REQUEST } from '../shared/image-limits.ts'
 export const MAX_TOTAL_IMAGE_BYTES_FACTOR = 2
 
 async function loadImagesConcurrent(
