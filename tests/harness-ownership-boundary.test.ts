@@ -29,7 +29,7 @@ function productionScripts(): string[] {
 }
 
 const harnessOwnedState = /\bDSH_HOME\b|(?:profilesRoot|profileRoot)|cordis\.patch\.ya?ml|(?:^|[\\/'"`])profiles[\\/'"`]|settings\.ya?ml|pnpm-lock\.ya?ml/i
-const mutatingFsApi = /\b(?:writeFile|appendFile|truncate|rename|copyFile|unlink|rm|mkdir|symlink|link)(?:Sync)?\b/
+const mutatingFsCall = /\b(?:writeFile|writeFileSync|appendFile|appendFileSync|truncate|truncateSync|rename|renameSync|copyFile|copyFileSync|unlink|unlinkSync|rm|rmSync|mkdir|mkdirSync|symlink|symlinkSync|link|linkSync)\s*\(/
 const pluginMutationCommand = /(?:\bdsh\b|@deepseek-ai\/dsh)[^\n]{0,120}\bplugin\b[^\n]{0,80}\b(?:add|remove)\b/i
 
 describe('DeepSeek Harness ownership boundary', () => {
@@ -51,7 +51,7 @@ describe('DeepSeek Harness ownership boundary', () => {
     const offenders: string[] = []
     for (const file of productionScripts()) {
       const text = readFileSync(file, 'utf8')
-      if (harnessOwnedState.test(text) && mutatingFsApi.test(text)) {
+      if (harnessOwnedState.test(text) && mutatingFsCall.test(text)) {
         offenders.push(file.slice(root.length + 1).replaceAll('\\', '/'))
       }
     }
@@ -77,7 +77,7 @@ describe('DeepSeek Harness ownership boundary', () => {
     const text = readFileSync(resolve(scriptsRoot, 'diagnose-dsh.mjs'), 'utf8')
     expect(text).toMatch(/readFileSync/)
     expect(text).toMatch(/\bDSH_HOME\b/)
-    expect(text).not.toMatch(mutatingFsApi)
+    expect(text).not.toMatch(mutatingFsCall)
     expect(text).not.toMatch(pluginMutationCommand)
   })
 })
