@@ -78,16 +78,34 @@ function hasFiniteField(record, fields) {
 }
 
 const ROUTE_SOURCES = new Set(['provider', 'semantic-cache', 'evidence-cache'])
+const ROUTE_TASKS = [
+  'ocr', 'ui-review', 'code', 'document', 'chart', 'compare', 'photo', 'screenshot', 'translate', 'general',
+]
+const ROUTE_TASK_SET = new Set(ROUTE_TASKS)
+const CACHE_MODES = new Set(['use', 'refresh', 'no-store'])
+
+function routeDecisionConsistent(route) {
+  if (!route.decisionReported) return undefined
+  if (route.evidenceLayerEnabled && route.cacheMode === 'no-store') return false
+  if ((route.requestedProvider !== undefined || route.requestedModel !== undefined) && route.evidenceLayerEnabled) return false
+  if (route.source === 'evidence-cache' && (!route.evidenceLayerEnabled || route.cacheMode !== 'use')) return false
+  if (route.source !== 'provider' && route.cacheMode !== 'use') return false
+  return true
+}
 
 function routeTelemetry(result) {
   const route = result?.route
-  if (route === null || typeof route !== 'object') return { reported: false }
-  if (!ROUTE_SOURCES.has(route.source)) return { reported: false }
-  if (typeof route.selectedProvider !== 'string' || route.selectedProvider.length === 0) return { reported: false }
-  if (typeof route.selectedModel !== 'string' || route.selectedModel.length === 0) return { reported: false }
-  if (typeof route.modelFallback !== 'boolean' || typeof route.providerFallback !== 'boolean') return { reported: false }
-  return {
+  if (route === null || typeof route !== 'object') return { reported: false, decisionReported: false }
+  if (!ROUTE_SOURCES.has(route.source)) return { reported: false, decisionReported: false }
+  if (typeof route.selectedProvider !== 'string' || route.selectedProvider.length === 0) return { reported: false, decisionReported: false }
+  if (typeof route.selectedModel !== 'string' || route.selectedModel.length === 0) return { reported: false, decisionReported: false }
+  if (typeof route.modelFallback !== 'boolean' || typeof route.providerFallback !== 'boolean') return { reported: false, decisionReported: false }
+  const decisionReported = ROUTE_TASK_SET.has(route.task)
+    && CACHE_MODES.has(route.cacheMode)
+    && typeof route.evidenceLayerEnabled === 'boolean'
+  const parsed = {
     reported: true,
+    decisionReported,
     source: route.source,
     requestedProvider: typeof route.requestedProvider === 'string' && route.requestedProvider.length > 0 ? route.requestedProvider : undefined,
     requestedModel: typeof route.requestedModel === 'string' && route.requestedModel.length > 0 ? route.requestedModel : undefined,
@@ -95,7 +113,13 @@ function routeTelemetry(result) {
     selectedModel: route.selectedModel,
     modelFallback: route.modelFallback,
     providerFallback: route.providerFallback,
+    ...(decisionReported ? {
+      task: route.task,
+      cacheMode: route.cacheMode,
+      evidenceLayerEnabled: route.evidenceLayerEnabled,
+    } : {}),
   }
+  return { ...parsed, decisionConsistent: routeDecisionConsistent(parsed) }
 }
 
 function routeSourceBucket(row) {
@@ -132,6 +156,31 @@ function routeSourceOutcomes(rows) {
     delete bucket.passedWeight
   }
   return buckets
+}
+
+function routeDecisionBreakdown(rows) {
+  const tasks = Object.fromEntries(ROUTE_TASKS.map(task => [task, 0]))
+  tasks.unknown = 0
+  const cacheModes = { use: 0, refresh: 0, noStore: 0, unknown: 0 }
+  const evidenceLayer = { enabled: 0, disabled: 0, unknown: 0 }
+
+  for (const row of rows) {
+    if (row.missing) continue
+    if (!row.routeDecisionReported) {
+      tasks.unknown += 1
+      cacheModes.unknown += 1
+      evidenceLayer.unknown += 1
+      continue
+    }
+    tasks[row.routeTask] += 1
+    if (row.routeCacheMode === 'use') cacheModes.use += 1
+    else if (row.routeCacheMode === 'refresh') cacheModes.refresh += 1
+    else if (row.routeCacheMode === 'no-store') cacheModes.noStore += 1
+    if (row.evidenceLayerEnabled) evidenceLayer.enabled += 1
+    else evidenceLayer.disabled += 1
+  }
+
+  return { tasks, cacheModes, evidenceLayer }
 }
 
 /** Score all cases and aggregate stable benchmark metrics. */
@@ -181,7 +230,12 @@ export function scoreBenchmark(cases, results) {
       usageReported,
       traceReported,
       routeReported: route.reported,
+      routeDecisionReported: route.reported && route.decisionReported,
       routeSource: route.reported ? route.source : undefined,
+      routeTask: route.reported && route.decisionReported ? route.task : undefined,
+      routeCacheMode: route.reported && route.decisionReported ? route.cacheMode : undefined,
+      evidenceLayerEnabled: route.reported && route.decisionReported ? route.evidenceLayerEnabled : undefined,
+      routeDecisionConsistent: route.reported ? route.decisionConsistent : undefined,
       requestedProvider: route.reported ? route.requestedProvider : undefined,
       requestedModel: route.reported ? route.requestedModel : undefined,
       selectedProvider: route.reported ? route.selectedProvider : undefined,
@@ -217,6 +271,7 @@ export function scoreBenchmark(cases, results) {
     evidenceCache: rows.filter(row => row.routeSource === 'evidence-cache').length,
     unknown: rows.filter(row => !row.routeReported && !row.missing).length,
   }
+  const routeDecisions = routeDecisionBreakdown(rows)
 
   return {
     cases: rows.length,
@@ -227,11 +282,23 @@ export function scoreBenchmark(cases, results) {
     forbiddenHitCount: rows.reduce((sum, row) => sum + row.forbiddenHits, 0),
     traceCoverage: weighted(row => row.traceReported && !row.missing),
     routeCoverage: weighted(row => row.routeReported && !row.missing),
+    routeDecisionCoverage: weighted(row => row.routeDecisionReported && !row.missing),
     routeTraceConsistencyRate: weightedAmong(
       row => row.routeReported && row.traceReported,
       row => row.routeTraceConsistent === true,
     ),
+    routeDecisionConsistencyRate: weightedAmong(
+      row => row.routeDecisionReported,
+      row => row.routeDecisionConsistent === true,
+    ),
+    evidenceLayerEnabledRate: weightedAmong(
+      row => row.routeDecisionReported,
+      row => row.evidenceLayerEnabled === true,
+    ),
     routeSources,
+    routeTasks: routeDecisions.tasks,
+    routeCacheModes: routeDecisions.cacheModes,
+    evidenceLayer: routeDecisions.evidenceLayer,
     routeSourceOutcomes: routeSourceOutcomes(rows),
     tokenUsageCoverage: weighted(row => row.usageReported && !row.missing),
     zeroProviderReuseRate: weighted(row => row.zeroProviderReuse),
