@@ -5,7 +5,7 @@
 
 Vision for text-only DSH agents: `understand_image` lets the main model inspect images through an OpenAI-compatible visual-perception backend while keeping image bytes out of the conversation log.
 
-给 DeepSeek Harness（DSH）Web UI 用的图像理解工具。纯文本主模型本身不直接接收图片；本插件把图片存进宿主 attachment store，只把安全引用放进对话，模型需要像素信息时调用 **`understand_image`**，视觉端点返回的文字证据再交回主模型继续推理。
+给 DeepSeek Harness（DSH）Web UI 用的图像理解工具。纯文本主模型本身不直接接收图片；本插件把图片存进宿主 attachment store，只把安全的中性附件标记留在用户消息里，模型需要像素信息时调用 **`understand_image`**，视觉端点返回的文字证据再交回主模型继续推理。
 
 > **定位**：视觉模型是 DeepSeek 的“感知后端”，不是主会话模型。它不会出现在主模型选择器里，也不会替换 `ctx.llm`。
 
@@ -69,9 +69,10 @@ Vision API
 
 | 能力 | 当前行为 |
 | --- | --- |
-| 图片输入 | 本地绝对路径、http(s) URL、完整 attachment JSON、或当前进程内 bare `sha256:` attachment id |
-| 直接发图 | 拖入/粘贴图片后，发送钩子改写成安全引用；失败 **fail closed**，保留草稿图片供重试，不再退回已知会失败的 text-only raw-image send |
-| 重启后旧图 | 新发送的图片会把完整 `[image attachment {...}]` metadata 放进 HTML 隐藏注释；UI 不显示，但后续模型可优先把完整 JSON 交给工具，避免只靠进程内 bare-id registry |
+| 图片输入 | 本地绝对路径、http(s) URL、完整 attachment JSON、或宿主可解析的 attachment 引用 |
+| 直接发图 | 拖入/粘贴图片后，发送钩子先把图片提交到宿主 attachment store，用户消息只保留中性“已附加图片”标记；失败 **fail closed**，保留草稿图片供重试，不退回 text-only raw-image send |
+| 重启后旧图 | 完整 attachment 引用与 session 映射保存在有界的 host-side durable index；重启后只要 DSH attachment backend 仍保留字节，就能恢复旧图，无需把 attachment id、SHA、raw URL 或 routing 指令写进用户消息 |
+| 历史图片预览 | 已发送图片会在 conversation history 中恢复为 opaque preview 缩略图；单图/多图保持顺序，支持 session switch 与 host restart/reopen，并可点击打开 lightbox |
 | 高保真预处理 | PNG 截图/文档保持无损 PNG，最长边上限 3072；JPEG/WebP 照片走 2048 + JPEG 0.85；小图/GIF 保持原样 |
 | Task-aware perception | Adapter 在上游 wire 前自动识别 OCR / UI / code / chart / document / compare / translate 等任务，要求“观察事实优先、推断分离、保留文字数字、显式不确定性” |
 | 图内 prompt-injection 防护 | 视觉模型明确把图片中的命令、提示词、策略、工具文本当作**不可信视觉内容**，可转录但不得执行 |
@@ -84,7 +85,6 @@ Vision API
 | 响应兼容 | Chat Completions 同时接受 `message.content` 字符串和 text-parts 数组；Responses 接受标准 message output 与兼容端点的 `output_text`；reasoning/tool parts 不混入视觉证据 |
 | 模型发现 | Host 侧 `/models` discovery + 已知计划候选；浏览器不持有 Provider API Key |
 | 两种协议 | `chat-completions` 与 OpenAI `responses` |
-| 图片预览 | 对话引用可渲染缩略图并查看大图，可在设置里关闭 |
 
 ## 安全边界
 
@@ -95,7 +95,7 @@ Vision API
 - 图片 magic bytes 会重新 sniff；声明 MIME 与真实类型不一致会拒绝。
 - Provider 错误摘录有长度上限并做 Authorization / Bearer / api_key / `sk-*` redaction。
 - API Key 通过 DSH credential seam 保存；浏览器只知道“已配置”，拿不到明文。
-- 图片字节不进入 conversation log；隐藏 attachment metadata 只含宿主引用元数据，不含图片内容。
+- 图片字节不进入 conversation log；用户可见消息不包含 attachment id、SHA-256、raw URL、原始字节或 `understand_image` routing 指令，host-side durable index 单独保存恢复所需引用。
 - 图片内出现的提示词、命令或工具调用文字被 Vision Planner 明确视为不可信数据。
 
 ## 安装（Harness 官方插件机制）
@@ -105,10 +105,10 @@ Vision API
 要求：DeepSeek Harness 已安装、Node.js 22+，profile 包管理器为 pnpm。
 
 ```sh
-npx @deepseek-ai/dsh plugin --profile web add dsh-plugin-image-mind@0.1.1
+npx @deepseek-ai/dsh plugin --profile web add dsh-plugin-image-mind@0.2.0
 ```
 
-`@ran-sh/dsh-vision` 是 `dsh-plugin-image-mind` 的 npm 依赖，会随插件自动安装，**无需单独安装**。安装后重启（或触发 HMR 刷新）对应 web profile。
+`@ran-sh/dsh-vision@0.2.0` 是 `dsh-plugin-image-mind@0.2.0` 的 npm 依赖，会随插件自动安装，**无需单独安装**。安装后重启（或触发 HMR 刷新）对应 web profile。
 
 不要把 Harness 官方安装和手工修改 profile `cordis.patch.yml` 混用，否则会重复加载相同 bundle 层。
 
@@ -128,9 +128,10 @@ npx @deepseek-ai/dsh plugin --profile web remove dsh-plugin-image-mind
 
 | 插件版本 | vision 版本 | 已验证 DSH | 状态 |
 |---|---|---|---|
-| 0.1.1 | 0.1.0 | DSH CLI/runtime 0.1.0-rc.7 | KNOWN_GOOD（发布级） |
+| 0.2.0 | 0.2.0 | DSH CLI/runtime 0.1.0-rc.7 | KNOWN_GOOD（发布级；final real-DSH 10/10 PASS） |
+| 0.1.1 | 0.1.0 | DSH CLI/runtime 0.1.0-rc.7 | 历史发布 |
 | 0.1.0 | 0.1.0 | DSH CLI/runtime 0.1.0-rc.7 | 历史发布 |
-| `main` / Unreleased | Unreleased API additions | 以 CI + compatibility lane 为准 | 开发中 |
+| `main` / Unreleased | Unreleased | 以 CI + compatibility lane 为准 | 开发中 |
 
 DSH 仍在开发预览；宿主 `@deepseek-ai/dsh-*` 以 bounded peerDependencies 提供。本插件不承诺未来所有 DSH 版本自动兼容。详见 `docs/compatibility.md`。
 
@@ -138,7 +139,7 @@ DSH 仍在开发预览；宿主 `@deepseek-ai/dsh-*` 以 bounded peerDependencie
 
 在对话里：
 
-- 直接拖/粘贴图片发送；图片内容相关回答会被提示先调用 `understand_image`。
+- 直接拖/粘贴图片发送；用户消息只保留中性附件标记，图片内容相关回答会通过 model-only routing guidance 提示先调用 `understand_image`。
 - 说「分析 `/path/to/截图.png` 里的表格并转成 CSV」或提供图片 URL。
 - 多图比较可一次传入最多 8 张；如果 Provider 的真实 payload 限制更小，413 会自动拆批。
 - 要求「重新看」「重新 OCR」「不要用刚才结果」时，工具可使用 `cache: "refresh"` 强制重新分析像素。
@@ -177,8 +178,8 @@ packages/image-mind/
     discovery.ts              endpoint discovery + known-plan candidates
   src/media/                  load / validation / network policy
   src/cache/                  short-lived semantic cache
-  src/attachments/            attach/raw/RPC routes + process registry
-  src/client/                 settings UI / send hook / preview / upload
+  src/attachments/            durable references + attach/raw/RPC routes
+  src/client/                 settings UI / send hook / history preview / upload
 
 tests/                       cross-package composition / package boundaries
 ```
