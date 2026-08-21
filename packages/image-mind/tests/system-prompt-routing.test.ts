@@ -21,6 +21,15 @@ describe('image-mind hidden system-prompt routing', () => {
     expect(IMAGE_MIND_ROUTING_SECTION.text).toContain('omit `image` and `images`')
   })
 
+  it('forces a precise fresh lookup instead of guessing from insufficient cached evidence', () => {
+    expect(IMAGE_MIND_ROUTING_SECTION.text).toContain('`route.source`')
+    expect(IMAGE_MIND_ROUTING_SECTION.text).toContain('`evidence-cache`')
+    expect(IMAGE_MIND_ROUTING_SECTION.text).toContain('`semantic-cache`')
+    expect(IMAGE_MIND_ROUTING_SECTION.text).toContain('do not guess')
+    expect(IMAGE_MIND_ROUTING_SECTION.text).toContain('`cache: "no-store"`')
+    expect(IMAGE_MIND_ROUTING_SECTION.text).toContain('narrowly focused prompt')
+  })
+
   it('does not require systemPrompt in direct narrow unit-test fixtures', () => {
     expect(registerImageMindSystemPrompt({} as Context)).toBe(false)
   })

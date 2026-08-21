@@ -7,6 +7,18 @@ minor version). Package names: `@ran-sh/dsh-vision` (Service) and
 
 ## [Unreleased]
 
+### Added
+
+- `understand_image` now exposes structured, non-rendered route diagnostics so
+  consumers can distinguish provider responses, semantic-cache hits, reusable
+  evidence-cache hits, explicit route intent, and automatic model/provider
+  fallback without exposing endpoint or credential data.
+- Model-only image routing guidance now treats cached evidence as evidence, not
+  authority: when a cache hit lacks the exact visual detail needed for a narrow
+  follow-up, the main model is instructed to issue a focused `cache: "no-store"`
+  pixel read instead of guessing. This bypasses both cache layers without
+  replacing the broader reusable evidence entry.
+
 ## [0.2.0] — 2026-08-21
 
 ### Added
