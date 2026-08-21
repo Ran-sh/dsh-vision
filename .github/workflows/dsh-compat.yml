@@ -21,7 +21,7 @@ jobs:
       - name: One-command install (isolated DSH_HOME)
         run: |
           export DSH_HOME="$(mktemp -d)"
-          npx -y @deepseek-ai/dsh plugin --profile smoke add dsh-plugin-image-mind@0.1.1
+          npx -y @deepseek-ai/dsh plugin --profile smoke add dsh-plugin-image-mind@0.2.0
           echo "DSH_HOME=$DSH_HOME" >> "$GITHUB_ENV"
         env:
           DSH_HOME: ""
