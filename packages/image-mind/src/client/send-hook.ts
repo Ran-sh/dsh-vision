@@ -8,29 +8,22 @@
  * @module dsh-plugin-image-mind/client/send_hook
  */
 
-import { prepareImageForDescribe, uploadImage } from './attach.ts'
+import { commitImagePreviewBatch, prepareImageForDescribe, uploadImage } from './attach.ts'
 import { showToast } from './toast.ts'
 
-/** One draft image as the conversation service hands it back. */
 interface DraftImageFace {
   readonly id: string
   readonly file: File
 }
 
-/** One text prompt block. */
 interface TextBlock { type: 'text'; text: string }
-
-/** Prompt result shape returned by the session RPC. */
 interface PromptResult { ok: boolean; error?: { code: string; message?: string } }
 
-/** The session face needed to re-send a text-only prompt. */
 interface SessionPromptFace {
-  /** DSH session/agent identity; used only as a server-side attachment lookup key. */
   readonly sessionId?: string
   prompt(content: readonly TextBlock[], mode: string, signal?: AbortSignal): Promise<PromptResult>
 }
 
-/** The conversation-service surface this hook wraps. */
 interface ConversationSendFace {
   send(text: string): Promise<void>
   sendSession(session: SessionPromptFace, text: string, imageIds: readonly string[], mode: string, signal?: AbortSignal): Promise<unknown>
@@ -38,30 +31,21 @@ interface ConversationSendFace {
   releaseDraftImage(id: string): void
 }
 
-/** Installed-marker key on the wrapped service instance. */
 const HOOK_MARKER = '__dshImageMindSendHooked'
+export const PREVIEW_COMMITTED_EVENT = 'dsh-image-mind:preview-committed'
 
 /**
- * User-visible attachment marker. This deliberately carries NO tool-routing
- * instruction and no host attachment metadata. The model-side routing rule is
- * registered through the DSH system-prompt service instead of being smuggled
- * into the user's conversation text.
+ * User-visible attachment marker. It deliberately carries no tool-routing
+ * instruction, attachment id, raw URL, or host metadata.
  */
 export const VISION_ATTACHMENT_MARKER = '已附加图片。'
 
-/** Build the text-only rewrite without leaking routing or host attachment metadata. */
 export function buildVisionAwarePrompt(text: string, imageCount = 1): string {
   const count = Number.isSafeInteger(imageCount) && imageCount > 0 ? imageCount : 1
   const marker = count === 1 ? VISION_ATTACHMENT_MARKER : `已附加 ${count} 张图片。`
   return [text.trim(), marker].filter(part => part !== '').join('\n')
 }
 
-/**
- * Wrap the conversation service so image-bearing sends route through the
- * image-mind attach seam. No-op when the service surface is unavailable
- * (older shell) or already wrapped.
- * @param conversation - the `conversation` service instance.
- */
 export function installSendHook(conversation: unknown): void {
   const face = conversation as ConversationSendFace
   if (face === null || typeof face !== 'object') return
@@ -82,10 +66,6 @@ export function installSendHook(conversation: unknown): void {
     }
     const sessionId = typeof session.sessionId === 'string' ? session.sessionId.trim() : ''
     if (sessionId === '') {
-      // Without a stable DSH session identity there is no safe way to keep the
-      // routing metadata off the user-visible prompt while still letting the
-      // host tool resolve the just-uploaded images. Fail closed and preserve
-      // drafts instead of falling back to leaking refs into conversation text.
       showToast('图片发送失败：当前 DSH 会话缺少可用的 sessionId；草稿图片已保留', 'error')
       return
     }
@@ -95,8 +75,6 @@ export function installSendHook(conversation: unknown): void {
     let failureReason: string | undefined
     for (let index = 0; index < attachments.length; index += 1) {
       const attachment = attachments[index]
-      // Preflight: use the content-aware image policy before upload so OCR/UI
-      // screenshots retain more detail while photographic payloads stay small.
       const prepared = await prepareImageForDescribe(attachment.file)
       if (!prepared.ok) {
         failureReason = `prepare failed: ${prepared.message}`
@@ -115,26 +93,36 @@ export function installSendHook(conversation: unknown): void {
       uploadedCount += 1
     }
     if (uploadedCount !== attachments.length) {
-      // Fail closed. Falling back to the shell's raw image send is a known
-      // failure for text-only main models and can also discard the user's
-      // retry opportunity. Keep every draft image intact so the user can send
-      // again after fixing the transient prepare/upload problem.
       if (typeof console !== 'undefined') {
         console.warn(`[image-mind] image send blocked because rewrite did not complete (${failureReason ?? 'unknown'})`)
       }
       showToast(`图片发送失败：${failureReason ?? '未知原因'}；草稿图片已保留，可直接重试`, 'error')
       return
     }
+
     const fullText = buildVisionAwarePrompt(text, attachments.length)
     const result = await session.prompt([{ type: 'text', text: fullText }], mode, signal)
     if (!result.ok) {
-      // The rewrite succeeded but the conversation send did not. Keep the
-      // drafts for retry; release only after a successful session.prompt.
       showToast(`图片发送失败：${result.error?.message ?? result.error?.code ?? '会话发送失败'}；草稿图片已保留`, 'error')
       return
     }
+
+    // Only successful conversation admission promotes an upload batch into the
+    // historical preview ledger. A display-ledger failure must never retry the
+    // already admitted user message (which would duplicate it), so degrade to
+    // a warning while preserving the successful send.
+    const previewCommit = await commitImagePreviewBatch(sessionId, batchId)
+    if (!previewCommit.ok && typeof console !== 'undefined') {
+      console.warn(`[image-mind] message sent but preview history commit failed (${previewCommit.message})`)
+    }
+
     for (const id of imageIds) face.releaseDraftImage(id)
-    showToast('图片已就绪：发送后模型可通过 understand_image 分析')
+    if (previewCommit.ok && typeof window !== 'undefined') {
+      window.dispatchEvent(new Event(PREVIEW_COMMITTED_EVENT))
+    }
+    showToast(previewCommit.ok
+      ? '图片已就绪：发送后模型可通过 understand_image 分析'
+      : '图片已发送，但历史缩略图暂不可用；模型仍可正常分析')
   }
   ;(face as unknown as Record<string, unknown>)[HOOK_MARKER] = true
 }
