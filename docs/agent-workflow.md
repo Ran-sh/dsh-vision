@@ -1,92 +1,30 @@
-# Agent Handoff Protocol v1
+# Agent Handoff Protocol
 
-This repository uses GitHub as the durable handoff layer between ChatGPT, ZCode, Codex, DeepSeek Harness, and the user.
+Workflow source: `Ran-sh/chatgpt_workflow` v1.7.0 (`4d41242fc8fc89bb595681047e6e90f460d0d65d`).
 
-The goal is simple: detailed instructions live in the repository; the user only needs to send a short trigger from a phone or remote terminal.
+## 1. Authority model
 
-## Roles
+GitHub is the shared source of truth. The only authoritative active task is:
 
-- **ChatGPT**: architecture, diagnosis, task design, acceptance criteria, and next-iteration planning.
-- **ZCode**: implementation-oriented agent. May modify source only when the ACTIVE task explicitly uses `Mode: IMPLEMENT`.
-- **Codex**: independent verification/review agent by default. For `Mode: TEST_ONLY`, it must not modify source.
-- **DeepSeek Harness**: repository-driven runtime/operator agent. It is especially suitable for real Harness interaction, plugin/tool behavior, agent-routing checks, and other tasks that benefit from running inside the DSH environment. It may modify source only when its ACTIVE task explicitly uses `Mode: IMPLEMENT`.
-- **GitHub**: source of truth for task state, handoff instructions, reports, and commits.
+`docs/agent-tasks/ACTIVE_TASK.json`
 
-Roles are defaults, not hard product restrictions. The ACTIVE task controls what an agent is permitted to do.
+Codex, ZCode, Claude Code, DeepSeek Harness, or another compatible executor may execute the same Task Contract. Executor identity never grants permissions.
 
-## Repository layout
+If `ACTIVE_TASK.json` is missing or invalid, stop. Do not infer work from chat history, issues, old reports, source code, historical executor-specific ACTIVE files, or another executor.
 
-```text
-docs/
-├─ agent-workflow.md                              # permanent protocol; never deleted per task
-├─ agent-tasks/
-│  ├─ ACTIVE_ZCODE_TASK.md                        # exists only while a ZCode task is active
-│  ├─ ACTIVE_CODEX_TASK.md                        # exists only while a Codex task is active
-│  ├─ ACTIVE_DEEPSEEK_HARNESS_TASK.md             # exists only while a DSH task is active
-│  ├─ TEMPLATE_IMPLEMENT.md
-│  ├─ TEMPLATE_TEST_ONLY.md
-│  └─ TEMPLATE_DEEPSEEK_HARNESS.md
-├─ agent-results/
-│  └─ <agent>-<task>-report.md                    # durable implementation/review reports when requested
-├─ test-instructions/
-│  └─ ACTIVE_CODEX_TEST_PROMPT.txt                # current specialized DSH test entry; task removes it when done
-└─ test-results/
-   └─ dsh-vision-codex-test-report.md             # durable real-DSH verification report
-```
+`ACTIVE_TASK.md` may exist only as a non-authoritative human companion. JSON wins on conflict.
 
-An `ACTIVE_*` file is a queue item, not permanent documentation. It should be deleted by the executing agent after the task is completed and its result has been persisted.
+## 2. Modes
 
-## Required task header
+- `IMPLEMENT` — implementation changes only inside `allowed_changes`.
+- `TEST_ONLY` — validation/reporting only; writable paths are limited to `docs/agent-results/**`.
+- `REVIEW_ONLY` — inspection/reporting only; writable paths are limited to `docs/agent-results/**`.
 
-Every ACTIVE task must begin with:
+The task, not the executor adapter, determines scope.
 
-```text
-Protocol: Agent Handoff Protocol v1
-Agent: ZCODE | CODEX | DEEPSEEK_HARNESS | ANY
-Mode: IMPLEMENT | TEST_ONLY | REVIEW_ONLY
-Source Branch: main
-Source Commit: <sha or LATEST_MAIN>
-Result Path: <path or NONE>
-Delete Active Task On Completion: YES
-```
+## 3. Start-of-task protocol
 
-## Modes
-
-### `IMPLEMENT`
-
-The agent may modify only paths explicitly listed under `Allowed Changes`.
-
-Required behavior:
-
-1. Pull the latest requested source branch.
-2. Record the source commit SHA and initial `git status --short`.
-3. Read this protocol and the complete ACTIVE task before making changes.
-4. Do not broaden scope merely because nearby code could also be improved.
-5. Implement the requested change.
-6. Run the required tests in the ACTIVE task.
-7. Record tests that cannot run as `BLOCKED` or `NOT RUN`; never invent a pass.
-8. Inspect the final diff before commit.
-9. Commit only allowed source changes, task-requested report files, and deletion of the ACTIVE task.
-10. Push the requested branch.
-11. Return a concise summary with source SHA, result commit SHA, tests, and remaining blockers.
-
-### `TEST_ONLY`
-
-The agent is an independent verifier.
-
-It must not modify source, existing tests, assertions, configuration schemas, package versions, build scripts, or CI merely to make tests pass.
-
-Allowed writes are only the report/artifact paths explicitly listed by the ACTIVE task and deletion of the ACTIVE task itself.
-
-A failure is evidence, not a request to repair the repository.
-
-### `REVIEW_ONLY`
-
-The agent may inspect source, diffs, tests, logs, and reports but must not modify source. It may create a review report only if the ACTIVE task explicitly specifies a result path.
-
-## Start-of-task protocol
-
-Before any work, run or resolve the equivalent of:
+Resolve the equivalent of:
 
 ```sh
 git pull --ff-only
@@ -95,158 +33,107 @@ git branch --show-current
 git status --short
 ```
 
-If the agent runs inside an environment without direct git/terminal access, it must use the environment's repository connector/tooling to resolve the same facts. If it cannot access the target repository or requested revision at all, report `BLOCKED` rather than inventing repository state.
-
-If the worktree is already dirty, preserve the user's existing changes. Never erase, reset, clean, stash, or overwrite them without an explicit instruction in the ACTIVE task.
-
-If an ACTIVE task requires a particular source SHA and the checkout does not match, stop and report the mismatch instead of silently testing or implementing another revision.
-
-## Scope discipline
-
-Every ACTIVE task should contain these sections:
-
-- `Goal`
-- `Context`
-- `Allowed Changes`
-- `Forbidden Changes`
-- `Required Work`
-- `Required Tests`
-- `Acceptance Criteria`
-- `Result / Report Contract`
-- `Completion Commit Contract`
-
-Anything outside `Allowed Changes` is read-only unless the task explicitly says otherwise.
-
-When the agent discovers a separate defect, record it in the result report instead of opportunistically fixing it.
-
-## Testing truthfulness
-
-Use only these result states:
-
-- `PASS` — actually executed and met the stated expectation.
-- `FAIL` — executed and did not meet the expectation.
-- `PARTIAL` — only part of the requested scenario could be verified.
-- `SKIP` — intentionally not applicable in the current environment.
-- `BLOCKED` — required but impossible because of environment, credential, quota, platform, dependency, or other concrete blocker.
-- `NOT RUN` — not executed; reason required.
-
-Never convert `SKIP`, `BLOCKED`, or `NOT RUN` into `PASS`.
-
-## Secrets and private data
-
-Never commit or report:
-
-- API keys or bearer tokens
-- Authorization headers
-- cookies
-- credential-file contents
-- signed URL query strings
-- secret-bearing local paths
-- raw third-party error text containing credentials
-
-Use `[REDACTED]` when necessary. It is acceptable to record `credential: PRESENT`.
-
-## Commit contract
-
-Before committing, inspect:
+Then validate the task with the installed validator when local Node is available:
 
 ```sh
-git status --short
-git diff --cached --name-only
+node .agent-workflow/validator/validate-contract.mjs task docs/agent-tasks/ACTIVE_TASK.json
 ```
 
-The staged files must exactly match the ACTIVE task's completion contract.
+Confirm `source_branch` and `source_commit` before work. A symbolic source such as `LATEST_DEFAULT_BRANCH` must be explicitly present in the task and resolved to the actual commit used.
 
-Do not commit unrelated user changes.
+Never reset, clean, stash, overwrite, or discard unrelated user changes without explicit task authorization.
 
-The final task commit should normally contain:
+## 4. Scope and safety
 
-- requested implementation or report files;
-- deletion of the corresponding `ACTIVE_*` task file;
-- no unrelated paths.
+- Modify only `allowed_changes`.
+- Treat `forbidden_changes` as hard prohibitions.
+- Everything else is read-only.
+- `result_contract` must be under `docs/agent-results/**` and must itself appear in `allowed_changes`.
+- Do not invent project commands.
+- Never expose credentials, bearer tokens, cookies, API keys, signed URLs, credential-file contents, secret environment values, or private local paths.
+- Separate defects discovered during execution belong in the result report, not in opportunistic fixes.
 
-If the staged set is broader than allowed, stop and fix the staging set before commit.
+## 5. Validation states
 
-If the executing environment cannot commit/push but the ACTIVE task requires it, complete all executable work, persist the result through an allowed repository/file mechanism when possible, and mark the commit/push step `BLOCKED`. Never claim a push occurred when it did not.
+Use exactly: `PASS`, `FAIL`, `PARTIAL`, `SKIP`, `BLOCKED`, `NOT RUN`.
 
-## ACTIVE file lifecycle
+Never convert a skipped, blocked, partial, or not-run check into PASS.
 
-1. ChatGPT (or the user) creates an ACTIVE task in GitHub.
-2. The user sends a short trigger to the target agent.
-3. The agent pulls/resolves the latest branch and reads this protocol plus its own ACTIVE task.
-4. The agent executes the task.
-5. The agent writes any required durable result/report.
-6. The agent deletes its ACTIVE task.
-7. The agent commits and pushes only the task-approved changes when its environment supports those actions and the task requires them.
-8. The user tells ChatGPT the agent is finished.
-9. ChatGPT reads GitHub directly and creates the next task if needed.
+## 6. Execution lifecycle
 
-If the ACTIVE task is absent, the agent must not invent a task.
+1. Resolve the requested branch/revision and working-tree state.
+2. Read this workflow.
+3. Read and validate `ACTIVE_TASK.json`.
+4. Execute only authorized work.
+5. Run every required validation or record why it is `BLOCKED`, `SKIP`, or `NOT RUN`.
+6. Write the Result Contract/report.
+7. Verify `acceptance_criteria`.
+8. When the task is actually complete and `delete_active_task_on_completion` is true, delete `ACTIVE_TASK.json`; delete `ACTIVE_TASK.md` too when the completion contract includes it.
+9. Commit/push only paths in `completion_commit_contract` and follow repository branch/PR policy.
 
-Agents must not consume another agent's ACTIVE task unless that task explicitly declares `Agent: ANY` and the user directs them to execute it.
+The completion contract must include the Result Contract and deletion of `docs/agent-tasks/ACTIVE_TASK.json`.
 
-## Stable short trigger — ZCode
+## 7. Result handoff
 
-The user can send ZCode this message for every repository-driven task:
+Validate machine-readable JSON results with:
 
-> 拉取仓库最新目标分支，先完整读取 `docs/agent-workflow.md`，再读取并严格执行 `docs/agent-tasks/ACTIVE_ZCODE_TASK.md`。不要扩大任务范围。完成后按协议提交允许的结果、删除 ACTIVE 任务文件并推送；最后只回复 Source Commit SHA、Result Commit SHA、测试摘要、阻塞项和结果路径。若 ACTIVE 文件不存在则停止，不要自行猜任务。
+```sh
+node .agent-workflow/validator/validate-contract.mjs result <result-json>
+```
 
-## Stable short trigger — Codex
+A result must identify the task/source revision, overall status, changed files, validation outcomes, blockers, and result path. ChatGPT or another coordinator decides the next task; executors do not self-assign follow-up work.
 
-The user can send Codex this message for every repository-driven task:
+## 8. dsh-vision project facts
 
-> 拉取仓库最新目标分支，先完整读取 `docs/agent-workflow.md`，再读取并严格执行 `docs/agent-tasks/ACTIVE_CODEX_TASK.md`。不要扩大任务范围。完成后按协议提交允许的结果、删除 ACTIVE 任务文件并推送；最后只回复 Source Commit SHA、Result Commit SHA、测试/审查摘要、阻塞项和结果路径。若 ACTIVE 文件不存在则停止，不要自行猜任务。
+```text
+Repository: Ran-sh/dsh-vision
+Default branch: main
+Package manager: npm (package-lock.json is authoritative)
+Runtime: Node 22 / 24 in CI
+Language: TypeScript / JavaScript ESM workspace
+Source: packages/vision and packages/image-mind
+Typecheck: npm run typecheck
+Build: npm run build
+Primary tests: npm test
+E2E entry: npm run test:e2e
+Package integrity: npm run test:package
+Built-artifact verification: npm run test:built
+CI: .github/workflows/ci.yml
+DSH compatibility CI: .github/workflows/dsh-compat.yml
+Result contracts: docs/agent-results/
+```
 
-## Stable short trigger — DeepSeek Harness
+Do not invent a lint command: the root package currently defines no dedicated lint script.
 
-The user can send DeepSeek Harness this message for every repository-driven task:
+### Protected areas
 
-> 获取仓库最新目标分支，先完整读取 `docs/agent-workflow.md`，再读取并严格执行 `docs/agent-tasks/ACTIVE_DEEPSEEK_HARNESS_TASK.md`。不要扩大任务范围，不要读取其他 Agent 的 ACTIVE 任务。完成后按协议持久化允许的结果、删除自己的 ACTIVE 任务；若当前环境支持并且任务要求，再提交并推送。最后只回复 Source Commit SHA、Result Commit SHA（若有）、执行/测试摘要、阻塞项和结果路径。若 ACTIVE 文件不存在则停止，不要自行猜任务。
+Unless an `IMPLEMENT` task explicitly allows them, keep these read-only:
 
-For the current specialized Codex real-DSH verification cycle, `docs/test-instructions/ACTIVE_CODEX_TEST_PROMPT.txt` remains the active entry until that cycle finishes. Its instructions take precedence for that Codex test run.
+- `.github/workflows/**`
+- `package.json`, workspace package manifests, `package-lock.json`, and version/release metadata
+- credentials, provider secrets, `.env`, `.credentials.yml/.yaml`, signed URLs, local DSH credential/config stores
+- release/install behavior and unrelated product documentation
 
-## DeepSeek Harness task guidance
+Real DSH/provider checks must distinguish observable runtime behavior from source-only conclusions and must never persist credentials.
 
-DeepSeek Harness is especially useful when the task depends on behavior that only exists in the running Harness rather than in isolated source tests, for example:
+### Branch / PR policy
 
-- whether the main model actually chooses `understand_image`;
-- image-only and image+text conversation behavior;
-- repeated tool calls or missing tool calls;
-- plugin/tool rendering and runtime interaction;
-- attachment persistence across a Harness restart;
-- settings/runtime integration;
-- model/provider behavior through the currently configured Harness environment.
+Do not push implementation changes directly to `main` unless the task explicitly authorizes it. Prefer a feature/fix branch and PR. Never force-push, reset, or rewrite unrelated history.
 
-For these tasks, reports must distinguish observable DSH behavior from conclusions inferred only from source code.
+### Default implementation validation
 
-## Reporting contract
+Unless the task intentionally narrows the matrix, implementation work should consider:
 
-A durable agent result should be decision-oriented, not a transcript. It should include:
+```sh
+npm run typecheck
+npm run build
+npm test
+```
 
-- source commit tested/modified;
-- environment when relevant;
-- work actually performed;
-- exact tests executed;
-- pass/fail/blocked results;
-- important evidence;
-- known limitations;
-- files changed;
-- result commit SHA when available;
-- recommended next action, without silently performing out-of-scope work.
+For package/release changes, also consider the configured package/built checks and GitHub Actions matrix. Platform-specific behavior must be validated on the relevant platform.
 
-Do not include private chain-of-thought. Concise technical rationale and observable evidence are sufficient.
+## 9. Installation/removal
 
-## Conflict resolution
+This repository was migrated from a pre-v1.7 workflow. `docs/.agent-workflow-install.json` records newly generated files separately from pre-existing workflow files that were modified/adopted. Automated uninstall may remove only `generated_files`; migrated/adopted files require explicit review before deletion.
 
-Instruction precedence inside this workflow is:
-
-1. repository/security constraints and explicit user instruction;
-2. the current ACTIVE task;
-3. this permanent protocol;
-4. agent defaults.
-
-If two repository instructions conflict materially, stop the conflicting operation and report the conflict rather than guessing.
-
-## Versioning
-
-This document is **Agent Handoff Protocol v1**. Permanent workflow changes should update this file explicitly. Per-task details belong in ACTIVE task files, not here.
+Workflow infrastructure is development-only and is not a required product runtime dependency.

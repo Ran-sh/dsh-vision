@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "source_repository": "Ran-sh/chatgpt_workflow",
+  "workflow_version": "1.7.0",
+  "workflow_source_commit": "4d41242fc8fc89bb595681047e6e90f460d0d65d",
+  "project": "Ran-sh/dsh-vision",
+  "migration_source_commit": "450ba4b4666d8d1bfddfd0de75f7007c0566461f",
+  "generated_files": [
+    "docs/agent-short-triggers.md",
+    "docs/agent-tasks/TEMPLATE_TASK.json",
+    "docs/agent-tasks/TEMPLATE_REVIEW_ONLY.md",
+    "docs/agent-results/README.md",
+    ".agent-workflow/schema/task-contract.schema.json",
+    ".agent-workflow/schema/result-contract.schema.json",
+    ".agent-workflow/validator/validate-contract.mjs",
+    "docs/.agent-workflow-install.json"
+  ],
+  "generated_dirs": [
+    ".agent-workflow",
+    ".agent-workflow/schema",
+    ".agent-workflow/validator",
+    "docs/agent-results"
+  ],
+  "modified_files": [
+    "docs/agent-workflow.md",
+    "docs/agent-tasks/README.md",
+    "docs/agent-tasks/TEMPLATE_IMPLEMENT.md",
+    "docs/agent-tasks/TEMPLATE_TEST_ONLY.md"
+  ],
+  "removed_files": [
+    "docs/agent-tasks/TEMPLATE_DEEPSEEK_HARNESS.md"
+  ],
+  "release_removal_policy": "generated-files-auto; migrated-files-explicit-review",
+  "active_task_files": []
+}

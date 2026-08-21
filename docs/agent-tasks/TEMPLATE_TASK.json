@@ -1,0 +1,32 @@
+{
+  "id": "TASK-REPLACE-ME",
+  "mode": "IMPLEMENT",
+  "source_branch": "main",
+  "source_commit": "REPLACE_WITH_COMMIT_SHA_OR_LATEST_DEFAULT_BRANCH",
+  "objective": "Replace with the concrete task outcome.",
+  "context": "Replace with only the context required to execute the task.",
+  "allowed_changes": [
+    "REPLACE_WITH_ALLOWED_PATH",
+    "docs/agent-results/TASK-REPLACE-ME-result.json"
+  ],
+  "forbidden_changes": [
+    "secrets and credentials",
+    "unrelated files outside allowed_changes"
+  ],
+  "validation": [
+    "Replace with a real configured validation command or check."
+  ],
+  "acceptance_criteria": [
+    "Replace with an objective completion criterion."
+  ],
+  "result_contract": "docs/agent-results/TASK-REPLACE-ME-result.json",
+  "completion_commit_contract": [
+    "REPLACE_WITH_ALLOWED_PATH",
+    "docs/agent-results/TASK-REPLACE-ME-result.json",
+    "docs/agent-tasks/ACTIVE_TASK.json"
+  ],
+  "delete_active_task_on_completion": true,
+  "metadata": {
+    "executor": "ANY"
+  }
+}

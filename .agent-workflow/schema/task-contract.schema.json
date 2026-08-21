@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Ran-sh/chatgpt_workflow/schema/task-contract.schema.json",
+  "title": "Agent Workflow Task Contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id","mode","source_branch","source_commit","objective","context","allowed_changes","forbidden_changes","validation","acceptance_criteria","result_contract","completion_commit_contract","delete_active_task_on_completion"],
+  "properties": {
+    "id": {"type":"string","minLength":1},
+    "mode": {"type":"string","enum":["IMPLEMENT","TEST_ONLY","REVIEW_ONLY"]},
+    "source_branch": {"type":"string","minLength":1},
+    "source_commit": {"type":"string","minLength":1},
+    "objective": {"type":"string","minLength":1},
+    "context": {"type":"string"},
+    "allowed_changes": {"type":"array","items":{"type":"string","minLength":1},"uniqueItems":true},
+    "forbidden_changes": {"type":"array","items":{"type":"string","minLength":1},"minItems":1,"uniqueItems":true},
+    "validation": {"type":"array","items":{"type":"string","minLength":1},"minItems":1,"uniqueItems":true},
+    "acceptance_criteria": {"type":"array","items":{"type":"string","minLength":1},"minItems":1,"uniqueItems":true},
+    "result_contract": {"type":"string","minLength":1,"pattern":"^docs/agent-results/"},
+    "completion_commit_contract": {"type":"array","items":{"type":"string","minLength":1},"uniqueItems":true},
+    "delete_active_task_on_completion": {"type":"boolean","const":true},
+    "metadata": {"type":"object","additionalProperties":{"type":["string","number","boolean","null"]}}
+  },
+  "allOf": [{"if":{"properties":{"mode":{"enum":["TEST_ONLY","REVIEW_ONLY"]}},"required":["mode"]},"then":{"properties":{"allowed_changes":{"items":{"type":"string","pattern":"^docs/agent-results/"}},"completion_commit_contract":{"items":{"anyOf":[{"type":"string","pattern":"^docs/agent-results/"},{"const":"docs/agent-tasks/ACTIVE_TASK.json"},{"const":"docs/agent-tasks/ACTIVE_TASK.md"}]}}}}}]
+}
