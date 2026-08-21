@@ -18,6 +18,11 @@ minor version). Package names: `@ran-sh/dsh-vision` (Service) and
   follow-up, the main model is instructed to issue a focused `cache: "no-store"`
   pixel read instead of guessing. This bypasses both cache layers without
   replacing the broader reusable evidence entry.
+- Real benchmark JSONL now preserves `understand_image.route` telemetry. The
+  offline scorer reports route coverage, provider/semantic-cache/evidence-cache
+  source counts, requested/selected provider/model identities, and route-vs-
+  trace fallback consistency; the compare gate rejects material route-coverage
+  regressions.
 
 ## [0.2.0] — 2026-08-21
 
