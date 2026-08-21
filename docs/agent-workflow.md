@@ -1,6 +1,6 @@
 # Agent Handoff Protocol
 
-Workflow source: `Ran-sh/chatgpt_workflow` v1.7.0 (`375be55ad6e6131e350107f090de33cb29670b65`).
+Workflow source: `Ran-sh/chatgpt_workflow` v1.7.0 (`c38d94c48ebb1c48cff2eeba685dea69667f9998`).
 
 ## 1. Operating model
 
@@ -91,28 +91,45 @@ Never convert a skipped, blocked, partial, or not-run check into PASS.
 
 ## 7. Execution lifecycle
 
+New execution results use **Result Contract v2** (`schema_version: 2`). Historical Result Contracts without `schema_version` are legacy v1 and remain valid; do not rewrite old reports only to upgrade their format.
+
 1. Read this workflow.
 2. Read and validate `ACTIVE_TASK.json`.
 3. Confirm source revision and worktree safety.
-4. Execute only authorized work in the real environment.
-5. Run every required validation or record why it is `BLOCKED`, `SKIP`, or `NOT RUN`.
-6. Write the Result Contract/report.
-7. Verify `acceptance_criteria`.
-8. When the task is actually complete and `delete_active_task_on_completion` is true, delete `ACTIVE_TASK.json`; delete `ACTIVE_TASK.md` too when the completion contract includes it.
-9. Commit/push only paths in `completion_commit_contract` and follow repository branch/PR policy.
-10. Stop. Do not self-assign follow-up work.
+4. Start a Result Contract v2 draft and record `timeline.started_at` at second precision with timezone when real task execution begins.
+5. Execute only authorized work in the real environment.
+6. Run every required validation or record why it is `BLOCKED`, `SKIP`, or `NOT RUN`.
+7. Finish writing the Result Contract and record `timeline.completed_at` at second precision with timezone.
+8. Run the installed Result validator with `--stamp` so the validator itself writes `result_validation` evidence:
+
+   ```sh
+   node .agent-workflow/validator/validate-contract.mjs result <result-json> --stamp
+   ```
+
+9. Verify `acceptance_criteria`. A new Result Contract v2 without stamped validator evidence is incomplete.
+10. When the task is actually complete and `delete_active_task_on_completion` is true, delete `ACTIVE_TASK.json`; delete `ACTIVE_TASK.md` too when the completion contract includes it.
+11. Commit/push only paths in `completion_commit_contract` and follow repository branch/PR policy.
+12. Stop. Do not self-assign follow-up work.
 
 The completion contract must include the Result Contract and deletion of `docs/agent-tasks/ACTIVE_TASK.json`.
 
 ## 8. Result handoff
 
-Validate machine-readable JSON results with:
+New Result Contracts must include `schema_version: 2` and the auditable timeline:
 
-```sh
-node .agent-workflow/validator/validate-contract.mjs result <result-json>
+```text
+timeline.started_at
+  -> local execution and required checks
+  -> timeline.completed_at
+  -> validator --stamp
+  -> result_validation.validated_at
 ```
 
-A result must identify the task/source revision, overall status, changed files, validation outcomes, blockers, and result path.
+All three timestamps use ISO 8601 with year, month, day, hour, minute, second, and timezone, for example `2026-08-21T15:12:04+08:00`. Milliseconds are not used.
+
+`result_validation` is validator-owned evidence. Executors must not manually claim validator success. The validator writes `status: PASS`, the canonical command, the validation timestamp, and success evidence only after the v2 draft passes validation; the stamped final document is validated again before it is written.
+
+Historical v1 Result Contracts, identified by the absence of `schema_version`, remain valid without the v2 timeline/stamp fields.
 
 After execution, the user may simply tell ChatGPT that the executor finished. ChatGPT should inspect GitHub directly, evaluate the Result Contract and commit/PR, then continue the next GitHub-side action or create the next Task Contract.
 
