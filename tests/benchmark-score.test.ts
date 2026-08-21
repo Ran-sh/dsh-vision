@@ -14,7 +14,7 @@ describe('vision benchmark scorer', () => {
     expect(percentile([100, 200, 300, 400], 0.95)).toBeCloseTo(385)
   })
 
-  it('joins cases/results and aggregates routing, quality, latency, recovery, route, and cost metrics', () => {
+  it('joins cases/results and aggregates routing, quality, latency, recovery, route decisions, and cost metrics', () => {
     const score = scoreBenchmark([
       {
         id: 'ocr-1', category: 'ocr',
@@ -31,11 +31,9 @@ describe('vision benchmark scorer', () => {
         providerCalls: 1, payloadBytes: 1000, cacheHits: 0, inputTokens: 100, outputTokens: 20,
         retries: 0, modelFallbacks: 0, providerFallbacks: 0, splits: 0,
         route: {
-          source: 'provider',
-          selectedProvider: 'primary',
-          selectedModel: 'vision-a',
-          modelFallback: false,
-          providerFallback: false,
+          source: 'provider', task: 'ocr', cacheMode: 'use', evidenceLayerEnabled: true,
+          selectedProvider: 'primary', selectedModel: 'vision-a',
+          modelFallback: false, providerFallback: false,
         },
       },
       {
@@ -43,13 +41,10 @@ describe('vision benchmark scorer', () => {
         providerCalls: 3, payloadBytes: 2500, cacheHits: 1, inputTokens: 300, outputTokens: 40,
         retries: 1, modelFallbacks: 1, providerFallbacks: 1, splits: 1,
         route: {
-          source: 'provider',
-          requestedProvider: 'primary',
-          requestedModel: 'vision-a',
-          selectedProvider: 'backup',
-          selectedModel: 'vision-b',
-          modelFallback: true,
-          providerFallback: true,
+          source: 'provider', task: 'ui-review', cacheMode: 'use', evidenceLayerEnabled: false,
+          requestedProvider: 'primary', requestedModel: 'vision-a',
+          selectedProvider: 'backup', selectedModel: 'vision-b',
+          modelFallback: true, providerFallback: true,
         },
       },
     ])
@@ -60,8 +55,14 @@ describe('vision benchmark scorer', () => {
     expect(score.taskSuccessRate).toBe(0.75)
     expect(score.traceCoverage).toBe(0.75)
     expect(score.routeCoverage).toBe(0.75)
+    expect(score.routeDecisionCoverage).toBe(0.75)
     expect(score.routeTraceConsistencyRate).toBe(1)
+    expect(score.routeDecisionConsistencyRate).toBe(1)
+    expect(score.evidenceLayerEnabledRate).toBeCloseTo(1 / 3)
     expect(score.routeSources).toEqual({ provider: 2, semanticCache: 0, evidenceCache: 0, unknown: 0 })
+    expect(score.routeTasks).toMatchObject({ ocr: 1, 'ui-review': 1, unknown: 0 })
+    expect(score.routeCacheModes).toEqual({ use: 2, refresh: 0, noStore: 0, unknown: 0 })
+    expect(score.evidenceLayer).toEqual({ enabled: 1, disabled: 1, unknown: 0 })
     expect(score.routeSourceOutcomes.provider).toMatchObject({
       cases: 2,
       passed: 2,
@@ -73,11 +74,15 @@ describe('vision benchmark scorer', () => {
     })
     expect(score.routeSourceOutcomes.unknown.cases).toBe(0)
     expect(score.rows[1]).toMatchObject({
+      routeTask: 'ui-review',
+      routeCacheMode: 'use',
+      evidenceLayerEnabled: false,
       requestedProvider: 'primary',
       requestedModel: 'vision-a',
       selectedProvider: 'backup',
       selectedModel: 'vision-b',
       routeTraceConsistent: true,
+      routeDecisionConsistent: true,
     })
     expect(score.tokenUsageCoverage).toBe(0.75)
     expect(score.latencyMs.p50).toBe(200)
@@ -100,28 +105,33 @@ describe('vision benchmark scorer', () => {
       {
         id: 'semantic', answer: 'facts', toolCalled: true, providerCalls: 0, cacheHits: 1,
         route: {
-          source: 'semantic-cache', selectedProvider: 'p', selectedModel: 'm',
-          modelFallback: false, providerFallback: false,
+          source: 'semantic-cache', task: 'ocr', cacheMode: 'use', evidenceLayerEnabled: true,
+          selectedProvider: 'p', selectedModel: 'm', modelFallback: false, providerFallback: false,
         },
       },
       {
         id: 'evidence', answer: 'facts', toolCalled: true, providerCalls: 0, cacheHits: 1,
         route: {
-          source: 'evidence-cache', selectedProvider: 'p', selectedModel: 'm',
-          modelFallback: false, providerFallback: false,
+          source: 'evidence-cache', task: 'ocr', cacheMode: 'use', evidenceLayerEnabled: true,
+          selectedProvider: 'p', selectedModel: 'm', modelFallback: false, providerFallback: false,
         },
       },
       {
         id: 'evidence-bad', answer: 'broad facts only', toolCalled: true, providerCalls: 0, cacheHits: 1,
         route: {
-          source: 'evidence-cache', selectedProvider: 'p', selectedModel: 'm',
-          modelFallback: false, providerFallback: false,
+          source: 'evidence-cache', task: 'ocr', cacheMode: 'use', evidenceLayerEnabled: true,
+          selectedProvider: 'p', selectedModel: 'm', modelFallback: false, providerFallback: false,
         },
       },
     ])
 
     expect(score.routeCoverage).toBe(1)
+    expect(score.routeDecisionCoverage).toBe(1)
+    expect(score.routeDecisionConsistencyRate).toBe(1)
+    expect(score.evidenceLayerEnabledRate).toBe(1)
     expect(score.routeSources).toEqual({ provider: 0, semanticCache: 1, evidenceCache: 2, unknown: 0 })
+    expect(score.routeTasks.ocr).toBe(3)
+    expect(score.routeCacheModes.use).toBe(3)
     expect(score.routeSourceOutcomes.semanticCache).toMatchObject({
       cases: 1, passed: 1, taskSuccessRate: 1, providerCalls: 0, cacheHits: 1,
     })
@@ -131,7 +141,43 @@ describe('vision benchmark scorer', () => {
     expect(score.zeroProviderReuseRate).toBe(1)
   })
 
-  it('flags route/trace fallback disagreement without treating missing route as valid telemetry', () => {
+  it('flags impossible route decision combinations', () => {
+    const score = scoreBenchmark([
+      { id: 'bad-evidence' },
+      { id: 'bad-explicit' },
+      { id: 'good-refresh' },
+    ], [
+      {
+        id: 'bad-evidence', answer: 'facts', toolCalled: true, providerCalls: 0, cacheHits: 1,
+        route: {
+          source: 'evidence-cache', task: 'ocr', cacheMode: 'no-store', evidenceLayerEnabled: false,
+          selectedProvider: 'p', selectedModel: 'm', modelFallback: false, providerFallback: false,
+        },
+      },
+      {
+        id: 'bad-explicit', answer: 'facts', toolCalled: true, providerCalls: 1, cacheHits: 0,
+        route: {
+          source: 'provider', task: 'ocr', cacheMode: 'use', evidenceLayerEnabled: true,
+          requestedProvider: 'p', selectedProvider: 'p', selectedModel: 'm',
+          modelFallback: false, providerFallback: false,
+        },
+      },
+      {
+        id: 'good-refresh', answer: 'facts', toolCalled: true, providerCalls: 1, cacheHits: 0,
+        route: {
+          source: 'provider', task: 'ocr', cacheMode: 'refresh', evidenceLayerEnabled: true,
+          selectedProvider: 'p', selectedModel: 'm', modelFallback: false, providerFallback: false,
+        },
+      },
+    ])
+
+    expect(score.routeDecisionCoverage).toBe(1)
+    expect(score.routeDecisionConsistencyRate).toBeCloseTo(1 / 3)
+    expect(score.rows.map(row => row.routeDecisionConsistent)).toEqual([false, false, true])
+    expect(score.routeCacheModes).toEqual({ use: 1, refresh: 1, noStore: 1, unknown: 0 })
+  })
+
+  it('flags route/trace fallback disagreement without treating missing route decisions as valid telemetry', () => {
     const score = scoreBenchmark([{ id: 'mismatch' }, { id: 'legacy' }], [
       {
         id: 'mismatch', answer: 'facts', toolCalled: true,
@@ -145,8 +191,11 @@ describe('vision benchmark scorer', () => {
     ])
 
     expect(score.routeCoverage).toBe(0.5)
+    expect(score.routeDecisionCoverage).toBe(0)
     expect(score.routeTraceConsistencyRate).toBe(0)
+    expect(score.routeDecisionConsistencyRate).toBeUndefined()
     expect(score.routeSources.unknown).toBe(1)
+    expect(score.routeTasks.unknown).toBe(2)
     expect(score.routeSourceOutcomes.unknown).toMatchObject({ cases: 1, passed: 1, providerCalls: 1 })
   })
 
@@ -177,6 +226,7 @@ describe('vision benchmark scorer', () => {
 
     expect(score.traceCoverage).toBe(0)
     expect(score.routeCoverage).toBe(0)
+    expect(score.routeDecisionCoverage).toBe(0)
     expect(score.tokenUsageCoverage).toBe(0)
     expect(score.zeroProviderReuseRate).toBe(0)
     expect(score.totals.calls).toBe(0)
