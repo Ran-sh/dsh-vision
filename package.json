@@ -1,7 +1,7 @@
 {
   "name": "dsh-vision",
   "description": "Workspace root: the @ran-sh/dsh-vision service package (owns ctx.vision) plus the dsh-plugin-image-mind provider/tool plugin (injects ['vision'] and registers into it), following the DeepSeek Harness Service Definition / Provider Plugin split.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "workspaces": [
