@@ -16,6 +16,7 @@ export const DEFAULT_BENCHMARK_THRESHOLDS = Object.freeze({
   maxTaskSuccessRegression: 0.02,
   maxForbiddenHitIncrease: 0,
   maxTraceCoverageRegression: 0.10,
+  maxRouteCoverageRegression: 0.10,
   maxTokenCoverageRegression: 0.10,
   minComparableCoverage: 0.80,
   maxP95LatencyRatio: 1.30,
@@ -88,6 +89,8 @@ export function compareBenchmarkScores(baseline, candidate, thresholds = {}) {
 
   const baselineTraceCoverage = finite(baseline.traceCoverage) ?? 0
   const candidateTraceCoverage = finite(candidate.traceCoverage) ?? 0
+  const baselineRouteCoverage = finite(baseline.routeCoverage) ?? 0
+  const candidateRouteCoverage = finite(candidate.routeCoverage) ?? 0
   const baselineTokenCoverage = finite(baseline.tokenUsageCoverage) ?? 0
   const candidateTokenCoverage = finite(candidate.tokenUsageCoverage) ?? 0
 
@@ -97,6 +100,7 @@ export function compareBenchmarkScores(baseline, candidate, thresholds = {}) {
     checkLower('task-success-rate', baseline.taskSuccessRate, candidate.taskSuccessRate, t.maxTaskSuccessRegression),
     checkUpper('forbidden-hit-count', baseline.forbiddenHitCount, candidate.forbiddenHitCount, baseline.forbiddenHitCount + t.maxForbiddenHitIncrease),
     checkLower('trace-coverage', baselineTraceCoverage, candidateTraceCoverage, t.maxTraceCoverageRegression),
+    checkLower('route-coverage', baselineRouteCoverage, candidateRouteCoverage, t.maxRouteCoverageRegression),
     checkLower('token-usage-coverage', baselineTokenCoverage, candidateTokenCoverage, t.maxTokenCoverageRegression),
   ]
 
@@ -140,6 +144,10 @@ export function compareBenchmarkScores(baseline, candidate, thresholds = {}) {
       candidateTaskSuccessRate: candidate.taskSuccessRate,
       baselineTraceCoverage,
       candidateTraceCoverage,
+      baselineRouteCoverage,
+      candidateRouteCoverage,
+      baselineRouteSources: baseline.routeSources ?? {},
+      candidateRouteSources: candidate.routeSources ?? {},
       baselineTokenUsageCoverage: baselineTokenCoverage,
       candidateTokenUsageCoverage: candidateTokenCoverage,
       baselineZeroProviderReuseRate: baseline.zeroProviderReuseRate ?? 0,

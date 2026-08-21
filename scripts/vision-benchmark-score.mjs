@@ -77,6 +77,27 @@ function hasFiniteField(record, fields) {
   })
 }
 
+const ROUTE_SOURCES = new Set(['provider', 'semantic-cache', 'evidence-cache'])
+
+function routeTelemetry(result) {
+  const route = result?.route
+  if (route === null || typeof route !== 'object') return { reported: false }
+  if (!ROUTE_SOURCES.has(route.source)) return { reported: false }
+  if (typeof route.selectedProvider !== 'string' || route.selectedProvider.length === 0) return { reported: false }
+  if (typeof route.selectedModel !== 'string' || route.selectedModel.length === 0) return { reported: false }
+  if (typeof route.modelFallback !== 'boolean' || typeof route.providerFallback !== 'boolean') return { reported: false }
+  return {
+    reported: true,
+    source: route.source,
+    requestedProvider: typeof route.requestedProvider === 'string' && route.requestedProvider.length > 0 ? route.requestedProvider : undefined,
+    requestedModel: typeof route.requestedModel === 'string' && route.requestedModel.length > 0 ? route.requestedModel : undefined,
+    selectedProvider: route.selectedProvider,
+    selectedModel: route.selectedModel,
+    modelFallback: route.modelFallback,
+    providerFallback: route.providerFallback,
+  }
+}
+
 /** Score all cases and aggregate stable benchmark metrics. */
 export function scoreBenchmark(cases, results) {
   const resultById = new Map(results.map(result => [result.id, result]))
@@ -99,6 +120,12 @@ export function scoreBenchmark(cases, results) {
         'providerCalls', 'calls', 'payloadBytes', 'cacheHits', 'retries',
         'modelFallbacks', 'providerFallbacks', 'splits',
       ])
+    const route = routeTelemetry(result)
+    const modelFallbacks = finiteNonNegative(result?.modelFallbacks)
+    const providerFallbacks = finiteNonNegative(result?.providerFallbacks)
+    const routeTraceConsistent = route.reported && traceReported
+      ? route.modelFallback === (modelFallbacks > 0) && route.providerFallback === (providerFallbacks > 0)
+      : undefined
 
     rows.push({
       id: testCase.id,
@@ -117,16 +144,27 @@ export function scoreBenchmark(cases, results) {
       outputTokens,
       usageReported,
       traceReported,
+      routeReported: route.reported,
+      routeSource: route.reported ? route.source : undefined,
+      requestedProvider: route.reported ? route.requestedProvider : undefined,
+      requestedModel: route.reported ? route.requestedModel : undefined,
+      selectedProvider: route.reported ? route.selectedProvider : undefined,
+      selectedModel: route.reported ? route.selectedModel : undefined,
+      routeTraceConsistent,
       zeroProviderReuse: result !== undefined && toolCalled && traceReported && calls === 0 && cacheHits > 0,
       retries: finiteNonNegative(result?.retries),
-      modelFallbacks: finiteNonNegative(result?.modelFallbacks),
-      providerFallbacks: finiteNonNegative(result?.providerFallbacks),
+      modelFallbacks,
+      providerFallbacks,
       splits: finiteNonNegative(result?.splits),
     })
   }
 
   const totalWeight = rows.reduce((sum, row) => sum + row.weight, 0)
   const weighted = (predicate) => totalWeight === 0 ? 0 : rows.reduce((sum, row) => sum + (predicate(row) ? row.weight : 0), 0) / totalWeight
+  const weightedAmong = (eligible, predicate) => {
+    const eligibleWeight = rows.reduce((sum, row) => sum + (eligible(row) ? row.weight : 0), 0)
+    return eligibleWeight === 0 ? undefined : rows.reduce((sum, row) => sum + (eligible(row) && predicate(row) ? row.weight : 0), 0) / eligibleWeight
+  }
   const latencies = rows.filter(row => row.success && Number.isFinite(row.latencyMs)).map(row => row.latencyMs)
   const categories = {}
   for (const row of rows) {
@@ -137,6 +175,13 @@ export function scoreBenchmark(cases, results) {
   }
   for (const bucket of Object.values(categories)) bucket.passRate = bucket.cases === 0 ? 0 : bucket.passed / bucket.cases
 
+  const routeSources = {
+    provider: rows.filter(row => row.routeSource === 'provider').length,
+    semanticCache: rows.filter(row => row.routeSource === 'semantic-cache').length,
+    evidenceCache: rows.filter(row => row.routeSource === 'evidence-cache').length,
+    unknown: rows.filter(row => !row.routeReported && !row.missing).length,
+  }
+
   return {
     cases: rows.length,
     missing: rows.filter(row => row.missing).length,
@@ -145,6 +190,12 @@ export function scoreBenchmark(cases, results) {
     taskSuccessRate: weighted(row => row.success),
     forbiddenHitCount: rows.reduce((sum, row) => sum + row.forbiddenHits, 0),
     traceCoverage: weighted(row => row.traceReported && !row.missing),
+    routeCoverage: weighted(row => row.routeReported && !row.missing),
+    routeTraceConsistencyRate: weightedAmong(
+      row => row.routeReported && row.traceReported,
+      row => row.routeTraceConsistent === true,
+    ),
+    routeSources,
     tokenUsageCoverage: weighted(row => row.usageReported && !row.missing),
     zeroProviderReuseRate: weighted(row => row.zeroProviderReuse),
     latencyMs: { p50: percentile(latencies, 0.5), p95: percentile(latencies, 0.95) },
