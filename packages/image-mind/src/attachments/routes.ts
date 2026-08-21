@@ -1,16 +1,20 @@
 /**
- * The /image-mind host routes: a browser-to-host upload seam that turns a
- * picked image into a durable attachment reference, plus the raw route that
- * serves stored bytes, plus thin vision RPC for settings.
+ * The /image-mind host routes: upload + durable raw bytes, safe committed
+ * conversation-preview lookup, and thin settings/connection RPC.
  * @module dsh-plugin-image-mind/attachments/routes
  */
 
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Context } from '@deepseek-ai/cordis'
+import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import { decodeBase64, isImageMimeType, sniffMimeType, type ImageMimeType } from '../media/validate.ts'
-import { DEFAULT_MAX_BYTES } from '../media/types.ts'
 import { handleAttach } from './routes-core.ts'
-import { durableAttachmentRefById } from './ref-index.ts'
+import {
+  commitSessionAttachmentBatch,
+  durableAttachmentRefById,
+  previewAttachmentRef,
+  sessionAttachmentPreviewBatches,
+} from './ref-index.ts'
 import { ROUTE_PREFIX } from './store.ts'
 
 export { ROUTE_PREFIX }
@@ -18,7 +22,6 @@ export { ROUTE_PREFIX }
 /** Request-body byte cap: base64 of a 10 MiB image plus envelope slack. */
 export const MAX_ATTACH_BODY_BYTES = 16 * 1024 * 1024
 
-/** Read a JSON request body up to a byte cap; null when unparseable or oversized. */
 async function readJsonBody(req: IncomingMessage, cap: number): Promise<unknown> {
   const chunks: Buffer[] = []
   let total = 0
@@ -37,39 +40,19 @@ async function readJsonBody(req: IncomingMessage, cap: number): Promise<unknown>
   }
 }
 
-/** Write one JSON envelope response. */
 function json(res: ServerResponse, envelope: unknown, status = 200): void {
   res.writeHead(status, { 'content-type': 'application/json; charset=utf-8' })
   res.end(JSON.stringify(envelope))
 }
 
-/**
- * Serve one stored image by its bare attachment id. DSH's durable attachment
- * backend validates a COMPLETE reference, not merely the sha256 id; resolve
- * that metadata through image-mind's bounded durable index first. This is the
- * restart-safe half of the attach seam.
- */
-async function serveRawImage(ctx: Context, req: IncomingMessage, res: ServerResponse): Promise<void> {
-  const match = new RegExp(`^${ROUTE_PREFIX}/raw/([^/]+)$`).exec(new URL(req.url ?? '/', 'http://x').pathname)
-  if (match === null) {
-    res.writeHead(404)
-    res.end()
-    return
-  }
-  const id = decodeURIComponent(match[1])
+async function serveStoredImage(ctx: Context, ref: ImageAttachmentRef | undefined, res: ServerResponse): Promise<void> {
   const attachments = ctx.get('attachments')
-  if (attachments === undefined) {
+  if (attachments === undefined || ref === undefined) {
     res.writeHead(404)
     res.end()
     return
   }
   try {
-    const ref = await durableAttachmentRefById(ctx, id)
-    if (ref === undefined) {
-      res.writeHead(404)
-      res.end()
-      return
-    }
     const stored = await attachments.readImage(ref)
     res.writeHead(200, {
       'content-type': stored.ref.mediaType,
@@ -83,19 +66,40 @@ async function serveRawImage(ctx: Context, req: IncomingMessage, res: ServerResp
   }
 }
 
-/** Loopback socket addresses the web shell serves on. */
+async function serveRawImage(ctx: Context, req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const match = new RegExp(`^${ROUTE_PREFIX}/raw/([^/]+)$`).exec(new URL(req.url ?? '/', 'http://x').pathname)
+  if (match === null) {
+    res.writeHead(404)
+    res.end()
+    return
+  }
+  const id = decodeURIComponent(match[1])
+  await serveStoredImage(ctx, await durableAttachmentRefById(ctx, id), res)
+}
+
+async function serveCommittedPreview(ctx: Context, req: IncomingMessage, res: ServerResponse): Promise<boolean> {
+  const match = new RegExp(`^${ROUTE_PREFIX}/preview/([^/]+)/(\\d+)$`).exec(new URL(req.url ?? '/', 'http://x').pathname)
+  if (match === null) return false
+  if (!isTrustedLocalRequest(req)) {
+    res.writeHead(403)
+    res.end()
+    return true
+  }
+  const batchId = decodeURIComponent(match[1])
+  const batchIndex = Number(match[2])
+  await serveStoredImage(ctx, await previewAttachmentRef(ctx, batchId, batchIndex), res)
+  return true
+}
+
 const LOOPBACK_ADDRESSES = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1'])
 
-/** Whether one request's socket is loopback. */
 function isLoopbackSocket(req: IncomingMessage): boolean {
   const address = req.socket.remoteAddress
   return address !== undefined && LOOPBACK_ADDRESSES.has(address)
 }
 
-/** Loopback Host names (what a browser on this machine sends). */
 const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]', '::1'])
 
-/** Whether the request Host names a loopback authority. */
 function isLoopbackHost(req: IncomingMessage): boolean {
   const host = req.headers['host']
   if (typeof host !== 'string' || host.length === 0) return false
@@ -107,7 +111,6 @@ function isLoopbackHost(req: IncomingMessage): boolean {
   }
 }
 
-/** Whether a browser origin is same-origin with the request authority (if any). */
 function isSameOrigin(req: IncomingMessage): boolean {
   const origin = req.headers['origin']
   if (origin === undefined) return true
@@ -123,25 +126,28 @@ function isSameOrigin(req: IncomingMessage): boolean {
   }
 }
 
-/** The effective port of a parsed authority (default-port-aware). */
 function effectivePortOf(url: URL): number {
   if (url.port !== '') return Number(url.port)
   if (url.protocol === 'https:') return 443
   return 80
 }
 
-/**
- * Local trust fence for secret-bearing RPC (`/test`, `/models`, config POST).
- */
+/** Local trust fence for settings and preview metadata/bytes. */
 export function isTrustedLocalRequest(req: IncomingMessage): boolean {
   return isLoopbackSocket(req) && isLoopbackHost(req) && isSameOrigin(req)
 }
 
-/**
- * Register the /image-mind prefix route on the shared webserver: POST
- * /image-mind/attach uploads, GET /image-mind/raw/<id> serves stored bytes,
- * and POST /image-mind/test + /image-mind/models are thin settings RPC.
- */
+function previewCommitBody(value: unknown): { sessionId: string; batchId: string } | undefined {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined
+  const record = value as Record<string, unknown>
+  const sessionId = record['sessionId']
+  const batchId = record['batchId']
+  if (typeof sessionId !== 'string' || sessionId.length === 0 || sessionId.length > 256) return undefined
+  if (typeof batchId !== 'string' || batchId.length === 0 || batchId.length > 128) return undefined
+  return { sessionId, batchId }
+}
+
+/** Register all image-mind web routes on the shared DSH webserver. */
 export function registerAttachRoute(
   ctx: Context,
   hooks: {
@@ -163,7 +169,9 @@ export function registerAttachRoute(
     kind: 'prefix',
     path: ROUTE_PREFIX,
     handler: async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
-      const pathname = new URL(req.url ?? '/', 'http://x').pathname
+      const parsedUrl = new URL(req.url ?? '/', 'http://x')
+      const pathname = parsedUrl.pathname
+
       if (req.method === 'GET' && pathname === `${ROUTE_PREFIX}/config`) {
         const view = await hooks.readConfigView()
         if (view === undefined) {
@@ -173,6 +181,43 @@ export function registerAttachRoute(
         json(res, { ok: true, value: view })
         return
       }
+
+      if (req.method === 'GET' && pathname === `${ROUTE_PREFIX}/previews`) {
+        if (!isTrustedLocalRequest(req)) {
+          json(res, { ok: false, error: { code: 'rejected', message: 'untrusted origin' } }, 403)
+          return
+        }
+        const sessionId = parsedUrl.searchParams.get('sessionId')
+        if (sessionId === null || sessionId.length === 0 || sessionId.length > 256) {
+          json(res, { ok: false, error: { code: 'rejected', message: 'sessionId is required' } }, 422)
+          return
+        }
+        const batches = await sessionAttachmentPreviewBatches(ctx, sessionId)
+        json(res, { ok: true, value: { batches } })
+        return
+      }
+
+      if (req.method === 'GET' && await serveCommittedPreview(ctx, req, res)) return
+
+      if (req.method === 'POST' && pathname === `${ROUTE_PREFIX}/preview/commit`) {
+        if (!isTrustedLocalRequest(req)) {
+          json(res, { ok: false, error: { code: 'rejected', message: 'untrusted origin' } }, 403)
+          return
+        }
+        const body = previewCommitBody(await readJsonBody(req, 8 * 1024))
+        if (body === undefined) {
+          json(res, { ok: false, error: { code: 'rejected', message: 'sessionId and batchId are required' } }, 422)
+          return
+        }
+        const committed = await commitSessionAttachmentBatch(ctx, body.sessionId, body.batchId)
+        if (!committed) {
+          json(res, { ok: false, error: { code: 'conflict', message: 'preview batch is incomplete or no longer latest' } }, 409)
+          return
+        }
+        json(res, { ok: true, value: { committed: true } })
+        return
+      }
+
       if (req.method === 'POST' && pathname === `${ROUTE_PREFIX}/config`) {
         if (!isTrustedLocalRequest(req)) {
           json(res, { ok: false, error: { code: 'rejected', message: 'untrusted origin' } }, 403)
@@ -191,6 +236,7 @@ export function registerAttachRoute(
         json(res, { ok: false, error: outcome.error }, outcome.error?.code === 'rejected' ? 422 : 500)
         return
       }
+
       if (req.method === 'POST' && pathname === `${ROUTE_PREFIX}/test`) {
         if (!isTrustedLocalRequest(req)) {
           json(res, { ok: false, error: { code: 'rejected', message: 'untrusted origin' } }, 403)
@@ -209,6 +255,7 @@ export function registerAttachRoute(
         json(res, { ok: false, error: { code: outcome.visualFailed === true ? 'visual' : 'failed', message: outcome.message } })
         return
       }
+
       if (req.method === 'POST' && pathname === `${ROUTE_PREFIX}/models`) {
         if (!isTrustedLocalRequest(req)) {
           json(res, { ok: false, error: { code: 'rejected', message: 'untrusted origin' } }, 403)
@@ -227,10 +274,12 @@ export function registerAttachRoute(
         json(res, { ok: false, error: { code: 'failed', message: outcome.message } })
         return
       }
+
       if (req.method === 'GET' && pathname === `${ROUTE_PREFIX}/catalog`) {
         json(res, { ok: true, value: { catalog: hooks.catalog() } })
         return
       }
+
       if (req.method === 'GET') {
         await serveRawImage(ctx, req, res)
         return
@@ -239,6 +288,7 @@ export function registerAttachRoute(
         json(res, { ok: false, error: { code: 'internal', message: 'only GET and POST are allowed' } }, 405)
         return
       }
+
       const body = await readJsonBody(req, MAX_ATTACH_BODY_BYTES)
       if (body === null) {
         json(res, { ok: false, error: { code: 'internal', message: 'request body must be JSON within 16 MiB' } }, 400)

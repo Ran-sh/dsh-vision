@@ -21,8 +21,13 @@ import { settingsNamespace } from '@deepseek-ai/dsh-settings'
 
 /** Environment-variable name the API key resolves through when no inline key is configured. */
 export const DEFAULT_API_KEY_ENV = 'VISION_API_KEY'
-/** Per-call output-token cap sent to the vision model. */
-export const DEFAULT_MAX_OUTPUT_TOKENS = 1024
+/**
+ * Provider-side output-token hard cap. Keep the default at least as large as
+ * the largest task policy (OCR/document = 3000) so task-aware budgets are not
+ * silently flattened to the historical 1024-token default. Explicit user
+ * configuration remains authoritative and may intentionally lower this cap.
+ */
+export const DEFAULT_MAX_OUTPUT_TOKENS = 3000
 /** Per-call vision request timeout in milliseconds. */
 export const DEFAULT_TIMEOUT_MS = 60_000
 /** Protocol styles the tool can speak to the configured endpoint. */

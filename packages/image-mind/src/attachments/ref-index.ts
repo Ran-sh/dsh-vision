@@ -1,15 +1,10 @@
 /**
- * Durable image-mind attachment metadata index.
+ * Durable image-mind attachment metadata and session-batch index.
  *
- * DSH's attachment backend persists immutable image bytes, but reading those
- * bytes requires the complete ImageAttachmentRef (media type, size and
- * dimensions) in addition to the content-addressed id. The browser send path
- * must not leak that metadata into the user-visible conversation merely to
- * make later reads possible, so image-mind keeps a small metadata-only index
- * beside the local attachment store when the backend exposes a storage root.
- *
- * Non-local/opaque attachment backends still get the bounded in-process index;
- * persistence simply degrades to process lifetime rather than guessing a path.
+ * Attachment bytes remain owned by DSH. This index stores only validated
+ * metadata plus bounded session routing/preview ledgers so neither model
+ * recovery nor conversation previews need raw attachment metadata embedded in
+ * user-visible conversation text.
  */
 
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
@@ -21,6 +16,7 @@ import { parseImageAttachmentRef, registerAttachmentRef } from './store.ts'
 const INDEX_VERSION = 1
 const MAX_REFS = 512
 const MAX_SESSIONS = 128
+const MAX_HISTORY_BATCHES = 64
 const INDEX_DIR = '.image-mind'
 const INDEX_FILE = 'attachment-index-v1.json'
 
@@ -31,10 +27,15 @@ interface SessionBatch {
   updatedAt: number
 }
 
+interface SessionRecord extends SessionBatch {
+  /** Successfully admitted image sends, oldest first. */
+  history: SessionBatch[]
+}
+
 interface PersistedIndex {
   version: 1
   refs: Record<string, ImageAttachmentRef>
-  sessions: Record<string, SessionBatch>
+  sessions: Record<string, SessionRecord>
 }
 
 interface IndexState {
@@ -94,6 +95,21 @@ function validSessionBatch(raw: unknown): SessionBatch | undefined {
   return { batchId, count: count as number, refs: cleanRefs, updatedAt: updatedAt as number }
 }
 
+function validSessionRecord(raw: unknown): SessionRecord | undefined {
+  const latest = validSessionBatch(raw)
+  if (latest === undefined) return undefined
+  const record = raw as Record<string, unknown>
+  const rawHistory = record['history']
+  const history: SessionBatch[] = []
+  if (Array.isArray(rawHistory)) {
+    for (const value of rawHistory.slice(-MAX_HISTORY_BATCHES)) {
+      const batch = validSessionBatch(value)
+      if (batch !== undefined && isCompleteBatch(batch)) history.push(batch)
+    }
+  }
+  return { ...latest, history }
+}
+
 function parsePersistedIndex(raw: unknown): PersistedIndex {
   const next = emptyIndex()
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return next
@@ -110,8 +126,7 @@ function parsePersistedIndex(raw: unknown): PersistedIndex {
           registerAttachmentRef(ref)
         }
       } catch {
-        // Corrupt metadata is ignored; the underlying attachment bytes remain
-        // untouched and cannot be read without a validated reference.
+        // Corrupt metadata is ignored; attachment bytes stay untouched.
       }
     }
   }
@@ -120,8 +135,8 @@ function parsePersistedIndex(raw: unknown): PersistedIndex {
   if (typeof sessions === 'object' && sessions !== null && !Array.isArray(sessions)) {
     for (const [sessionId, value] of Object.entries(sessions as Record<string, unknown>).slice(-MAX_SESSIONS)) {
       if (sessionId.length === 0 || sessionId.length > 256) continue
-      const batch = validSessionBatch(value)
-      if (batch !== undefined) next.sessions[sessionId] = batch
+      const session = validSessionRecord(value)
+      if (session !== undefined) next.sessions[sessionId] = session
     }
   }
   return next
@@ -137,8 +152,6 @@ async function ensureLoaded(ctx: Context): Promise<{ state: IndexState; path?: s
     holder.state.value = parsePersistedIndex(JSON.parse(text) as unknown)
   } catch (error) {
     if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) {
-      // Fail closed to an empty metadata index. Attachment bytes are never
-      // deleted or rewritten by this recovery path.
       holder.state.value = emptyIndex()
     }
   }
@@ -154,12 +167,22 @@ function trimOldest<T extends { updatedAt: number }>(record: Record<string, T>, 
   for (const [key] of oldest) delete record[key]
 }
 
+function isCompleteBatch(batch: SessionBatch): boolean {
+  for (let index = 0; index < batch.count; index += 1) {
+    if (batch.refs[String(index)] === undefined) return false
+  }
+  return true
+}
+
 function trimRefs(index: PersistedIndex): void {
   const ids = Object.keys(index.refs)
   if (ids.length <= MAX_REFS) return
   const pinned = new Set<string>()
-  for (const batch of Object.values(index.sessions)) {
-    for (const id of Object.values(batch.refs)) pinned.add(id)
+  for (const session of Object.values(index.sessions)) {
+    for (const id of Object.values(session.refs)) pinned.add(id)
+    for (const batch of session.history) {
+      for (const id of Object.values(batch.refs)) pinned.add(id)
+    }
   }
   for (const id of ids) {
     if (Object.keys(index.refs).length <= MAX_REFS) break
@@ -187,7 +210,13 @@ export interface AttachmentBatchPosition {
   batchCount: number
 }
 
-/** Remember one validated stored ref and optionally associate it with a session batch. */
+export interface SessionPreviewBatch {
+  batchId: string
+  count: number
+  updatedAt: number
+}
+
+/** Remember one validated stored ref and associate it with the latest routing batch. */
 export async function rememberAttachmentRef(
   ctx: Context,
   ref: ImageAttachmentRef,
@@ -199,12 +228,19 @@ export async function rememberAttachmentRef(
 
   if (position !== undefined) {
     const previous = holder.state.value.sessions[position.sessionId]
-    const batch: SessionBatch = previous?.batchId === position.batchId && previous.count === position.batchCount
+    const history = previous?.history ?? []
+    const session: SessionRecord = previous?.batchId === position.batchId && previous.count === position.batchCount
       ? previous
-      : { batchId: position.batchId, count: position.batchCount, refs: {}, updatedAt: Date.now() }
-    batch.refs[String(position.batchIndex)] = ref.attachmentId
-    batch.updatedAt = Date.now()
-    holder.state.value.sessions[position.sessionId] = batch
+      : {
+          batchId: position.batchId,
+          count: position.batchCount,
+          refs: {},
+          updatedAt: Date.now(),
+          history,
+        }
+    session.refs[String(position.batchIndex)] = ref.attachmentId
+    session.updatedAt = Date.now()
+    holder.state.value.sessions[position.sessionId] = session
     trimOldest(holder.state.value.sessions, MAX_SESSIONS)
   }
 
@@ -224,15 +260,76 @@ export async function durableAttachmentRefById(ctx: Context, id: string): Promis
 export async function latestSessionAttachmentRefs(ctx: Context, sessionId: string): Promise<ImageAttachmentRef[]> {
   const holder = await ensureLoaded(ctx)
   const batch = holder.state.value.sessions[sessionId]
-  if (batch === undefined) return []
+  if (batch === undefined || !isCompleteBatch(batch)) return []
   const refs: ImageAttachmentRef[] = []
   for (let index = 0; index < batch.count; index += 1) {
     const id = batch.refs[String(index)]
-    if (id === undefined) return []
-    const ref = holder.state.value.refs[id]
+    const ref = id === undefined ? undefined : holder.state.value.refs[id]
     if (ref === undefined) return []
     registerAttachmentRef(ref)
     refs.push(ref)
   }
   return refs
+}
+
+/**
+ * Mark the latest uploaded batch as durably visible in conversation history.
+ * This is called only after session.prompt succeeds, so failed sends cannot
+ * steal a historical marker from an older successful message.
+ */
+export async function commitSessionAttachmentBatch(
+  ctx: Context,
+  sessionId: string,
+  batchId: string,
+): Promise<boolean> {
+  const holder = await ensureLoaded(ctx)
+  const session = holder.state.value.sessions[sessionId]
+  if (session === undefined || session.batchId !== batchId || !isCompleteBatch(session)) return false
+  if (session.history.some(batch => batch.batchId === batchId)) return true
+  const committed: SessionBatch = {
+    batchId: session.batchId,
+    count: session.count,
+    refs: { ...session.refs },
+    updatedAt: Date.now(),
+  }
+  session.history.push(committed)
+  if (session.history.length > MAX_HISTORY_BATCHES) {
+    session.history.splice(0, session.history.length - MAX_HISTORY_BATCHES)
+  }
+  session.updatedAt = committed.updatedAt
+  trimRefs(holder.state.value)
+  await persist(holder)
+  return true
+}
+
+/** Return bounded committed preview batches without exposing attachment ids. */
+export async function sessionAttachmentPreviewBatches(ctx: Context, sessionId: string): Promise<SessionPreviewBatch[]> {
+  const holder = await ensureLoaded(ctx)
+  const session = holder.state.value.sessions[sessionId]
+  if (session === undefined) return []
+  return session.history.map(batch => ({
+    batchId: batch.batchId,
+    count: batch.count,
+    updatedAt: batch.updatedAt,
+  }))
+}
+
+/** Resolve one committed preview image by opaque batch id + ordinal. */
+export async function previewAttachmentRef(
+  ctx: Context,
+  batchId: string,
+  batchIndex: number,
+): Promise<ImageAttachmentRef | undefined> {
+  if (!Number.isSafeInteger(batchIndex) || batchIndex < 0) return undefined
+  const holder = await ensureLoaded(ctx)
+  for (const session of Object.values(holder.state.value.sessions)) {
+    const batch = session.history.find(candidate => candidate.batchId === batchId)
+    if (batch === undefined || batchIndex >= batch.count) continue
+    const id = batch.refs[String(batchIndex)]
+    if (id === undefined) return undefined
+    const ref = holder.state.value.refs[id]
+    if (ref !== undefined) registerAttachmentRef(ref)
+    return ref
+  }
+  return undefined
 }
