@@ -1,0 +1,50 @@
+{
+  "schema_version": 2,
+  "task_id": "DSH-VISION-RESULT-V2-E2E-002",
+  "source_commit": "124a342f99506683123cd9dad7c52c0ff1695e35",
+  "result_commit": null,
+  "status": "PASS",
+  "summary": "Result Contract v2 timeline and validator stamping flow passed end to end; the legacy v1 result remained valid without rewrite, and all repository checks passed.",
+  "timeline": {
+    "started_at": "2026-08-21T15:39:48+08:00",
+    "completed_at": "2026-08-21T15:41:24+08:00"
+  },
+  "changed_files": [
+    "docs/agent-results/DSH-VISION-RESULT-V2-E2E-002-result.json",
+    "docs/agent-tasks/ACTIVE_TASK.json"
+  ],
+  "tests": [
+    {
+      "name": "node .agent-workflow/validator/validate-contract.mjs task docs/agent-tasks/ACTIVE_TASK.json",
+      "status": "PASS",
+      "evidence": "Exit 0: VALID TASK CONTRACT. main/LATEST resolved to 124a342f99506683123cd9dad7c52c0ff1695e35 with a clean worktree."
+    },
+    {
+      "name": "node .agent-workflow/validator/validate-contract.mjs result docs/agent-results/DSH-VISION-WORKFLOW-E2E-001-result.json",
+      "status": "PASS",
+      "evidence": "Exit 0: VALID RESULT CONTRACT. The legacy schema v1 result validated successfully and was not rewritten."
+    },
+    {
+      "name": "npm run typecheck",
+      "status": "PASS",
+      "evidence": "Exit 0: workspace typechecks passed for @ran-sh/dsh-vision and image-mind."
+    },
+    {
+      "name": "npm test",
+      "status": "PASS",
+      "evidence": "Exit 0: 61 test files passed, 2 skipped; 376 tests passed, 7 skipped, 0 failed."
+    }
+  ],
+  "blockers": [],
+  "result_path": "docs/agent-results/DSH-VISION-RESULT-V2-E2E-002-result.json",
+  "notes": [
+    "Non-blocking npm warnings reported the future removal of the single-hyphen -ws flag, ES2024 target compatibility notices, and Node DEP0190; none affected command exit status or test results.",
+    "No source, test, configuration, CI, dependency, or implementation files were modified."
+  ],
+  "result_validation": {
+    "status": "PASS",
+    "validator": "node .agent-workflow/validator/validate-contract.mjs result docs/agent-results/DSH-VISION-RESULT-V2-E2E-002-result.json --stamp",
+    "validated_at": "2026-08-21T07:41:45Z",
+    "evidence": "Exit 0: VALID RESULT CONTRACT: docs/agent-results/DSH-VISION-RESULT-V2-E2E-002-result.json"
+  }
+}
