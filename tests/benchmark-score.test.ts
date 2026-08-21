@@ -14,7 +14,7 @@ describe('vision benchmark scorer', () => {
     expect(percentile([100, 200, 300, 400], 0.95)).toBeCloseTo(385)
   })
 
-  it('joins cases/results and aggregates routing, quality, latency, recovery, and cost metrics', () => {
+  it('joins cases/results and aggregates routing, quality, latency, recovery, route, and cost metrics', () => {
     const score = scoreBenchmark([
       {
         id: 'ocr-1', category: 'ocr',
@@ -30,11 +30,27 @@ describe('vision benchmark scorer', () => {
         id: 'ocr-1', answer: 'ERROR 42', toolCalled: true, latencyMs: 100,
         providerCalls: 1, payloadBytes: 1000, cacheHits: 0, inputTokens: 100, outputTokens: 20,
         retries: 0, modelFallbacks: 0, providerFallbacks: 0, splits: 0,
+        route: {
+          source: 'provider',
+          selectedProvider: 'primary',
+          selectedModel: 'vision-a',
+          modelFallback: false,
+          providerFallback: false,
+        },
       },
       {
         id: 'ui-1', answer: 'The panel is clipped.', toolCalled: true, latencyMs: 300,
         providerCalls: 3, payloadBytes: 2500, cacheHits: 1, inputTokens: 300, outputTokens: 40,
         retries: 1, modelFallbacks: 1, providerFallbacks: 1, splits: 1,
+        route: {
+          source: 'provider',
+          requestedProvider: 'primary',
+          requestedModel: 'vision-a',
+          selectedProvider: 'backup',
+          selectedModel: 'vision-b',
+          modelFallback: true,
+          providerFallback: true,
+        },
       },
     ])
 
@@ -43,6 +59,16 @@ describe('vision benchmark scorer', () => {
     expect(score.routingSuccessRate).toBe(0.75)
     expect(score.taskSuccessRate).toBe(0.75)
     expect(score.traceCoverage).toBe(0.75)
+    expect(score.routeCoverage).toBe(0.75)
+    expect(score.routeTraceConsistencyRate).toBe(1)
+    expect(score.routeSources).toEqual({ provider: 2, semanticCache: 0, evidenceCache: 0, unknown: 0 })
+    expect(score.rows[1]).toMatchObject({
+      requestedProvider: 'primary',
+      requestedModel: 'vision-a',
+      selectedProvider: 'backup',
+      selectedModel: 'vision-b',
+      routeTraceConsistent: true,
+    })
     expect(score.tokenUsageCoverage).toBe(0.75)
     expect(score.latencyMs.p50).toBe(200)
     expect(score.totals.calls).toBe(4)
@@ -53,6 +79,47 @@ describe('vision benchmark scorer', () => {
     expect(score.categories.ocr.passRate).toBe(1)
     expect(score.categories.ui.passRate).toBe(1)
     expect(score.categories.photo.missing).toBe(1)
+  })
+
+  it('distinguishes semantic and evidence cache route sources', () => {
+    const score = scoreBenchmark([{ id: 'semantic' }, { id: 'evidence' }], [
+      {
+        id: 'semantic', answer: 'facts', toolCalled: true, providerCalls: 0, cacheHits: 1,
+        route: {
+          source: 'semantic-cache', selectedProvider: 'p', selectedModel: 'm',
+          modelFallback: false, providerFallback: false,
+        },
+      },
+      {
+        id: 'evidence', answer: 'facts', toolCalled: true, providerCalls: 0, cacheHits: 1,
+        route: {
+          source: 'evidence-cache', selectedProvider: 'p', selectedModel: 'm',
+          modelFallback: false, providerFallback: false,
+        },
+      },
+    ])
+
+    expect(score.routeCoverage).toBe(1)
+    expect(score.routeSources).toEqual({ provider: 0, semanticCache: 1, evidenceCache: 1, unknown: 0 })
+    expect(score.zeroProviderReuseRate).toBe(1)
+  })
+
+  it('flags route/trace fallback disagreement without treating missing route as valid telemetry', () => {
+    const score = scoreBenchmark([{ id: 'mismatch' }, { id: 'legacy' }], [
+      {
+        id: 'mismatch', answer: 'facts', toolCalled: true,
+        providerCalls: 2, cacheHits: 0, modelFallbacks: 1, providerFallbacks: 0,
+        route: {
+          source: 'provider', selectedProvider: 'p', selectedModel: 'm',
+          modelFallback: false, providerFallback: false,
+        },
+      },
+      { id: 'legacy', answer: 'facts', toolCalled: true, providerCalls: 1, cacheHits: 0 },
+    ])
+
+    expect(score.routeCoverage).toBe(0.5)
+    expect(score.routeTraceConsistencyRate).toBe(0)
+    expect(score.routeSources.unknown).toBe(1)
   })
 
   it('counts zero-provider cache reuse only when trace telemetry is actually present', () => {
@@ -81,6 +148,7 @@ describe('vision benchmark scorer', () => {
     }])
 
     expect(score.traceCoverage).toBe(0)
+    expect(score.routeCoverage).toBe(0)
     expect(score.tokenUsageCoverage).toBe(0)
     expect(score.zeroProviderReuseRate).toBe(0)
     expect(score.totals.calls).toBe(0)
