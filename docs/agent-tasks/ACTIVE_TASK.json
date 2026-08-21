@@ -2,9 +2,9 @@
   "id": "DSH-VISION-WORKFLOW-E2E-001",
   "mode": "TEST_ONLY",
   "source_branch": "main",
-  "source_commit": "LATEST_DEFAULT_BRANCH",
+  "source_commit": "LATEST",
   "objective": "Run the first real local-machine validation of the ChatGPT-orchestrator / remote-executor workflow on dsh-vision without modifying product code.",
-  "context": "This task validates the handoff model after syncing dsh-vision to Ran-sh/chatgpt_workflow@7cf302a982eccf11aad5bfa4d71f5a8efc6d7e5b. Execute from the real local checkout. The purpose is to prove that a one-line executor trigger can drive the repository-defined task and return machine-readable evidence to ChatGPT through GitHub.",
+  "context": "This task validates the handoff model after syncing dsh-vision to Ran-sh/chatgpt_workflow@375be55ad6e6131e350107f090de33cb29670b65. Execute from the real local checkout. The purpose is to prove that a one-line executor trigger can drive the repository-defined task and return machine-readable evidence to ChatGPT through GitHub.",
   "allowed_changes": [
     "docs/agent-results/DSH-VISION-WORKFLOW-E2E-001-result.json"
   ],
@@ -30,7 +30,7 @@
   ],
   "acceptance_criteria": [
     "The Task Contract validates successfully before execution.",
-    "The symbolic source revision LATEST_DEFAULT_BRANCH is resolved and the actual source commit used is recorded in the Result Contract.",
+    "source_commit LATEST is resolved to the current tip of main after pull/fetch and the exact source SHA used is recorded in the Result Contract.",
     "Every listed validation command is actually executed and reported with one of PASS, FAIL, PARTIAL, SKIP, BLOCKED, or NOT RUN.",
     "No product source, tests, scripts, CI, package/version metadata, credentials, or unrelated files are modified.",
     "A valid Result Contract is written to docs/agent-results/DSH-VISION-WORKFLOW-E2E-001-result.json with source commit, overall status, changed files, test evidence, blockers, and result path.",
