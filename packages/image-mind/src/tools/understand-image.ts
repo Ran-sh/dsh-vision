@@ -61,17 +61,19 @@ async function loadImagesConcurrent(
 }
 
 export function safeImageIdentity(ref: string): string {
-  if (/^https?:\/\//i.test(ref)) {
+  const normalized = ref.trim()
+  if (normalized.startsWith('{') || /^sha256:/i.test(normalized)) return 'attachment'
+  if (/^https?:\/\//i.test(normalized)) {
     try {
-      const url = new URL(ref)
+      const url = new URL(normalized)
       return `${url.hostname}/...`
     } catch {
       return 'url/...'
     }
   }
-  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(ref)) return 'url/...'
-  const base = ref.split(/[/\\]/).pop()
-  return base !== undefined && base.length > 0 ? base : ref.slice(0, 40)
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(normalized)) return 'url/...'
+  const base = normalized.split(/[/\\]/).pop()
+  return base !== undefined && base.length > 0 ? base : 'image'
 }
 
 export interface UnderstandImageArgs {
@@ -132,14 +134,24 @@ export function understandImageRoute(
 
 export function understandImageCallView(args: UnderstandImageArgs): GenericCallView {
   const refs = args.image !== undefined ? [args.image] : args.images ?? []
+  const rawInput = {
+    ...args,
+    ...args.image === undefined ? {} : { image: safeImageIdentity(args.image) },
+    ...args.images === undefined ? {} : { images: args.images.map(safeImageIdentity) },
+  }
+  const localRefs = refs.filter((ref) => {
+    const normalized = ref.trim()
+    return !/^https?:\/\//i.test(normalized)
+      && !/^[a-z][a-z0-9+.-]*:\/\//i.test(normalized)
+      && !normalized.startsWith('{')
+      && !/^sha256:/i.test(normalized)
+  })
   return {
     card: 'generic',
     title: 'Understand image',
     kind: 'read',
-    rawInput: args,
-    ...refs.filter(ref => !/^https?:\/\//i.test(ref)).length > 0
-      ? { locations: refs.filter(ref => !/^https?:\/\//i.test(ref)).map(ref => ({ path: ref })) }
-      : {},
+    rawInput,
+    ...localRefs.length > 0 ? { locations: localRefs.map(path => ({ path })) } : {},
   }
 }
 
