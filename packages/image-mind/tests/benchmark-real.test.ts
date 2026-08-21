@@ -35,6 +35,9 @@ interface ToolResult {
   model: string
   route?: {
     source: 'provider' | 'semantic-cache' | 'evidence-cache'
+    task: 'ocr' | 'ui-review' | 'code' | 'document' | 'chart' | 'compare' | 'photo' | 'screenshot' | 'translate' | 'general'
+    cacheMode: 'use' | 'refresh' | 'no-store'
+    evidenceLayerEnabled: boolean
     requestedProvider?: string
     requestedModel?: string
     selectedProvider: string
