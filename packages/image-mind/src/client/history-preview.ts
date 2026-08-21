@@ -170,10 +170,13 @@ function stackForUserRow(row: HTMLElement): HTMLElement | undefined {
 function renderedMarkers(root: ParentNode): Array<{ count: number; stack: HTMLElement }> {
   const markers: Array<{ count: number; stack: HTMLElement }> = []
   for (const row of root.querySelectorAll<HTMLElement>(USER_ROW)) {
-    const count = previewMarkerCount(row.textContent ?? '')
-    if (count === undefined) continue
     const stack = stackForUserRow(row)
-    if (stack !== undefined) markers.push({ count, stack })
+    if (stack === undefined) continue
+    // The outer user row also contains host chrome such as the rendered time.
+    // Match only the message stack so the neutral attachment marker can remain
+    // strict and cannot be spoofed by unrelated trailing row text.
+    const count = previewMarkerCount(stack.textContent ?? '')
+    if (count !== undefined) markers.push({ count, stack })
   }
   return markers
 }

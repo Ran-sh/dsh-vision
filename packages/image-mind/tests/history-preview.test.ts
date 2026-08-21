@@ -9,10 +9,14 @@ function batch(batchId: string, count: number, updatedAt: number): SessionPrevie
 }
 
 describe('committed conversation image preview mapping', () => {
-  it('recognizes only the final neutral image marker', () => {
+  it('recognizes only a neutral image marker at the end of message content', () => {
     expect(previewMarkerCount('已附加图片。')).toBe(1)
     expect(previewMarkerCount('看看这个\n已附加 2 张图片。')).toBe(2)
     expect(previewMarkerCount('已附加 8 张图片。\n')).toBe(8)
+    // Host chrome such as the row timestamp must be excluded before matching;
+    // keeping the parser strict prevents unrelated trailing text from spoofing a marker.
+    expect(previewMarkerCount('看看这个\n已附加图片。\n12:34')).toBeUndefined()
+    expect(previewMarkerCount('看看这个\n已附加 2 张图片。\n12:34')).toBeUndefined()
     expect(previewMarkerCount('assistant mentions 已附加图片。 but keeps talking')).toBeUndefined()
     expect(previewMarkerCount('sha256:deadbeef')).toBeUndefined()
     expect(previewMarkerCount('/image-mind/raw/x')).toBeUndefined()
