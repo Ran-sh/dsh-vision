@@ -73,6 +73,11 @@ async function serveRawImage(ctx: Context, req: IncomingMessage, res: ServerResp
     res.end()
     return
   }
+  if (!isTrustedLocalRequest(req)) {
+    res.writeHead(403)
+    res.end()
+    return
+  }
   const id = decodeURIComponent(match[1])
   await serveStoredImage(ctx, await durableAttachmentRefById(ctx, id), res)
 }
@@ -132,7 +137,7 @@ function effectivePortOf(url: URL): number {
   return 80
 }
 
-/** Local trust fence for settings and preview metadata/bytes. */
+/** Local trust fence for settings plus raw/preview image metadata and bytes. */
 export function isTrustedLocalRequest(req: IncomingMessage): boolean {
   return isLoopbackSocket(req) && isLoopbackHost(req) && isSameOrigin(req)
 }
