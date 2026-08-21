@@ -22,15 +22,13 @@
   ],
   "validation": [
     "node .agent-workflow/validator/validate-contract.mjs task docs/agent-tasks/ACTIVE_TASK.json",
+    "node --version && npm --version && npx -y @deepseek-ai/dsh@0.1.0-rc.8 --version",
     "npm run typecheck",
     "npm run build",
     "npm test",
     "npm run test:package",
     "npm run test:built",
-    "DSH_HOME=$(mktemp -d) npx -y @deepseek-ai/dsh@0.1.0-rc.8 plugin --profile smoke add dsh-plugin-image-mind@0.2.0",
-    "DSH_HOME=<same-isolated-temp-dir> npx -y @deepseek-ai/dsh@0.1.0-rc.8 --profile smoke --dump-config",
-    "DSH_HOME=<same-isolated-temp-dir> npx -y @deepseek-ai/dsh@0.1.0-rc.8 plugin --profile smoke remove dsh-plugin-image-mind",
-    "DSH_HOME=<same-isolated-temp-dir> npx -y @deepseek-ai/dsh@0.1.0-rc.8 --profile smoke --dump-config"
+    "bash -lc 'set -euo pipefail; export DSH_HOME=\"$(mktemp -d)\"; START=$(date +%s); npx -y @deepseek-ai/dsh@0.1.0-rc.8 plugin --profile smoke add dsh-plugin-image-mind@0.2.0; END=$(date +%s); echo \"INSTALL_SECONDS=$((END-START))\"; OUT=$(npx -y @deepseek-ai/dsh@0.1.0-rc.8 --profile smoke --dump-config); printf \"%s\\n\" \"$OUT\" | grep -q \"image-mind\"; printf \"%s\\n\" \"$OUT\" | grep -q \"vision-runtime\"; test -d \"$DSH_HOME/profiles/smoke/node_modules/dsh-plugin-image-mind\"; test -d \"$DSH_HOME/profiles/smoke/node_modules/@ran-sh/dsh-vision\"; npx -y @deepseek-ai/dsh@0.1.0-rc.8 plugin --profile smoke remove dsh-plugin-image-mind; OUT2=$(npx -y @deepseek-ai/dsh@0.1.0-rc.8 --profile smoke --dump-config || true); if printf \"%s\\n\" \"$OUT2\" | grep -qE \"vision-runtime|image-mind\"; then echo \"stale bundle layer remains after remove\" >&2; exit 1; fi; echo \"RC8_COMPAT_SMOKE=PASS\"'"
   ],
   "acceptance_criteria": [
     "The Task Contract validates before execution and the exact source SHA used is recorded in the Result Contract.",
@@ -38,7 +36,7 @@
     "Use a newly created isolated temporary DSH_HOME; do not modify the user's normal DSH_HOME or profiles.",
     "Use exact @deepseek-ai/dsh@0.1.0-rc.8 rather than a moving dist-tag for the compatibility smoke.",
     "The official dsh plugin command completes installation of published dsh-plugin-image-mind@0.2.0 into profile smoke, or the exact failure is captured with exit status and bounded evidence.",
-    "After installation, --dump-config is checked for both image-mind and vision-runtime bundle composition and the installed package directories are checked; report PASS/FAIL with evidence.",
+    "After installation, --dump-config is checked for both image-mind and vision-runtime bundle composition and both installed package directories are checked; report PASS/FAIL with evidence.",
     "The official remove command is executed and the post-remove --dump-config is checked for stale image-mind or vision-runtime layers; report PASS/FAIL with evidence.",
     "Record Node, npm, exact DSH version, elapsed install time, and whether dependency resolution completed without timeout in the Result Contract notes or test evidence.",
     "Do not use or expose any API key or credential and do not perform a paid real-provider vision call in this compatibility smoke.",
