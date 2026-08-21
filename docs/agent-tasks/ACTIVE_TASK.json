@@ -1,0 +1,74 @@
+{
+  "id": "DSH-VISION-RC1-ISOLATED-COMPAT-006",
+  "mode": "TEST_ONLY",
+  "source_branch": "main",
+  "source_commit": "LATEST",
+  "objective": "Validate published dsh-plugin-image-mind@0.2.0 against exact @deepseek-ai/dsh@0.1.1-rc.1 in a fully isolated Harness environment, including plugin composition, web readiness, understand_image registration, one real image flow when an already-available credential/keyless endpoint can be used read-only, and clean removal, without modifying any real DeepSeek Harness-owned file or state.",
+  "context": "Issue #13 proved that the previous `npx @deepseek-ai/dsh ...` startup stall occurs in npm Arborist transient dependency resolution before DSH starts, while the same exact rc.1 package starts successfully once pre-resolved with pnpm. Issue #21 tracks rc.1 as the next compatibility target. dsh-vision is only a plugin: all real DSH_HOME/profile/settings/credential/lock/manifest files are permanently read-only to this project and its executors. This task must use a newly created temporary DSH_HOME and temporary launcher/cache directories only. Do not change docs/compatibility.md; ChatGPT will update compatibility status after reviewing the Result Contract.",
+  "allowed_changes": [
+    "docs/agent-results/DSH-VISION-RC1-ISOLATED-COMPAT-006-result.json"
+  ],
+  "forbidden_changes": [
+    "packages/**",
+    "scripts/**",
+    "tests/**",
+    ".github/**",
+    "README.md",
+    "CHANGELOG.md",
+    "docs/compatibility.md",
+    "package.json",
+    "package-lock.json",
+    "any real DSH_HOME file or directory",
+    "any real DeepSeek Harness profile, cordis.patch.yml, manifest, lockfile, settings file, credential file, cache, plugin tree, or other Harness-owned state",
+    "writes to Ran-sh/dsh-crew or any repository other than Ran-sh/dsh-vision",
+    "credentials, API keys, secret values, or unredacted secret-bearing logs",
+    "unrelated files"
+  ],
+  "validation": [
+    "node .agent-workflow/validator/validate-contract.mjs task docs/agent-tasks/ACTIVE_TASK.json",
+    "node --version && npm --version && pnpm --version",
+    "npm run typecheck",
+    "npm run build",
+    "npm test",
+    "npm run test:package",
+    "npm run test:built",
+    "create fresh temporary launcher, npm/pnpm cache, and DSH_HOME directories; install exact @deepseek-ai/dsh@0.1.1-rc.1 into the launcher with pnpm so the known transient npx resolver stall is not part of the compatibility verdict",
+    "using only the temporary DSH_HOME, run the exact rc.1 DSH binary through the official Harness plugin command to add published dsh-plugin-image-mind@0.2.0 to a temporary web profile",
+    "start exact rc.1 web against the temporary DSH_HOME on a dedicated localhost port; prove readiness with an HTTP 200/listening signal and then terminate only the task-owned process tree",
+    "inspect the isolated composed plugin/config output and runtime/tool registry to prove both @ran-sh/dsh-vision and dsh-plugin-image-mind are loaded and understand_image is registered",
+    "when a usable existing provider credential or keyless endpoint is already available without writing real Harness state, run one bounded real image understanding call using a task-owned fixture and record only redacted provider/model/route/trace evidence; otherwise record the exact credential/provider blocker without changing any real settings",
+    "using only the temporary DSH_HOME, run the official Harness plugin remove command for dsh-plugin-image-mind@0.2.0 and prove the plugin/bundle layers are absent afterward",
+    "delete all task-owned temporary launcher/cache/DSH_HOME directories after evidence is captured"
+  ],
+  "acceptance_criteria": [
+    "The Task Contract validates before execution and the exact source SHA used is recorded in the Result Contract.",
+    "Repository typecheck, build, full tests, package integrity, and built-artifact verification all pass or are reported truthfully.",
+    "The compatibility verdict must target exact @deepseek-ai/dsh@0.1.1-rc.1 and published dsh-plugin-image-mind@0.2.0; do not use moving dist-tags for the verdict.",
+    "All Harness mutation occurs only inside newly created task-owned temporary directories through official DSH commands. The user's real DSH_HOME/profile/settings/credentials/plugin tree must remain byte-for-byte untouched by this task.",
+    "Before and after execution, record read-only hashes/metadata for a bounded set of relevant non-secret real Harness files if they exist, sufficient to prove the task did not modify them; never record file contents or secrets.",
+    "Use pnpm pre-resolution in a temporary launcher to bypass the already-proven npm/npx transient resolver defect. Do not classify that known resolver behavior as an rc.1 plugin incompatibility.",
+    "Official plugin add in the isolated Harness state must either complete successfully or produce bounded redacted evidence identifying the exact plugin/DSH compatibility failure.",
+    "Exact rc.1 web readiness must be established by a real listener/HTTP readiness signal, not by assuming a long-running process is healthy.",
+    "Prove that both the @ran-sh/dsh-vision service layer and dsh-plugin-image-mind provider/tool layer compose in the isolated rc.1 environment and that understand_image is registered/available.",
+    "If a usable provider/keyless endpoint is already available read-only, execute one real image flow and record safe route/provider/model/trace evidence without image bytes, paths, signed URLs, prompts, keys, or provider response secrets. If no such provider is safely available, mark only this sub-check PARTIAL/BLOCKED and continue all keyless compatibility checks.",
+    "Official plugin remove in the isolated state must leave no dsh-vision/image-mind bundle layer or task-owned plugin installation behind; report exact residuals if cleanup fails.",
+    "No dsh-vision source, tests, scripts, CI, package metadata, compatibility docs, or other product files may be changed by this TEST_ONLY task.",
+    "The Result Contract must state a plain-language rc.1 compatibility verdict: PASS, PARTIAL, or FAIL; separate Harness/plugin compatibility from provider-credential availability and from the known npm/npx resolver issue.",
+    "The Result Contract must use schema_version 2, second-precision timezone-aware timeline.started_at/timeline.completed_at, and validator-owned result_validation evidence from `node .agent-workflow/validator/validate-contract.mjs result docs/agent-results/DSH-VISION-RC1-ISOLATED-COMPAT-006-result.json --stamp` after completion time is final.",
+    "On completion, delete docs/agent-tasks/ACTIVE_TASK.json and commit/push only the Result Contract plus ACTIVE task deletion."
+  ],
+  "result_contract": "docs/agent-results/DSH-VISION-RC1-ISOLATED-COMPAT-006-result.json",
+  "completion_commit_contract": [
+    "docs/agent-results/DSH-VISION-RC1-ISOLATED-COMPAT-006-result.json",
+    "docs/agent-tasks/ACTIVE_TASK.json"
+  ],
+  "delete_active_task_on_completion": true,
+  "metadata": {
+    "executor": "CODEX",
+    "purpose": "dsh-0.1.1-rc.1-isolated-plugin-compatibility",
+    "related_issue": "21",
+    "compatibility_target": "@deepseek-ai/dsh@0.1.1-rc.1",
+    "plugin_target": "dsh-plugin-image-mind@0.2.0",
+    "prepared_from_commit": "6f1e447b867359606ffb75e7ae2cd3484f65e2a3"
+  }
+}
