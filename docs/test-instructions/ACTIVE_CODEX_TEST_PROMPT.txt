@@ -1,0 +1,508 @@
+DSH-VISION CODEX FULL REGRESSION PROMPT
+
+Protocol: Agent Handoff Protocol v1
+Agent: CODEX
+Mode: TEST_ONLY
+Repository: Ran-sh/dsh-vision
+Branch: main
+Baseline report commit before this instruction cycle: 4767dc243ef75b298e29cbfae1c36776943835c6
+Previous targeted report: docs/test-results/dsh-vision-codex-blocker-high-retest.md
+Output report: docs/test-results/dsh-vision-codex-full-regression.md
+
+============================================================
+0. ROLE AND ABSOLUTE RULES
+============================================================
+
+You are the independent validation engineer for this run. You are NOT the developer.
+
+TEST ONLY.
+
+Do not fix source code. Do not refactor. Do not change existing tests or assertions. Do not loosen expectations. Do not change package versions, configs, build scripts, lockfiles, CI, README, CHANGELOG, or docs/verification-debt.md.
+
+The only repository writes allowed are:
+
+1. docs/test-results/dsh-vision-codex-full-regression.md
+2. deletion of docs/agent-tasks/ACTIVE_CODEX_TASK.md when complete
+3. deletion of docs/test-instructions/ACTIVE_CODEX_TEST_PROMPT.txt when complete
+
+Temporary local logs/screenshots/build outputs are allowed for evidence but must not be committed by default.
+
+Never print, commit, or report API keys, bearer tokens, Authorization headers, cookies, credential-file contents, signed URLs, or secrets. Record only redacted presence/absence such as:
+
+Muse API credential: PRESENT
+
+A failure is evidence. Do not repair it.
+
+Use only these states:
+PASS / FAIL / PARTIAL / SKIP / BLOCKED / NOT RUN
+
+============================================================
+1. START-OF-TASK SAFETY
+============================================================
+
+Before testing:
+
+git pull --ff-only origin main
+git rev-parse HEAD
+git branch --show-current
+git status --short
+
+Record all four results in the report.
+
+Read in this order:
+
+1. docs/agent-workflow.md
+2. docs/agent-tasks/ACTIVE_CODEX_TASK.md
+3. this file
+4. docs/test-results/dsh-vision-codex-blocker-high-retest.md
+5. docs/test-results/dsh-vision-codex-test-report.md
+6. docs/verification-debt.md
+7. CHANGELOG.md
+8. package.json and relevant workspace package.json files
+
+Do not read another Agent's ACTIVE task file.
+
+If the worktree already contains user changes, preserve them. Do not reset, clean, stash, delete, overwrite, or include them in your completion commit.
+
+The previous report commit before this instruction cycle is:
+
+4767dc243ef75b298e29cbfae1c36776943835c6
+
+The ACTIVE instruction commits may sit on top of that baseline. Test pulled latest main and record the exact SHA actually tested. Do not silently switch revisions.
+
+============================================================
+2. BASELINE / KNOWN STATE
+============================================================
+
+Previous targeted verdict:
+
+TARGETED GREEN — READY FOR FULL REGRESSION
+
+Previous targeted primary result:
+
+8 PASS / 1 FAIL / 0 PARTIAL-BLOCKED
+BLOCKER = 0
+HIGH = 1
+
+Known remaining HIGH:
+
+NEW-R1 — Conversation sent-image preview/history UX.
+
+Observed behavior from the targeted retest:
+
+- draft preview before send: PASS
+- sent-message historical thumbnail/gallery: FAIL
+- click/open full-size behavior: FAIL
+- switch away/back: FAIL
+- restart/reopen session: FAIL
+- model/tool-side durable attachment recovery: PASS
+- secrecy and hidden routing: PASS
+
+Do not reintroduce raw attachment ids, attachment JSON, raw-route URLs, tool-routing comments, or internal metadata into user-visible conversation text as a workaround.
+
+============================================================
+3. FULL REGRESSION OBJECTIVE
+============================================================
+
+Run the repository's broader/full regression against the current baseline and answer:
+
+1. Are there any new BLOCKER, HIGH, or MEDIUM regressions beyond NEW-R1?
+2. Does the full static lane remain green from a clean install?
+3. Does the broader automated quality/benchmark matrix remain within the established acceptance criteria?
+4. Does the shipped/built plugin still work through real DSH with the known working vision route?
+5. Do secrecy, hidden model routing, restart attachment recovery, execution gating, and provider reliability remain intact under broader regression?
+6. Is the repository release-ready after this run?
+
+This is a validation cycle, not a repair cycle.
+
+============================================================
+4. FULL STATIC LANE
+============================================================
+
+Run from repository root unless the repository script requires otherwise:
+
+npm ci
+npm run typecheck
+npm test
+npm run build
+npm run test:package
+npm run test:built
+
+Record:
+
+- command
+- exit code
+- duration
+- suites/tests passed, failed, skipped where available
+- relevant warning/error summary
+
+Do not substitute piecemeal targeted tests for the full static lane.
+
+============================================================
+5. BROADER AUTOMATED REGRESSION / QUALITY MATRIX
+============================================================
+
+Run the repository's established broader/full regression and quality/benchmark suites that are supported by the current repository and environment.
+
+Use the existing scripts/configuration. Do not modify test files, expectations, fixtures, thresholds, benchmark code, provider configuration, package manifests, or transform configuration to make a run pass.
+
+The previous cycle explicitly did NOT rerun the earlier 428-case quality matrix. This full-regression cycle should run the broader matrix when the current repository still provides it and it can be executed within the known working provider topology and reasonable quota discipline.
+
+Before invoking expensive real-provider benchmark work:
+
+1. inspect existing repository scripts/docs/tests to identify the intended full-regression/benchmark entrypoint;
+2. prefer deterministic/local/mock lanes first;
+3. do not invent a new benchmark harness;
+4. do not multiply provider/model calls beyond the repository's established matrix solely to chase unsupported combinations.
+
+Record exact matrix size actually executed and explain any difference from the historical 428-case matrix.
+
+If a matrix is partly local and partly real-provider, report those portions separately.
+
+============================================================
+6. REAL PROVIDER TOPOLOGY / QUOTA DISCIPLINE
+============================================================
+
+Known working real route from the targeted cycle:
+
+DSH -> image-mind -> OpenCode Go plan -> Muse API -> mimo-v2.5
+
+Independent real gateway count = 1.
+
+Use the known working MiMo visual route/model for minimum real-provider validation unless current model discovery shows a different actual working MiMo id. If it differs, record the discovered id and use that real id. Do not guess model ids.
+
+Do NOT:
+
+- retry a previously unavailable five-model Qwen matrix just because this is called full regression;
+- force real 413/429 failures solely to consume quota;
+- claim independent provider failover has been validated when only one real gateway exists;
+- hide provider-capability limitations by relabeling them as application passes.
+
+Independent real-provider failover should remain NOT RUN or BLOCKED with a precise reason if only one independent gateway exists.
+
+============================================================
+7. REAL DSH END-TO-END REVALIDATION
+============================================================
+
+Build the current baseline before real DSH execution and ensure the loaded plugin corresponds to the current build rather than a stale installation.
+
+Use an isolated/dedicated DSH profile/process when practical and the official plugin installation mechanism.
+
+Record:
+
+- exact tested repository SHA
+- DSH version
+- Node version
+- npm version
+- profile/process
+- install/reinstall result
+- loaded plugin/build correspondence
+- working model id
+
+At minimum revalidate:
+
+A. Image-only send
+- attach/paste a controlled image
+- send without user text if UI permits
+- confirm main model invokes understand_image
+- confirm returned visual evidence is correct
+
+B. Image + text
+- ask an image-dependent question
+- confirm one successful understand_image path and evidence-grounded answer
+
+C. Two-image comparison
+- attach two controlled images
+- request a concise comparison
+- confirm successful visual comparison
+
+D. Shipped bundle crash regression
+- verify no recurrence of Dynamic require of "node:crypto" is not supported
+- verify no duplicate calls caused solely by that former crash
+
+Minimize real-provider calls while still obtaining credible integration evidence.
+
+============================================================
+8. F-002/F-003 REVALIDATION — SECRECY, HIDDEN ROUTING, RESTART
+============================================================
+
+Recheck that broader regression has not reopened the previous secrecy/recovery failures.
+
+User-visible message may contain only:
+
+- user's own text
+- neutral marker 已附加图片。
+- neutral marker 已附加 N 张图片。
+- product-approved safe image preview/history UI if available
+
+It must not expose:
+
+- understand_image
+- tool routing instructions
+- HTML comments
+- attachment id
+- sha256
+- attachment JSON
+- media type / byte metadata / dimensions as routing data
+- /image-mind/raw/
+- raw internal URLs
+
+Hidden routing acceptance:
+
+- image-dependent prompts still cause the model to choose understand_image without user-authored tool wording;
+- current-session attachment resolution works when image/images arguments are omitted as designed;
+- model-only routing guidance remains hidden from user-visible conversation text.
+
+Restart recovery acceptance:
+
+1. upload/send controlled image;
+2. confirm secrecy in user bubble;
+3. restart DSH host/process normally;
+4. reopen same session;
+5. verify old bytes remain recoverable through the host-side durable attachment index;
+6. ask the resumed session to reread old image without reuploading;
+7. verify correct evidence is returned.
+
+Redact any attachment id in report output as <REDACTED_ATTACHMENT_ID>.
+
+============================================================
+9. NEW-R1 HIGH — PREVIEW / HISTORY UX RECHECK
+============================================================
+
+Treat NEW-R1 as a dedicated user-facing acceptance check independent from secrecy/routing.
+
+Test:
+
+1. one pasted/attached image appears in draft preview before send;
+2. after send, historical user message retains a safe thumbnail/gallery representation;
+3. sent image can be clicked/opened full-size or through the product-approved image viewer;
+4. switch away from session and back; historical preview still exists;
+5. restart DSH host and reopen same session; historical preview still exists;
+6. no raw attachment id, raw internal URL, or routing metadata is exposed to user-visible conversation text/DOM as the mechanism.
+
+If the behavior remains exactly as the targeted report, mark:
+
+NEW-R1 = FAIL — HIGH — KNOWN
+
+Do not downgrade it merely because model-side image recovery succeeds.
+
+If behavior changed, capture concise evidence and classify whether it is fixed, partially fixed, or regressed differently.
+
+============================================================
+10. EXECUTION GATE / PROVIDER RELIABILITY / CONTRACTS
+============================================================
+
+Ensure broader regression still covers the previously repaired deterministic areas, including equivalent current tests for:
+
+- execution-gate FIFO behavior
+- cancellation without capacity leak
+- provider cooldown / circuit open
+- exactly one half-open recovery probe
+- success closes/restores eligibility
+- failure reopens
+- fallback ordering
+- non-poisoning non-recoverable classes
+- orchestration trace telemetry
+- tool-thin structural contract
+- Windows Node 24 benchmark transform / suite collection
+
+Prefer current repository suite names rather than hard-coding obsolete names if files were legitimately reorganized. Record any renamed/equivalent suite mapping.
+
+============================================================
+11. WINDOWS NODE 24 REGRESSION
+============================================================
+
+The previous targeted environment was Windows 11 x64 + Node v24.18.1 + Vitest 2.1.9.
+
+If this run uses that same environment, explicitly record it.
+
+At minimum ensure the three benchmark suites that previously failed collection still collect and execute successfully:
+
+- tests/benchmark-score.test.ts
+- tests/benchmark-compare.test.ts
+- tests/benchmark-runner.test.ts
+
+No SyntaxError: Invalid or unexpected token should recur.
+
+If environment differs, do not claim the original Windows Node 24 reproduction has been independently revalidated; distinguish current-environment PASS from previous-environment evidence.
+
+============================================================
+12. FAILURE CLASSIFICATION
+============================================================
+
+For every discovered failure, assign:
+
+- ID
+- severity: BLOCKER / HIGH / MEDIUM / LOW
+- status
+- NEW or KNOWN
+- area
+- reproduction
+- expected
+- actual
+- evidence
+- likely layer
+
+Do not collapse multiple materially distinct regressions into one row merely to reduce counts.
+
+Known baseline issue:
+
+NEW-R1 = HIGH = KNOWN unless it is no longer reproducible.
+
+Any new issue must receive a new stable report-local ID such as FR-001, FR-002, etc.
+
+============================================================
+13. BLOCKED / SKIPPED / NOT RUN
+============================================================
+
+List every relevant item not fully executed, including reason.
+
+Examples:
+
+- independent real-provider failover unavailable because independent gateway count = 1;
+- provider/model capability unavailable;
+- quota-prohibited destructive/error-forcing scenario;
+- platform-specific lane unavailable in current environment.
+
+Do not count out-of-scope NOT RUN items as PASS.
+
+============================================================
+14. COMPARISON AGAINST TARGETED RETEST
+============================================================
+
+Provide a compact comparison table including at least:
+
+- F-001 shipped real DSH path
+- F-002 secrecy + hidden routing
+- F-003 restart recovery
+- F-004 execution gate
+- F-005 provider reliability
+- F-009 contracts
+- F-010 Windows benchmark transform
+- NEW-R1 preview/history UX
+- full static lane
+
+For each, state previous result and current result.
+
+Clearly identify any regression from PASS to FAIL/PARTIAL/BLOCKED.
+
+============================================================
+15. RELEASE-READINESS ASSESSMENT
+============================================================
+
+Separate these two questions:
+
+A. Was the full regression meaningfully completed?
+B. Is the product release-ready?
+
+A completed full regression may still be NOT RELEASE READY because of a known HIGH such as NEW-R1.
+
+Release-ready requires at minimum:
+
+- BLOCKER = 0
+- unresolved HIGH = 0
+- full static lane green
+- broader automated regression meets established acceptance criteria
+- real DSH built-bundle image flow works
+- secrecy + hidden routing green
+- restart recovery green
+- no source modifications by Codex
+
+Do not issue RELEASE READY while NEW-R1 remains HIGH/FAIL.
+
+============================================================
+16. OUTPUT REPORT
+============================================================
+
+Create:
+
+docs/test-results/dsh-vision-codex-full-regression.md
+
+Required sections:
+
+1. Test Identity
+2. Workspace Safety / Environment
+3. Full Static Lane
+4. Full Automated Regression Summary
+5. Quality / Benchmark Matrix Summary
+6. Real DSH End-to-End Revalidation
+7. Secrecy / Hidden Routing / Restart Recovery
+8. NEW-R1 Preview / History UX
+9. Reliability / Provider Fallback
+10. Windows Node 24 Regression
+11. Failure Table
+12. Blocked / Skipped / Not Run
+13. Comparison vs Targeted Retest
+14. Release-Readiness Assessment
+15. Final Verdict
+
+Final summary must include:
+
+- exact Tested Source Commit SHA
+- PASS / FAIL / PARTIAL-BLOCKED counts for primary full-regression gates
+- BLOCKER count
+- HIGH count
+- MEDIUM count
+- LOW count
+- exact executed broader matrix size
+- final verdict
+
+============================================================
+17. FINAL VERDICT VOCABULARY
+============================================================
+
+Use exactly one of:
+
+FULL REGRESSION GREEN — RELEASE READY
+FULL REGRESSION COMPLETE — NOT RELEASE READY
+FULL REGRESSION NOT GREEN — FIX BEFORE RELEASE
+FULL REGRESSION BLOCKED
+
+Interpretation:
+
+- GREEN — RELEASE READY: execution complete, required gates green, no unresolved BLOCKER/HIGH.
+- COMPLETE — NOT RELEASE READY: regression substantially completed, but known/new release blocker(s) remain; useful diagnostic cycle completed.
+- NOT GREEN — FIX BEFORE RELEASE: required regression gates themselves failed materially and/or new core regressions were found.
+- BLOCKED: environment/dependency prevents meaningful full-regression completion.
+
+Given the current known NEW-R1 HIGH, FULL REGRESSION GREEN — RELEASE READY is invalid unless NEW-R1 is demonstrably fixed or no longer reproducible.
+
+============================================================
+18. COMPLETION / GIT SAFETY
+============================================================
+
+Before report commit:
+
+git status --short
+git diff --name-only
+git diff --cached --name-only
+
+The final staged set must contain only:
+
+- docs/test-results/dsh-vision-codex-full-regression.md
+- deletion of docs/agent-tasks/ACTIVE_CODEX_TASK.md
+- deletion of docs/test-instructions/ACTIVE_CODEX_TEST_PROMPT.txt
+
+If any source/test/config/build/package file appears staged, unstage it. Do not include it in the completion commit.
+
+Do not reset, clean, stash, or delete unrelated user work.
+
+Suggested completion commit message:
+
+test: record full Codex regression
+
+Push the report-only completion commit according to repository workflow if permitted.
+
+============================================================
+19. FINAL CHAT REPLY CONTRACT
+============================================================
+
+Final chat reply must be concise and contain only:
+
+Tested Source Commit SHA: <sha>
+Report Commit SHA: <sha or NOT PUSHED>
+Primary PASS / FAIL / PARTIAL-BLOCKED: <n> / <n> / <n>
+BLOCKER / HIGH / MEDIUM / LOW: <n> / <n> / <n> / <n>
+Executed Matrix Size: <n or concise label>
+Verdict: <exact verdict>
+Report Path: docs/test-results/dsh-vision-codex-full-regression.md
