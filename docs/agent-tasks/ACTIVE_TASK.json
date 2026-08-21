@@ -1,0 +1,60 @@
+{
+  "id": "DSH-VISION-RC8-COMPAT-SMOKE-003",
+  "mode": "TEST_ONLY",
+  "source_branch": "main",
+  "source_commit": "LATEST",
+  "objective": "Validate dsh-plugin-image-mind 0.2.0 against the DeepSeek Harness 0.1.0-rc.8 next-channel build in an isolated real local DSH environment without changing product code.",
+  "context": "dsh-vision 0.2.0 is release-blocking KNOWN_GOOD on DSH 0.1.0-rc.7. docs/compatibility.md records DSH 0.1.0-rc.8 as LATEST (non-blocking, incomplete) because the earlier install attempt did not complete. npm currently tags rc.7 as latest and rc.8 as next. This task must resolve the rc.8 compatibility signal using an isolated temporary DSH_HOME, exact pinned DSH rc.8, the published dsh-plugin-image-mind@0.2.0 package, existing repository release-safety tests, and Result Contract v2 evidence. Do not modify product source or compatibility documentation; ChatGPT will decide documentation/code changes after reviewing the result.",
+  "allowed_changes": [
+    "docs/agent-results/DSH-VISION-RC8-COMPAT-SMOKE-003-result.json"
+  ],
+  "forbidden_changes": [
+    "packages/**",
+    "tests/**",
+    "scripts/**",
+    ".github/**",
+    "README.md",
+    "docs/compatibility.md",
+    "package.json",
+    "package-lock.json",
+    "release/version metadata",
+    "credentials, API keys, user DSH profiles, and unrelated files"
+  ],
+  "validation": [
+    "node .agent-workflow/validator/validate-contract.mjs task docs/agent-tasks/ACTIVE_TASK.json",
+    "npm run typecheck",
+    "npm run build",
+    "npm test",
+    "npm run test:package",
+    "npm run test:built",
+    "DSH_HOME=$(mktemp -d) npx -y @deepseek-ai/dsh@0.1.0-rc.8 plugin --profile smoke add dsh-plugin-image-mind@0.2.0",
+    "DSH_HOME=<same-isolated-temp-dir> npx -y @deepseek-ai/dsh@0.1.0-rc.8 --profile smoke --dump-config",
+    "DSH_HOME=<same-isolated-temp-dir> npx -y @deepseek-ai/dsh@0.1.0-rc.8 plugin --profile smoke remove dsh-plugin-image-mind",
+    "DSH_HOME=<same-isolated-temp-dir> npx -y @deepseek-ai/dsh@0.1.0-rc.8 --profile smoke --dump-config"
+  ],
+  "acceptance_criteria": [
+    "The Task Contract validates before execution and the exact source SHA used is recorded in the Result Contract.",
+    "Repository typecheck, build, full tests, package integrity, and built-artifact verification all execute and are reported truthfully.",
+    "Use a newly created isolated temporary DSH_HOME; do not modify the user's normal DSH_HOME or profiles.",
+    "Use exact @deepseek-ai/dsh@0.1.0-rc.8 rather than a moving dist-tag for the compatibility smoke.",
+    "The official dsh plugin command completes installation of published dsh-plugin-image-mind@0.2.0 into profile smoke, or the exact failure is captured with exit status and bounded evidence.",
+    "After installation, --dump-config is checked for both image-mind and vision-runtime bundle composition and the installed package directories are checked; report PASS/FAIL with evidence.",
+    "The official remove command is executed and the post-remove --dump-config is checked for stale image-mind or vision-runtime layers; report PASS/FAIL with evidence.",
+    "Record Node, npm, exact DSH version, elapsed install time, and whether dependency resolution completed without timeout in the Result Contract notes or test evidence.",
+    "Do not use or expose any API key or credential and do not perform a paid real-provider vision call in this compatibility smoke.",
+    "Do not modify product source, tests, scripts, CI, package metadata, README, or docs/compatibility.md.",
+    "The new Result Contract uses schema_version 2, records second-precision timezone-aware timeline.started_at and timeline.completed_at, and is finalized with validator --stamp so validator-owned result_validation evidence is present.",
+    "On completion, delete docs/agent-tasks/ACTIVE_TASK.json and commit/push only the Result Contract plus ACTIVE task deletion."
+  ],
+  "result_contract": "docs/agent-results/DSH-VISION-RC8-COMPAT-SMOKE-003-result.json",
+  "completion_commit_contract": [
+    "docs/agent-results/DSH-VISION-RC8-COMPAT-SMOKE-003-result.json",
+    "docs/agent-tasks/ACTIVE_TASK.json"
+  ],
+  "delete_active_task_on_completion": true,
+  "metadata": {
+    "executor": "ANY",
+    "purpose": "dsh-rc8-next-channel-compatibility",
+    "prepared_from_commit": "339fe25be9496a3704502f2a14e8e6d16b1287a1"
+  }
+}
