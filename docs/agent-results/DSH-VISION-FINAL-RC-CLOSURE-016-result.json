@@ -2,12 +2,12 @@
   "schema_version": 2,
   "task_id": "DSH-VISION-FINAL-RC-CLOSURE-016",
   "source_commit": "030237755c225e05debc026e9f0e44d22b1d0acb",
-  "result_commit": "e7699454de5cbc0b2a1aa9493eaf99e805f41bb7",
+  "result_commit": "75efa21d4a97d5cd14a4c76710a8ae40b8c036f5",
   "status": "PARTIAL",
   "summary": "继续现有 Draft PR #58 并合并 main 最新提交后，使用 task-owned 隔离 home、web profile 和备用端口 43116 完成 exact @deepseek-ai/dsh@0.1.1-rc.1 的 fresh source-built/local-packed 0.2.0 验收。正式 DSH add/boot/composition、/image-mind 路由、真实浏览器设置/插件面、deterministic local main/vision stub 的 model-only understand_image tool-call、重启后的批次恢复、隐私边界、focused guard tests 与官方 remove 均通过；0.2.0 尚未发布及未授权 hosted provider 质量仍按协议列为范围外 SKIP。",
   "timeline": {
     "started_at": "2026-08-22T23:25:29+08:00",
-    "completed_at": "2026-08-23T00:03:35+08:00"
+    "completed_at": "2026-08-23T00:11:35+08:00"
   },
   "changed_files": [
     "docs/agent-results/DSH-VISION-FINAL-RC-CLOSURE-016-result.json",
@@ -86,19 +86,24 @@
     },
     {
       "name": "final PR #58 CI",
-      "status": "NOT RUN",
-      "evidence": "Will be recorded after pushing the final completion head; PR #58 remains Draft/unmerged until that checkpoint is green."
+      "status": "PASS",
+      "evidence": "GitHub Actions CI run 32583757017 for pushed head 75efa21d4a97d5cd14a4c76710a8ae40b8c036f5 completed success. Required jobs install-roundtrip, windows, test (22), test (24), and secret-scan each completed success; PR #58 remained open, Draft, and unmerged."
     }
   ],
   "blockers": [
-    "0.2.0 packages are intentionally unpublished; npm publication, registry install, tag/release and hosted-provider quality remain outside scope.",
-    "Final PR #58 GitHub Actions must be observed on the pushed completion head before the final Result Contract can claim that checkpoint."
+    "0.2.0 packages are intentionally unpublished; npm publication, registry install, tag/release and hosted-provider quality remain outside scope."
   ],
   "result_path": "docs/agent-results/DSH-VISION-FINAL-RC-CLOSURE-016-result.json",
   "notes": [
     "No dsh-vision defect was reproduced in the corrected official web profile; the earlier no-listener observation came from booting a custom base-only smoke profile, not from the product route implementation.",
     "All acceptance evidence uses task-owned deterministic stubs and safe identifiers only; no Harness-owned settings, credentials, cookies, node_modules, pnpm store, or real 3080 process were read or changed.",
     "PR #58 is the only continuation target. It must remain Draft/open/unmerged until final review and CI verification.",
-    "ACTIVE_TASK deletion and final result stamping are performed only after the final pushed CI checkpoint is observed."
-  ]
+    "The pushed evidence head passed the complete PR #58 CI matrix; ACTIVE_TASK deletion and final result stamping now follow in the completion commit, with the PR remaining Draft/open/unmerged."
+  ],
+  "result_validation": {
+    "status": "PASS",
+    "validator": "node .agent-workflow/validator/validate-contract.mjs result docs/agent-results/DSH-VISION-FINAL-RC-CLOSURE-016-result.json --stamp",
+    "validated_at": "2026-08-22T16:11:45Z",
+    "evidence": "Exit 0: VALID RESULT CONTRACT: docs/agent-results/DSH-VISION-FINAL-RC-CLOSURE-016-result.json"
+  }
 }
