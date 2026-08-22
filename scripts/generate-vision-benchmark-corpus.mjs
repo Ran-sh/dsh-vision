@@ -16,6 +16,7 @@ import { deflateSync } from 'node:zlib'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { parseJsonl, scoreBenchmark } from './vision-benchmark-score.mjs'
 import { compareBenchmarkRuns } from './vision-benchmark-compare.mjs'
+import { compareLongImagePreprocess } from './compare-long-image-preprocess.mjs'
 
 const ROOT = dirname(fileURLToPath(import.meta.url))
 const REPO_ROOT = join(ROOT, '..')
@@ -211,7 +212,11 @@ function makeCases() {
       cases.push({
         id: `${spec.prefix}-${ordinal}-${followup ? 'followup' : 'broad'}`,
         category: spec.category,
-        prompt: `${followup ? spec.narrow : spec.broad} Fixture fact ${fact}.`,
+        // Keep the question visually meaningful but opaque to the expected
+        // answer. The deterministic marker remains in the fixture bytes; it
+        // must never be copied into the model prompt or the benchmark becomes
+        // a prompt-copying test rather than a visual-fact test.
+        prompt: followup ? spec.narrow : spec.broad,
         images,
         weight: 1,
         assertion: { containsAll: [fact], excludes: [`NOT-VISIBLE-${spec.prefix.toUpperCase()}-${ordinal}`] },
@@ -294,6 +299,7 @@ export function generateVisionBenchmarkCorpus() {
   }
   writeJsonl(join(BENCHMARK_DIR, 'cases.jsonl'), cases)
   writeJson(join(BENCHMARK_DIR, 'corpus-manifest.json'), corpusManifest)
+  compareLongImagePreprocess()
   runDeterministicBenchmark()
 
   const parsedCases = parseJsonl(readFileSync(join(BENCHMARK_DIR, 'cases.jsonl'), 'utf8'))

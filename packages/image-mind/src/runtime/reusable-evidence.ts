@@ -60,3 +60,34 @@ export function reusableEvidencePrompt(task: VisionTask, imageCount: number): st
       return 'Visual evidence extraction: capture the visible facts needed for later reasoning without inventing hidden context.'
   }
 }
+
+const FOCUS_MARKERS = [
+  'specific', 'precise', 'tiny', 'small', 'one detail', 'row ', 'column ', 'col ',
+  'cell ', 'line ', 'field ', 'section ', 'button ', 'label ', 'detail ',
+  '具体', '准确', '小字', '细节', '数值', '第', '行', '列',
+] as const
+
+const POSITIONAL_ANCHOR = /\b(?:row|column|col|cell|line|field|section|button|label)\s*(?:#|no\.?|number\s*)?\d+\b/gi
+
+/**
+ * Decide whether a caller is asking for a focused visual detail that a broad
+ * reusable answer may not contain. This is deliberately conservative: a
+ * focused request bypasses both cache layers, because free-form provider
+ * prose cannot prove that a named tiny detail was actually inspected. A cache
+ * hit must never be presented as sufficient evidence for an unverified detail
+ * merely because the task class matches.
+ */
+export function shouldRefocusReusableEvidence(prompt: string, facts: string): boolean {
+  const normalizedPrompt = prompt.normalize('NFKC').toLowerCase()
+  if (!FOCUS_MARKERS.some(marker => normalizedPrompt.includes(marker))) return false
+  const anchors = normalizedPrompt.match(POSITIONAL_ANCHOR) ?? []
+  // Repeating a row/field label in broad prose is not proof that the requested
+  // value was actually read. Keep the decision conservative and inspect the
+  // pixels again for every focused marker; `facts` remains an explicit seam
+  // parameter so callers cannot accidentally omit the cached-evidence input.
+  void facts
+  if (anchors.length > 0) return true
+  // Without a stable positional anchor there is no safe way to establish
+  // sufficiency from free-form provider prose. Refresh instead of guessing.
+  return true
+}

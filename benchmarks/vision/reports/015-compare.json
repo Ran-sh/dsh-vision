@@ -82,7 +82,7 @@
         "name": "provider-calls",
         "pass": true,
         "baseline": 100,
-        "candidate": 58,
+        "candidate": 80,
         "limit": 114.99999999999999,
         "direction": "max"
       },
@@ -90,23 +90,23 @@
         "name": "payload-bytes",
         "pass": true,
         "baseline": 478583,
-        "candidate": 255116,
+        "candidate": 406037,
         "limit": 574299.6,
         "direction": "max"
       },
       {
         "name": "input-tokens",
         "pass": true,
-        "baseline": 122072,
-        "candidate": 66330,
-        "limit": 146486.4,
+        "baseline": 121402,
+        "candidate": 104449,
+        "limit": 145682.4,
         "direction": "max"
       },
       {
         "name": "output-tokens",
         "pass": true,
         "baseline": 10604,
-        "candidate": 6140,
+        "candidate": 8564,
         "limit": 12724.8,
         "direction": "max"
       }
@@ -123,7 +123,7 @@
       "baselineRouteDecisionConsistencyRate": 1,
       "candidateRouteDecisionConsistencyRate": 1,
       "baselineEvidenceLayerEnabledRate": 0,
-      "candidateEvidenceLayerEnabledRate": 0.85,
+      "candidateEvidenceLayerEnabledRate": 0.68,
       "baselineRouteSources": {
         "provider": 100,
         "semanticCache": 0,
@@ -131,35 +131,35 @@
         "unknown": 0
       },
       "candidateRouteSources": {
-        "provider": 58,
+        "provider": 80,
         "semanticCache": 0,
-        "evidenceCache": 42,
+        "evidenceCache": 20,
         "unknown": 0
       },
       "baselineRouteTasks": {
         "ocr": 0,
-        "ui-review": 20,
+        "ui-review": 25,
         "code": 20,
         "document": 20,
         "chart": 15,
-        "compare": 10,
-        "photo": 15,
+        "compare": 5,
+        "photo": 0,
         "screenshot": 0,
         "translate": 0,
-        "general": 0,
+        "general": 15,
         "unknown": 0
       },
       "candidateRouteTasks": {
         "ocr": 0,
-        "ui-review": 20,
+        "ui-review": 25,
         "code": 20,
         "document": 20,
         "chart": 15,
-        "compare": 10,
-        "photo": 15,
+        "compare": 5,
+        "photo": 0,
         "screenshot": 0,
         "translate": 0,
-        "general": 0,
+        "general": 15,
         "unknown": 0
       },
       "baselineRouteCacheModes": {
@@ -169,9 +169,9 @@
         "unknown": 0
       },
       "candidateRouteCacheModes": {
-        "use": 100,
+        "use": 83,
         "refresh": 0,
-        "noStore": 0,
+        "noStore": 17,
         "unknown": 0
       },
       "baselineRouteSourceOutcomes": {
@@ -208,10 +208,10 @@
       },
       "candidateRouteSourceOutcomes": {
         "provider": {
-          "cases": 58,
-          "passed": 58,
-          "weight": 58,
-          "providerCalls": 58,
+          "cases": 80,
+          "passed": 80,
+          "weight": 80,
+          "providerCalls": 80,
           "cacheHits": 0,
           "passRate": 1,
           "taskSuccessRate": 1
@@ -224,11 +224,11 @@
           "cacheHits": 0
         },
         "evidenceCache": {
-          "cases": 42,
-          "passed": 42,
-          "weight": 42,
+          "cases": 20,
+          "passed": 20,
+          "weight": 20,
           "providerCalls": 0,
-          "cacheHits": 42,
+          "cacheHits": 20,
           "passRate": 1,
           "taskSuccessRate": 1
         },
@@ -243,11 +243,11 @@
       "baselineTokenUsageCoverage": 1,
       "candidateTokenUsageCoverage": 1,
       "baselineZeroProviderReuseRate": 0,
-      "candidateZeroProviderReuseRate": 0.42,
+      "candidateZeroProviderReuseRate": 0.2,
       "baselineCalls": 100,
-      "candidateCalls": 58,
-      "baselineInputTokens": 122072,
-      "candidateInputTokens": 66330
+      "candidateCalls": 80,
+      "baselineInputTokens": 121402,
+      "candidateInputTokens": 104449
     }
   }
 }

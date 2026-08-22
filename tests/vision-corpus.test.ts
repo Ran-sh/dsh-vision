@@ -7,6 +7,11 @@ import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { parseJsonl, scoreBenchmark } from '../scripts/vision-benchmark-score.mjs'
 import { compareBenchmarkRuns } from '../scripts/vision-benchmark-compare.mjs'
+import {
+  PNG_LONG_COMPRESS_MAX_EDGE,
+  PNG_MAX_PIXELS,
+  targetImageDimensions,
+} from '../packages/image-mind/src/client/attach.ts'
 
 const benchmarkRoot = resolve(import.meta.dirname, '../benchmarks/vision')
 const manifest = JSON.parse(readFileSync(resolve(benchmarkRoot, 'corpus-manifest.json'), 'utf8')) as {
@@ -19,6 +24,26 @@ const manifest = JSON.parse(readFileSync(resolve(benchmarkRoot, 'corpus-manifest
 const cases = parseJsonl(readFileSync(resolve(benchmarkRoot, 'cases.jsonl'), 'utf8'))
 const baseline = parseJsonl(readFileSync(resolve(benchmarkRoot, 'results.baseline.jsonl'), 'utf8'))
 const candidate = parseJsonl(readFileSync(resolve(benchmarkRoot, 'results.candidate.jsonl'), 'utf8'))
+const longPreprocess = JSON.parse(readFileSync(resolve(benchmarkRoot, 'reports/015-long-image-preprocess.json'), 'utf8')) as {
+  policy: { current: { maxEdge: number; maxPixels: number } }
+  comparisons: Array<{
+    fixture: string
+    source: { width: number; height: number; inputBytes: number }
+    currentAspectPixelAware: {
+      dimensions: { width: number; height: number }
+      outputBytes: number
+      processingUnits: number
+      readability: { darkPixelRatio: number; sampledRows: number; distinctSampledRows: number; rowOrderHash: string }
+    }
+    historical3072LongEdge: {
+      dimensions: { width: number; height: number }
+      outputBytes: number
+      processingUnits: number
+      readability: { darkPixelRatio: number; sampledRows: number; distinctSampledRows: number; rowOrderHash: string }
+    }
+    assertions: Record<string, boolean>
+  }>
+}
 
 function crc32(bytes: Buffer): number {
   let crc = 0xffffffff
@@ -84,6 +109,27 @@ describe('frozen Batch 015 vision corpus', () => {
     expect(cases.find(row => row.id === 'document-20-followup')?.images).toEqual(['fixtures/generated/long-1440x20000.png'])
   })
 
+  it('keeps expected visual answers out of prompts and guards the generator template', () => {
+    const normalize = (value: unknown) => String(value ?? '').normalize('NFKC').toLowerCase()
+    for (const row of cases) {
+      const prompt = normalize(row.prompt)
+      for (const token of [
+        ...(row.assertion?.containsAll ?? []),
+        ...(row.assertion?.containsAny ?? []),
+        ...(row.assertion?.excludes ?? []),
+      ]) {
+        expect(prompt, `${row.id} prompt must not contain assertion token ${token}`).not.toContain(normalize(token))
+      }
+    }
+
+    // Keep the generator honest as well as the frozen output: an answer token
+    // interpolation in the prompt template would recreate the contamination
+    // on the next corpus regeneration.
+    const generator = readFileSync(resolve(import.meta.dirname, '../scripts/generate-vision-benchmark-corpus.mjs'), 'utf8')
+    expect(generator).not.toMatch(/prompt:\s*`[^`]*\$\{[^}]*fact/)
+    expect(generator).not.toContain('Fixture fact')
+  })
+
   it('keeps long screenshot fixture dimensions exact and stable', () => {
     for (const [name, width, height] of [
       ['long-1440x10000.png', 1440, 10_000],
@@ -98,19 +144,50 @@ describe('frozen Batch 015 vision corpus', () => {
     }
   })
 
+  it('executes and records the historical 3072-long-edge comparison', () => {
+    expect(longPreprocess.policy.current).toMatchObject({ maxEdge: PNG_LONG_COMPRESS_MAX_EDGE, maxPixels: PNG_MAX_PIXELS })
+    expect(longPreprocess.comparisons).toHaveLength(2)
+    for (const comparison of longPreprocess.comparisons) {
+      const current = comparison.currentAspectPixelAware
+      const historical = comparison.historical3072LongEdge
+      const expectedCurrent = targetImageDimensions(comparison.source.width, comparison.source.height, {
+        maxEdge: PNG_LONG_COMPRESS_MAX_EDGE,
+        maxPixels: PNG_MAX_PIXELS,
+        outputType: 'image/png',
+      })
+      const expectedHistorical = targetImageDimensions(comparison.source.width, comparison.source.height, {
+        maxEdge: 3072,
+        outputType: 'image/png',
+      })
+      expect(current.dimensions).toEqual({ width: expectedCurrent.width, height: expectedCurrent.height })
+      expect(historical.dimensions).toEqual({ width: expectedHistorical.width, height: expectedHistorical.height })
+      expect(current.outputBytes).toBeGreaterThan(0)
+      expect(historical.outputBytes).toBeGreaterThan(0)
+      expect(current.processingUnits).toBeGreaterThan(comparison.source.inputBytes)
+      expect(historical.processingUnits).toBeGreaterThan(comparison.source.inputBytes)
+      expect(current.readability.sampledRows).toBeGreaterThan(1)
+      expect(historical.readability.sampledRows).toBeGreaterThan(1)
+      expect(current.readability.distinctSampledRows).toBeGreaterThan(1)
+      expect(historical.readability.distinctSampledRows).toBeGreaterThan(1)
+      expect(current.readability.rowOrderHash).toMatch(/^[0-9a-f]{64}$/)
+      expect(historical.readability.rowOrderHash).toMatch(/^[0-9a-f]{64}$/)
+      expect(Object.values(comparison.assertions).every(Boolean)).toBe(true)
+    }
+  })
+
   it('passes the auditable deterministic baseline-vs-layered candidate gate', () => {
     const report = compareBenchmarkRuns(cases, baseline, candidate)
     expect(report.comparison.pass).toBe(true)
     expect(report.baseline.taskSuccessRate).toBe(1)
     expect(report.candidate.taskSuccessRate).toBe(1)
-    expect(report.candidate.routeSources).toMatchObject({ provider: 58, evidenceCache: 42 })
-    expect(report.candidate.zeroProviderReuseRate).toBeCloseTo(0.42)
-    expect(report.candidate.totals.calls).toBe(58)
+    expect(report.candidate.routeSources).toMatchObject({ provider: 80, evidenceCache: 20 })
+    expect(report.candidate.zeroProviderReuseRate).toBeCloseTo(0.2)
+    expect(report.candidate.totals.calls).toBe(80)
     expect(report.candidate.routeDecisionConsistencyRate).toBe(1)
     expect(report.candidate.routeSourceOutcomes.evidenceCache).toMatchObject({
-      cases: 42,
+      cases: 20,
       providerCalls: 0,
-      cacheHits: 42,
+      cacheHits: 20,
       taskSuccessRate: 1,
     })
     expect(scoreBenchmark(cases, baseline).forbiddenHitCount).toBe(0)

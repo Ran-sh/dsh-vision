@@ -1,0 +1,110 @@
+{
+  "schemaVersion": 1,
+  "benchmarkOnly": true,
+  "policy": {
+    "current": {
+      "maxEdge": 8192,
+      "maxPixels": 10485760,
+      "resize": "nearest-neighbour"
+    },
+    "historical": {
+      "maxEdge": 3072,
+      "maxPixels": null,
+      "resize": "nearest-neighbour"
+    }
+  },
+  "comparisons": [
+    {
+      "fixture": "benchmarks/vision/fixtures/generated/long-1440x10000.png",
+      "source": {
+        "width": 1440,
+        "height": 10000,
+        "inputBytes": 43416
+      },
+      "currentAspectPixelAware": {
+        "dimensions": {
+          "width": 1180,
+          "height": 8192
+        },
+        "outputBytes": 35807,
+        "processingUnits": 24066560,
+        "readability": {
+          "darkPixelRatio": 0.032167803230932206,
+          "horizontalContrast": 0.28812838773589905,
+          "rowOrderHash": "519fef9afb7a5d7c9699844ca635ce1e3af3bd135470b2a3a0a27704e61845f8",
+          "sampledRows": 64,
+          "distinctSampledRows": 5
+        },
+        "outputSha256": "faf0f90081303ca2be040e60fcee3551a6c9f852b0db0f6852d8ff790be3053d"
+      },
+      "historical3072LongEdge": {
+        "dimensions": {
+          "width": 442,
+          "height": 3072
+        },
+        "outputBytes": 10784,
+        "processingUnits": 15757824,
+        "readability": {
+          "darkPixelRatio": 0.03227811557315234,
+          "horizontalContrast": 0.7697777895880574,
+          "rowOrderHash": "09670d30a10b66b9426d8b6e608fd8c85b15ec2ca02daaeb41c971f1243b0bfc",
+          "sampledRows": 64,
+          "distinctSampledRows": 5
+        },
+        "outputSha256": "a3a5c65dbaa670e72bdc71f4df3d939e678e0bab656d7c98a6fb623d89c90ab7"
+      },
+      "assertions": {
+        "currentPreservesMoreHorizontalResolution": true,
+        "currentReadabilityAtLeast80PercentOfHistorical": true,
+        "currentRowOrderEvidence": true,
+        "historicalRowOrderEvidence": true
+      }
+    },
+    {
+      "fixture": "benchmarks/vision/fixtures/generated/long-1440x20000.png",
+      "source": {
+        "width": 1440,
+        "height": 20000,
+        "inputBytes": 86476
+      },
+      "currentAspectPixelAware": {
+        "dimensions": {
+          "width": 590,
+          "height": 8192
+        },
+        "outputBytes": 29208,
+        "processingUnits": 33633280,
+        "readability": {
+          "darkPixelRatio": 0.032505048331567796,
+          "horizontalContrast": 0.5661666688773345,
+          "rowOrderHash": "1c3cae2c8993582f5f9910ecfc62b54e9d617ba4b309fd18ab3dc2fbbc9f48fb",
+          "sampledRows": 64,
+          "distinctSampledRows": 5
+        },
+        "outputSha256": "06460090d9085e371a9fc2ad163bd039412feae000db5a1ba45bca071e9d048e"
+      },
+      "historical3072LongEdge": {
+        "dimensions": {
+          "width": 221,
+          "height": 3072
+        },
+        "outputBytes": 11557,
+        "processingUnits": 29478912,
+        "readability": {
+          "darkPixelRatio": 0.031850961538461536,
+          "horizontalContrast": 1.4979255445075759,
+          "rowOrderHash": "537c98775ce1a12906c392b865793f58267ba09822ee357bf16e5ac520ff3468",
+          "sampledRows": 64,
+          "distinctSampledRows": 5
+        },
+        "outputSha256": "9990d17440ebbef241648d720e9700bc1ca581df205dcac611771167463e5be6"
+      },
+      "assertions": {
+        "currentPreservesMoreHorizontalResolution": true,
+        "currentReadabilityAtLeast80PercentOfHistorical": true,
+        "currentRowOrderEvidence": true,
+        "historicalRowOrderEvidence": true
+      }
+    }
+  ]
+}

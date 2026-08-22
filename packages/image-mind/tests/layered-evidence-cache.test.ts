@@ -22,7 +22,12 @@ function imageFile(): string {
 }
 
 function setup() {
-  const call = vi.fn(async (_request: unknown) => ({ text: `facts-${call.mock.calls.length}`, provider: 'p', model: 'm' }))
+  const call = vi.fn(async (_request: unknown) => ({
+    text: `facts-${call.mock.calls.length}`,
+    provider: 'p',
+    model: 'm',
+    trace: { providerCalls: 1, payloadBytes: 128, cacheHits: 0, retries: 0, modelFallbacks: 0, providerFallbacks: 0, splits: 0 },
+  }))
   const ctx = new Context()
   ctx.provide('vision', { call } as never)
   ctx.provide('attachments', {} as never)
@@ -67,27 +72,23 @@ describe('layered reusable evidence cache', () => {
     expect(reused.trace).toMatchObject({ providerCalls: 0, cacheHits: 1 })
   })
 
-  it('no-store refocus uses the precise caller prompt without replacing broad reusable evidence', async () => {
+  it('automatically refocuses a materially narrow question without replacing broad reusable evidence', async () => {
     const { call, tool } = setup()
     const file = imageFile()
     const exec = { signal: new AbortController().signal } as never
 
     const broad = await tool.execute({ image: file, prompt: 'OCR all visible text' }, exec)
     const cached = await tool.execute({ image: file, prompt: 'OCR the exact tiny value in row 3 column 2' }, exec)
-    const refocused = await tool.execute({
-      image: file,
-      prompt: 'OCR row 3, column 2 only and report the exact visible value; mark it unclear rather than guessing.',
-      cache: 'no-store',
-    }, exec)
     const reused = await tool.execute({ image: file, prompt: 'read all text again' }, exec)
 
-    expect(cached.route).toMatchObject({ source: 'evidence-cache' })
+    expect(cached.route).toMatchObject({ source: 'provider', cacheMode: 'no-store', evidenceLayerEnabled: false })
     expect(call).toHaveBeenCalledTimes(2)
     expect(call.mock.calls[1][0]).toMatchObject({
-      prompt: 'OCR row 3, column 2 only and report the exact visible value; mark it unclear rather than guessing.',
+      prompt: 'OCR the exact tiny value in row 3 column 2',
       cache: 'no-store',
     })
-    expect(refocused.text).not.toBe(broad.text)
+    expect(cached.trace).toMatchObject({ providerCalls: 1, cacheHits: 0 })
+    expect(cached.text).not.toBe(broad.text)
     expect(reused.text).toBe(broad.text)
     expect(reused.route).toMatchObject({ source: 'evidence-cache' })
   })
