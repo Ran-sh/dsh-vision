@@ -1,10 +1,10 @@
 /**
- * Private-network classification for image URL fetching (SSRF guard).
+ * Non-public-network classification for image URL fetching (SSRF guard).
  * Uses node:net for proper IPv4/IPv6/IPv4-mapped parsing — no regex range
  * guessing — plus DNS pre-resolution when the host is a name.
  *
- * Honest scope (documented in README): this blocks explicit private
- * literals, pre-resolves DNS and rejects any A/AAAA that lands private, and
+ * Honest scope (documented in README): this blocks explicit private/special-use
+ * literals, pre-resolves DNS and rejects any A/AAAA that lands non-public, and
  * rejects redirects. It cannot pin the socket to the validated address
  * against a DNS-rebinding race; that would require a network sandbox the
  * plugin layer does not provide.
@@ -14,34 +14,53 @@
 import { isIP } from 'node:net'
 import { lookup } from 'node:dns/promises'
 
-/** Private IPv4 ranges (RFC 1918 + loopback + link-local + this-host). */
+/**
+ * IPv4 ranges that are not suitable as default public-network fetch targets.
+ * This includes private space plus special-use ranges such as CGNAT,
+ * documentation, benchmarking, multicast and reserved address space.
+ */
 function isPrivateIPv4(octets: readonly number[]): boolean {
   const [a, b] = octets
   if (a === 0) return true // 0.0.0.0/8 "this network"
-  if (a === 10) return true // 10.0.0.0/8
+  if (a === 10) return true // 10.0.0.0/8 RFC1918
+  if (a === 100 && b >= 64 && b <= 127) return true // 100.64.0.0/10 shared/CGNAT
   if (a === 127) return true // 127.0.0.0/8 loopback
   if (a === 169 && b === 254) return true // 169.254.0.0/16 link-local
-  if (a === 172 && b >= 16 && b <= 31) return true // 172.16.0.0/12
-  if (a === 192 && b === 168) return true // 192.168.0.0/16
+  if (a === 172 && b >= 16 && b <= 31) return true // 172.16.0.0/12 RFC1918
+  if (a === 192 && b === 168) return true // 192.168.0.0/16 RFC1918
+  if (a === 192 && b === 0 && octets[2] === 2) return true // 192.0.2.0/24 documentation
+  if (a === 198 && (b === 18 || b === 19)) return true // 198.18.0.0/15 benchmarking
+  if (a === 198 && b === 51 && octets[2] === 100) return true // 198.51.100.0/24 documentation
+  if (a === 203 && b === 0 && octets[2] === 113) return true // 203.0.113.0/24 documentation
+  if (a >= 224) return true // multicast + reserved/broadcast 224.0.0.0/4 and 240.0.0.0/4
   return false
 }
 
-/** Private IPv6 ranges: loopback, ULA, link-local, IPv4-mapped private. */
+/** Non-public IPv6 ranges: unspecified, loopback, ULA, link-local, special-use and mapped IPv4. */
 function isPrivateIPv6(parts: readonly number[]): boolean {
   const head = parts[0]
   const second = parts[1]
+  const allZero = parts.every(part => part === 0)
+  if (allZero) return true // :: unspecified
   // ::1 loopback.
   if (head === 0 && second === 0 && parts[2] === 0 && parts[3] === 0 && parts[4] === 0 && parts[5] === 0 && parts[6] === 0 && parts[7] === 1) return true
   // ::ffff:a.b.c.d IPv4-mapped.
   if (head === 0 && second === 0 && parts[2] === 0 && parts[3] === 0 && parts[4] === 0 && parts[5] === 0xffff) {
     return isPrivateIPv4([parts[6] >> 8, parts[6] & 0xff, parts[7] >> 8, parts[7] & 0xff])
   }
+  if (head === 0x0100 && second === 0 && parts[2] === 0 && parts[3] === 0) return true // 100::/64 discard-only
+  if (head === 0x2001 && second === 0x0002 && parts[2] === 0) return true // 2001:2::/48 benchmarking
+  if (head === 0x2001 && second === 0x0db8) return true // 2001:db8::/32 documentation
   if ((head & 0xfe00) === 0xfc00) return true // fc00::/7 ULA
   if ((head & 0xffc0) === 0xfe80) return true // fe80::/10 link-local
+  if ((head & 0xff00) === 0xff00) return true // ff00::/8 multicast
   return false
 }
 
-/** Whether an IP literal (v4 or v6) is on a private/loopback network. */
+/**
+ * Whether an IP literal (v4 or v6) is private or otherwise non-public.
+ * Kept under the existing exported name for compatibility with callers/tests.
+ */
 export function isPrivateIP(address: string): boolean {
   const version = isIP(address)
   if (version === 4) {
@@ -125,10 +144,10 @@ function isLocalName(hostname: string): boolean {
 
 /**
  * Validate a URL for image fetching: rejects credentials in the URL, and —
- * unless private networks are allowed — rejects private IP literals, local
- * names, and any DNS resolution that lands on a private address.
+ * unless private networks are allowed — rejects private/special-use IP
+ * literals, local names, and any DNS resolution that lands non-public.
  * @param urlText - the URL to validate.
- * @param allowPrivateNetwork - explicit opt-in for private hosts.
+ * @param allowPrivateNetwork - explicit opt-in for private/non-public hosts.
  * @param resolve - DNS resolver override (tests); defaults to node:dns lookup.
  * @returns the parsed URL on success.
  */
@@ -168,7 +187,7 @@ export async function validateImageUrl(
   if (isLocalName(hostname)) {
     throw new Error(`image-mind: image URL points to a private network host (${hostname}); set allowPrivateNetwork to fetch it`)
   }
-  // DNS pre-resolution: any A/AAAA record landing private rejects the URL.
+  // DNS pre-resolution: any A/AAAA record landing non-public rejects the URL.
   let addresses: string[]
   try {
     addresses = await resolve(hostname)
