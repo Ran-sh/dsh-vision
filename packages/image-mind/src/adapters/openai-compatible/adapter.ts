@@ -4,6 +4,7 @@
  * provider-neutral execution tracing.
  */
 
+import { createHash } from 'node:crypto'
 import { VisionAdapter, VisionError, deepFreeze } from '@ran-sh/dsh-vision'
 import type {
   LoadedImage, VisionErrorCode, VisionModel, VisionModelDiscoveryRequest,
@@ -125,7 +126,6 @@ export function semanticRequestKey(
 }
 
 function sha256Hex(bytes: Buffer): string {
-  const { createHash } = require('node:crypto') as typeof import('node:crypto')
   return createHash('sha256').update(bytes).digest('hex')
 }
 
