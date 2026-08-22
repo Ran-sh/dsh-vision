@@ -2,7 +2,7 @@
   "schema_version": 2,
   "task_id": "DSH-VISION-PROVIDER-PROTOCOL-TELEMETRY-014",
   "source_commit": "5ae5386ca5f52d4e9c96298daaf82b8fcab46788",
-  "result_commit": null,
+  "result_commit": "ecfadf6fb1556922575cf5d05206cb405524c282",
   "status": "PARTIAL",
   "summary": "Validated the latest main source on a single feature branch. Existing provider-protocol, fallback, cancellation, telemetry, package, built-artifact, benchmark, and deterministic rc.1 host/browser checks pass without source changes. Remaining partials are the unavailable published package/install path, unavailable authorized real-provider credential check, and feature-branch CI/PR evidence not available until a PR is opened. The exact eight-image host acceptance required an explicit task-owned maxImagesPerMessage=8 setting because the unconfigured rc.1 default is 20.",
   "timeline": {
@@ -130,7 +130,7 @@
   "result_validation": {
     "status": "PASS",
     "validator": "node .agent-workflow/validator/validate-contract.mjs result docs/agent-results/DSH-VISION-PROVIDER-PROTOCOL-TELEMETRY-014-result.json --stamp",
-    "validated_at": "2026-08-22T12:45:27Z",
+    "validated_at": "2026-08-22T12:46:10Z",
     "evidence": "Exit 0: VALID RESULT CONTRACT: docs/agent-results/DSH-VISION-PROVIDER-PROTOCOL-TELEMETRY-014-result.json"
   }
 }
