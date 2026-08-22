@@ -6,6 +6,7 @@
 
 export const ATTACH_ENDPOINT = '/image-mind/attach'
 export const PREVIEW_COMMIT_ENDPOINT = '/image-mind/preview/commit'
+export const PREVIEW_DISCARD_ENDPOINT = '/image-mind/preview/discard'
 export const PREVIEW_LIST_ENDPOINT = '/image-mind/previews'
 export const ACCEPTED_IMAGE_MIME: readonly string[] = ['image/png', 'image/jpeg', 'image/gif', 'image/webp']
 export const CLIENT_MAX_BYTES = 10 * 1024 * 1024
@@ -107,6 +108,36 @@ export async function commitImagePreviewBatch(
   }
   const record = envelope as { ok?: unknown; error?: unknown } | null
   if (typeof record === 'object' && record !== null && record.ok === true) return { ok: true }
+  const message = (record?.error as { message?: unknown } | null)?.message
+  return { ok: false, message: typeof message === 'string' && message !== '' ? message : 'server-failed' }
+}
+
+/** Best-effort removal of an uncommitted routing batch after a failed send. */
+export async function discardImageRoutingBatch(
+  sessionId: string,
+  batchId: string,
+): Promise<{ ok: true; discarded: boolean } | { ok: false; message: string }> {
+  let response: Response
+  try {
+    response = await fetch(PREVIEW_DISCARD_ENDPOINT, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ sessionId, batchId }),
+    })
+  } catch {
+    return { ok: false, message: 'network-failed' }
+  }
+  let envelope: unknown
+  try {
+    envelope = await response.json()
+  } catch {
+    return { ok: false, message: 'bad-response' }
+  }
+  const record = envelope as { ok?: unknown; value?: unknown; error?: unknown } | null
+  if (typeof record === 'object' && record !== null && record.ok === true) {
+    const value = record.value as { discarded?: unknown } | null
+    return { ok: true, discarded: value?.discarded === true }
+  }
   const message = (record?.error as { message?: unknown } | null)?.message
   return { ok: false, message: typeof message === 'string' && message !== '' ? message : 'server-failed' }
 }
