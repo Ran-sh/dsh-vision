@@ -2,21 +2,113 @@
   "schema_version": 2,
   "task_id": "DSH-VISION-FINAL-RC-CLOSURE-016",
   "source_commit": "fc1add131b36c064d2c63ab74ae2c498f1250257",
-  "result_commit": "fc1add131b36c064d2c63ab74ae2c498f1250257",
-  "status": "NOT RUN",
-  "summary": "Draft Result Contract opened before substantive Batch 016 work.",
+  "result_commit": "a5fd4a64cc8f8ffcbc6559cc771cb67c4da8877d",
+  "status": "PARTIAL",
+  "summary": "Reconciled the final 0.2.0 pre-publish documentation and reran the repository, package, built-artifact, focused reliability/privacy, benchmark and registry gates. Existing Batch 013–015 exact rc.1 source-built/local-packed evidence remains valid, while this batch records external blockers for a new live browser/host run and Draft PR creation.",
   "timeline": {
     "started_at": "2026-08-22T22:54:49+08:00",
-    "completed_at": "2026-08-22T22:54:49+08:00"
+    "completed_at": "2026-08-22T23:16:30+08:00"
   },
   "changed_files": [
-    "docs/agent-results/DSH-VISION-FINAL-RC-CLOSURE-016-result.json"
+    "README.md",
+    "CHANGELOG.md",
+    "docs/architecture.md",
+    "docs/compatibility.md",
+    "docs/release-checklist.md",
+    "docs/verification-debt.md",
+    "docs/agent-results/DSH-VISION-FINAL-RC-CLOSURE-016-result.json",
+    "docs/agent-tasks/ACTIVE_TASK.json"
   ],
-  "tests": [],
-  "blockers": [],
+  "tests": [
+    {
+      "name": "task contract validation",
+      "status": "PASS",
+      "evidence": "node .agent-workflow/validator/validate-contract.mjs task docs/agent-tasks/ACTIVE_TASK.json -> VALID TASK CONTRACT"
+    },
+    {
+      "name": "npm ci",
+      "status": "PASS",
+      "evidence": "238 packages installed; npm reported existing audit advisories and allowScripts warnings only"
+    },
+    {
+      "name": "typecheck/build",
+      "status": "PASS",
+      "evidence": "npm run typecheck and npm run build passed for both workspaces"
+    },
+    {
+      "name": "full repository tests",
+      "status": "PASS",
+      "evidence": "npm test: vision 63 passed, image-mind 325 passed with 8 intentional skips, root 57 passed"
+    },
+    {
+      "name": "package and built-artifact tests",
+      "status": "PASS",
+      "evidence": "npm run test:package 11 passed; npm run test:built 6 passed"
+    },
+    {
+      "name": "focused reliability/browser/privacy regression sweep",
+      "status": "PASS",
+      "evidence": "45 files, 222 tests passed across provider reliability/fallback, execution gate, retry, cache/refocus, routing, attachment/restart, SSRF, RPC, lifecycle, telemetry and UI privacy seams"
+    },
+    {
+      "name": "deterministic 100-case benchmark",
+      "status": "PASS",
+      "evidence": "100 cases; routing/task/assertion success 100%; forbiddenHitCount 0; trace/route/token coverage 100%; evidence-cache reuse 20%; controlled baseline comparison passed"
+    },
+    {
+      "name": "aspect/pixel-aware preprocessing comparison",
+      "status": "PASS",
+      "evidence": "npm run benchmark:preprocess passed for both long fixtures; current 8192 policy preserved more horizontal resolution and row-order evidence"
+    },
+    {
+      "name": "registry preflight",
+      "status": "PASS",
+      "evidence": "npm view for both 0.2.0 packages returned E404; recorded EXPECTED_NOT_PUBLISHED without publish or metadata mutation"
+    },
+    {
+      "name": "npm pack dry-run",
+      "status": "PASS",
+      "evidence": "vision 0.2.0 contained lib/types/README; image-mind 0.2.0 contained lib/patch/README only; no src/tests/credentials"
+    },
+    {
+      "name": "exact rc.1 source-built/local-packed evidence from merged Batches 013–015",
+      "status": "PASS",
+      "evidence": "Prior durable Result Contracts 013–015 record exact @deepseek-ai/dsh@0.1.1-rc.1 official add/boot/local-stub smoke/browser seams/official remove using task-owned local-packed 0.2.0 artifacts"
+    },
+    {
+      "name": "Batch 016 live exact rc.1 browser/host repeat",
+      "status": "BLOCKED",
+      "evidence": "Task-owned launcher/profile was prepared, but the only detected listener on port 3080 belonged to a pre-existing dsh-official-runtime process outside task-owned state; it was not touched, and no browser result from that process is claimed"
+    },
+    {
+      "name": "Draft PR creation",
+      "status": "BLOCKED",
+      "evidence": "Branch was pushed; installed gh client reported no authenticated GitHub session and could not create a PR without interactive credentials"
+    },
+    {
+      "name": "git diff --check and security audit",
+      "status": "PASS",
+      "evidence": "No whitespace errors, personal machine paths, credential material or secret-bearing values in changed docs/result"
+    }
+  ],
+  "blockers": [
+    "GitHub Draft PR creation requires an authenticated maintainer session; no PR number can be truthfully reported.",
+    "A pre-existing non-task dsh-official-runtime listener owns port 3080, so Batch 016 did not drive or terminate it; current live rc.1 browser/route acceptance remains external/partial.",
+    "Both 0.2.0 packages are intentionally unpublished; registry compatibility and post-publication install remain release debt.",
+    "No authorized hosted visual-provider credential was used; real-provider quality remains open debt."
+  ],
   "result_path": "docs/agent-results/DSH-VISION-FINAL-RC-CLOSURE-016-result.json",
   "notes": [
-    "Final status and stamped validation are written only after the complete pre-publish acceptance lane.",
-    "The requested Draft PR creation was attempted; the installed gh client has no authenticated GitHub session."
-  ]
+    "README is materially shorter and retains the third-party disclaimer, architecture split, install/use/config basics, 8-image bound, cache/reliability/security boundaries, compatibility and development links.",
+    "CHANGELOG now distinguishes deterministic/build evidence from exact rc.1 source-built evidence and does not describe the unpublished candidate as a registry release.",
+    "Compatibility/release/debt docs preserve historical rows and explicitly keep provider, publication, tag/release and real-Harness authorization boundaries open.",
+    "The current source tree had no implementation defect attributable to the task-owned code during this documentation/closure run; no source change was invented to mask host or registry blockers.",
+    "ACTIVE_TASK deletion and final result stamping are the remaining completion commit actions; the branch remains unmerged."
+  ],
+  "result_validation": {
+    "status": "PASS",
+    "validator": "node .agent-workflow/validator/validate-contract.mjs result docs/agent-results/DSH-VISION-FINAL-RC-CLOSURE-016-result.json --stamp",
+    "validated_at": "2026-08-22T15:17:13Z",
+    "evidence": "Exit 0: VALID RESULT CONTRACT: docs/agent-results/DSH-VISION-FINAL-RC-CLOSURE-016-result.json"
+  }
 }
