@@ -23,7 +23,7 @@ import { registerAttachRoute } from './attachments/routes.ts'
 import { readConfigView, writeConfigView } from './attachments/legacy-config.ts'
 import { runConnectionTest, listEndpointModels } from './runtime/vision-rpc.ts'
 import { createProviderReliabilityTracker } from './runtime/provider-reliability.ts'
-import { ReliabilityVisionAdapter } from './runtime/reliability-adapter.ts'
+import { recordProviderAttempt } from './runtime/reliability-adapter.ts'
 import { registerImageMindSystemPrompt } from './runtime/system-prompt-routing.ts'
 import { observeWebServerLifecycle } from './runtime/webserver-lifecycle.ts'
 import { VISION_PROVIDER_CATALOG } from './providers/catalog.ts'
@@ -81,13 +81,13 @@ export function apply(ctx: Context, config: ConfigType = {}): void {
   }
 
   const reliability = createProviderReliabilityTracker()
-  const wireAdapter = new OpenAICompatibleVisionAdapter({
+  const adapter = new OpenAICompatibleVisionAdapter({
     resolveProviderOptions: (provider, request) => connectionSnapshotOf(resolved(), provider, request),
     resolveApiKey: options => resolveApiKey(ctx, options),
     resolveProviderFallbacks: (provider, request) => reliability.fallbacks(resolved(), provider, request),
+    onProviderAttempt: event => recordProviderAttempt(reliability, event),
     cache,
   })
-  const adapter = new ReliabilityVisionAdapter(wireAdapter, reliability)
 
   let registration: ReturnType<typeof ctx.vision.registerAdapter> | undefined
   let registeredRoutes: string[] | undefined
