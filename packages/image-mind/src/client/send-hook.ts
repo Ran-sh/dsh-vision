@@ -9,7 +9,7 @@
  */
 
 import { MAX_IMAGES_PER_REQUEST } from '../shared/image-limits.ts'
-import { commitImagePreviewBatch, prepareImageForDescribe, uploadImage } from './attach.ts'
+import { commitImagePreviewBatch, discardImageRoutingBatch, prepareImageForDescribe, uploadImage } from './attach.ts'
 import { showToast } from './toast.ts'
 
 interface DraftImageFace {
@@ -45,6 +45,13 @@ export function buildVisionAwarePrompt(text: string, imageCount = 1): string {
   const count = Number.isSafeInteger(imageCount) && imageCount > 0 ? imageCount : 1
   const marker = count === 1 ? VISION_ATTACHMENT_MARKER : `已附加 ${count} 张图片。`
   return [text.trim(), marker].filter(part => part !== '').join('\n')
+}
+
+async function discardFailedRoutingBatch(sessionId: string, batchId: string): Promise<void> {
+  const result = await discardImageRoutingBatch(sessionId, batchId)
+  if (!result.ok && typeof console !== 'undefined') {
+    console.warn(`[image-mind] failed to discard uncommitted image routing batch (${result.message})`)
+  }
 }
 
 export function installSendHook(conversation: unknown): void {
@@ -98,6 +105,7 @@ export function installSendHook(conversation: unknown): void {
       uploadedCount += 1
     }
     if (uploadedCount !== attachments.length) {
+      if (uploadedCount > 0) await discardFailedRoutingBatch(sessionId, batchId)
       if (typeof console !== 'undefined') {
         console.warn(`[image-mind] image send blocked because rewrite did not complete (${failureReason ?? 'unknown'})`)
       }
@@ -106,8 +114,15 @@ export function installSendHook(conversation: unknown): void {
     }
 
     const fullText = buildVisionAwarePrompt(text, attachments.length)
-    const result = await session.prompt([{ type: 'text', text: fullText }], mode, signal)
+    let result: PromptResult
+    try {
+      result = await session.prompt([{ type: 'text', text: fullText }], mode, signal)
+    } catch (error) {
+      await discardFailedRoutingBatch(sessionId, batchId)
+      throw error
+    }
     if (!result.ok) {
+      await discardFailedRoutingBatch(sessionId, batchId)
       showToast(`图片发送失败：${result.error?.message ?? result.error?.code ?? '会话发送失败'}；草稿图片已保留`, 'error')
       return
     }
