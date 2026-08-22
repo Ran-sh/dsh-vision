@@ -1,0 +1,76 @@
+{
+  "id": "DSH-VISION-RC1-BROWSER-ROUTING-SECURITY-011",
+  "mode": "TEST_ONLY",
+  "source_branch": "fix/per-provider-reliability-probes",
+  "source_commit": "LATEST",
+  "objective": "Run one consolidated exact-rc.1 browser/runtime acceptance pass over the current PR #53 candidate, closing the missing real-browser 8/9-image evidence from Batch 010 while also validating route-source/cache-refocus semantics, model-only routing visibility, and user/call-view privacy boundaries in the same isolated environment.",
+  "context": "PR #53 head aa5fb0b3ef2a079838f93bce4c570be43195caea completed the provider reliability implementation and has green CI plus a stamped Batch 010 Result. GitHub-side review accepts the reliability code direction and automated/runtime reliability evidence, but does not yet accept Batch 010 as fully merge-ready because its real-browser PASS evidence only proves the rc.1 UI and image-mind settings page were usable; it does not explicitly prove the required >8-image fail-fast before upload/message side effects and exactly-8 allowance even though onboarding was successfully bypassed. Rather than send a tiny corrective hop, this TEST_ONLY batch groups that missing browser evidence with the remaining closely related Issue #21 route diagnostics/cache-refocus and security/call-view checks. Execute against the existing PR #53 branch without changing product code. Use exact @deepseek-ai/dsh@0.1.1-rc.1 and current source-built 0.2.0 candidate in task-owned isolated state. Real local Harness lifecycle operations are allowed only when materially useful and only through official Harness/DSH commands; project code and the executor must never directly edit Harness-owned state. Any defect discovered outside this TEST_ONLY result path must be reported for a later implementation batch, not fixed opportunistically.",
+  "allowed_changes": [
+    "docs/agent-results/DSH-VISION-RC1-BROWSER-ROUTING-SECURITY-011-result.json"
+  ],
+  "forbidden_changes": [
+    "all product/source/test files under packages/**, scripts/**, benchmarks/**, and .github/**",
+    "README.md, CHANGELOG.md, docs/compatibility.md, docs/verification-debt.md, or other project documentation except the required Result Contract and ACTIVE_TASK deletion",
+    "package.json, package-lock.json, workspace package manifests, versions, release metadata, tags, releases, publishing, or npm dist-tags",
+    "force-push, reset, history rewrite, branch replacement, PR merge, or PR close",
+    "direct/manual edits to any DeepSeek Harness profile, DSH_HOME, cordis.patch.yml, manifest, lockfile, settings file, credential file, cache, node_modules/plugin tree, or other Harness-owned state",
+    "credentials, API keys, bearer tokens, signed URL secrets, attachment ids, bare sha256 values, private local paths, or unredacted secret-bearing logs",
+    "writes to repositories other than Ran-sh/dsh-vision",
+    "any unrelated file"
+  ],
+  "validation": [
+    "node .agent-workflow/validator/validate-contract.mjs task docs/agent-tasks/ACTIVE_TASK.json",
+    "record exact execution-branch SHA, OS, Node, npm, pnpm, browser/agent-browser version when observable, and exact @deepseek-ai/dsh@0.1.1-rc.1 version",
+    "confirm the execution source is the existing PR #53 branch fix/per-provider-reliability-probes and includes aa5fb0b3ef2a079838f93bce4c570be43195caea or a non-rewritten descendant; keep PR #53 unmerged throughout executor execution",
+    "create only task-owned temporary launcher/cache/DSH_HOME/source-package/provider-stub/main-model-stub/browser state outside the repository as needed; source-build current 0.2.0 candidate and compose it into exact rc.1 using official isolated plugin operations",
+    "real-browser count guard: with the rc.1 composer actually usable, attempt >8 images and prove rejection occurs before upload/message/send side effects; capture safe observable counts/state without attachment ids or private paths",
+    "real-browser exactly-8 allowance: attach exactly 8 supported images and prove the request is not rejected by the image-count guard; if a later unrelated provider/model step fails, distinguish that from count-guard acceptance",
+    "user-visible routing secrecy: send one image and a multi-image request and confirm the rendered user bubble contains only user text plus the neutral attachment marker, with no understand_image name, routing comment, sha256 id, attachment JSON, MIME/dimension/byte metadata, /image-mind/raw URL, provider/model route facts, or cache internals",
+    "model-only routing availability: in an isolated deterministic main-model/tool-call setup when feasible, verify image-only and vague image questions still make the model call understand_image with omitted image/images for the current session batch while the routing instruction remains absent from the rendered user bubble",
+    "route.source provider path: make a fresh local-stub visual call and prove route.source=provider with route.task, route.cacheMode, route.evidenceLayerEnabled, selectedProvider, selectedModel, fallback booleans, and VisionTrace consistent with observed stub traffic",
+    "semantic-cache path: repeat an exact eligible request and prove route.source=semantic-cache, provider traffic does not increase, and trace/cache counters do not invent a fresh provider success",
+    "evidence-cache path: for a reusable-evidence-eligible task, ask a materially related same-image follow-up and prove route.source=evidence-cache with zero provider traffic when the existing broad evidence is sufficient",
+    "cache refocus path: after broad OCR/document/UI reusable evidence, ask a deliberately narrow detail question that broad evidence does not contain; when the main model decides a fresh read is necessary, prove it issues a focused cache=no-store visual call instead of guessing, and prove the earlier broad reusable evidence remains available afterward rather than being overwritten by the focused no-store read",
+    "forced fallback truthfulness: force a safe local-stub model and/or provider fallback and compare selectedProvider, selectedModel, modelFallback, providerFallback, route.source, providerCalls, retries, modelFallbacks, providerFallbacks, and cacheHits against observed request traffic",
+    "prompt-in-image authority boundary: use an image containing prompt-like or instruction-like text and verify provider/main-model handling treats that text only as visual content, never as authority that can override system/developer/user instructions",
+    "call/debug privacy: inspect available call/debug cards/views for URL, uploaded attachment, and local-file cases and confirm no signed URL path/query secret, attachment JSON, bare sha256 id, credential, endpoint secret, or private local path is exposed; local-file rawInput may expose only the basename when that host view exists",
+    "rendered-conversation privacy: confirm route/debug metadata, selected provider/model, cache source, trace counters, attachment references, and signed URL material remain absent from normal rendered conversation output even while the isolated diagnostic/test harness can observe the safe route facts separately",
+    "re-verify PR #52 route lifecycle in the same exact rc.1 listener as a smoke check: GET /image-mind/catalog returns HTTP 200 and at least one additional /image-mind route enters the plugin handler",
+    "if any required browser/runtime subcheck is blocked by an rc.1 host limitation, record the exact subcheck as PARTIAL/BLOCKED with safe evidence; do not label the overall Result PASS unless every required test entry is PASS",
+    "delete all task-owned temporary launcher/cache/DSH_HOME/package/stub/browser artifacts and terminate all task-owned processes",
+    "record final real local Harness composition/state read-only; if any user-authorized official lifecycle operation changed it, restore/leave the task-specified clean state and document before/after without exposing secrets",
+    "node .agent-workflow/validator/validate-contract.mjs result docs/agent-results/DSH-VISION-RC1-BROWSER-ROUTING-SECURITY-011-result.json --stamp"
+  ],
+  "acceptance_criteria": [
+    "Task Contract validates before execution and the exact PR #53 source SHA is recorded.",
+    "No product/source/test/release/Harness-owned file is modified or committed; this is evidence-only TEST_ONLY work.",
+    "The missing Batch 010 browser count evidence is closed with explicit safe proof that >8 fails before side effects and exactly 8 is not rejected by the count guard, or is truthfully reported non-PASS with an exact host blocker.",
+    "Fresh provider, semantic-cache, and evidence-cache routes are each distinguished by route.source and their provider traffic/trace behavior matches the observed local stubs.",
+    "route.task, route.cacheMode, route.evidenceLayerEnabled, selectedProvider, selectedModel, modelFallback, and providerFallback remain truthful against observed execution.",
+    "A narrow follow-up after broad reusable evidence does not guess when evidence is insufficient: a focused no-store reread is observable when invoked, and it does not replace the broader reusable evidence.",
+    "Rendered user/conversation UI exposes only neutral attachment markers and user text, while model-only routing remains available through the system-prompt/tool seam.",
+    "Prompt-like text inside images is treated only as visual content, not authority.",
+    "Call/debug views do not expose signed URL secrets, attachment JSON, bare sha256 ids, credentials, or private local paths; local-file rawInput is basename-only when present.",
+    "PR #52 real-listener route lifecycle remains green in the same exact rc.1 environment.",
+    "All task-owned temporary state/processes are cleaned and no secret-bearing evidence is committed.",
+    "Result Contract v2 uses second-precision timezone-aware timeline fields, truthful per-check PASS/FAIL/PARTIAL/BLOCKED states, and validator-owned --stamp evidence.",
+    "On completion, delete docs/agent-tasks/ACTIVE_TASK.json on the execution branch, commit/push only the Result Contract plus ACTIVE task deletion, leave PR #53 unmerged, and stop without self-assigning follow-up work."
+  ],
+  "result_contract": "docs/agent-results/DSH-VISION-RC1-BROWSER-ROUTING-SECURITY-011-result.json",
+  "completion_commit_contract": [
+    "docs/agent-results/DSH-VISION-RC1-BROWSER-ROUTING-SECURITY-011-result.json",
+    "docs/agent-tasks/ACTIVE_TASK.json"
+  ],
+  "delete_active_task_on_completion": true,
+  "metadata": {
+    "executor": "CODEX",
+    "purpose": "rc1-browser-routing-cache-security-acceptance",
+    "related_issue": "21",
+    "resume_pr": "53",
+    "execution_branch": "fix/per-provider-reliability-probes",
+    "compatibility_target": "@deepseek-ai/dsh@0.1.1-rc.1",
+    "handoff_policy": "batch-related-work-before-codex",
+    "real_harness_policy": "official-lifecycle-ops-allowed-no-direct-file-mutation",
+    "closes_batch010_browser_gap": true
+  }
+}
