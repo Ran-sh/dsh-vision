@@ -5,9 +5,10 @@
  * @module dsh-plugin-image-mind/adapters/openai-compatible
  */
 
-export { OpenAICompatibleVisionAdapter } from './adapter.ts'
+export { OpenAICompatibleVisionAdapter } from './credential-scoped-adapter.ts'
 export type { OpenAICompatibleAdapterOptions } from './adapter.ts'
 export { semanticRequestKey } from './adapter.ts'
+export { credentialCacheFingerprint } from './credential-scoped-adapter.ts'
 export { buildVisionRequest, extractChatCompletionsContent, extractResponsesContent } from './parse.ts'
 export { discoverEndpointModels, planVisionModels } from './discovery.ts'
 export { resolveBackoff, sleepBackoff } from './retry.ts'
