@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { createMemoryVisionCache } from '@ran-sh/dsh-vision'
 import { understandImageTool } from '../src/tools/understand-image.ts'
+import { shouldRefocusReusableEvidence } from '../src/runtime/reusable-evidence.ts'
 
 const PNG = Buffer.from([
   0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
@@ -22,7 +23,12 @@ function imageFile(): string {
 }
 
 function setup() {
-  const call = vi.fn(async (_request: unknown) => ({ text: `facts-${call.mock.calls.length}`, provider: 'p', model: 'm' }))
+  const call = vi.fn(async (_request: unknown) => ({
+    text: `facts-${call.mock.calls.length}`,
+    provider: 'p',
+    model: 'm',
+    trace: { providerCalls: 1, payloadBytes: 128, cacheHits: 0, retries: 0, modelFallbacks: 0, providerFallbacks: 0, splits: 0 },
+  }))
   const ctx = new Context()
   ctx.provide('vision', { call } as never)
   ctx.provide('attachments', {} as never)
@@ -37,6 +43,12 @@ function setup() {
 }
 
 describe('layered reusable evidence cache', () => {
+  it('only refocuses a positional detail when cached evidence lacks its anchors', () => {
+    const prompt = 'OCR the exact tiny value in row 3 column 2'
+    expect(shouldRefocusReusableEvidence(prompt, 'broad OCR evidence without cell coordinates')).toBe(true)
+    expect(shouldRefocusReusableEvidence(prompt, 'row 3 column 2 contains the blue value')).toBe(false)
+  })
+
   it('reuses same-image same-task evidence across different OCR questions', async () => {
     const { call, tool } = setup()
     const file = imageFile()
@@ -67,27 +79,23 @@ describe('layered reusable evidence cache', () => {
     expect(reused.trace).toMatchObject({ providerCalls: 0, cacheHits: 1 })
   })
 
-  it('no-store refocus uses the precise caller prompt without replacing broad reusable evidence', async () => {
+  it('automatically refocuses a materially narrow question without replacing broad reusable evidence', async () => {
     const { call, tool } = setup()
     const file = imageFile()
     const exec = { signal: new AbortController().signal } as never
 
     const broad = await tool.execute({ image: file, prompt: 'OCR all visible text' }, exec)
     const cached = await tool.execute({ image: file, prompt: 'OCR the exact tiny value in row 3 column 2' }, exec)
-    const refocused = await tool.execute({
-      image: file,
-      prompt: 'OCR row 3, column 2 only and report the exact visible value; mark it unclear rather than guessing.',
-      cache: 'no-store',
-    }, exec)
     const reused = await tool.execute({ image: file, prompt: 'read all text again' }, exec)
 
-    expect(cached.route).toMatchObject({ source: 'evidence-cache' })
+    expect(cached.route).toMatchObject({ source: 'provider', cacheMode: 'no-store', evidenceLayerEnabled: false })
     expect(call).toHaveBeenCalledTimes(2)
     expect(call.mock.calls[1][0]).toMatchObject({
-      prompt: 'OCR row 3, column 2 only and report the exact visible value; mark it unclear rather than guessing.',
+      prompt: 'OCR the exact tiny value in row 3 column 2',
       cache: 'no-store',
     })
-    expect(refocused.text).not.toBe(broad.text)
+    expect(cached.trace).toMatchObject({ providerCalls: 1, cacheHits: 0 })
+    expect(cached.text).not.toBe(broad.text)
     expect(reused.text).toBe(broad.text)
     expect(reused.route).toMatchObject({ source: 'evidence-cache' })
   })
@@ -112,5 +120,20 @@ describe('layered reusable evidence cache', () => {
 
     expect(call).toHaveBeenCalledTimes(2)
     expect(call.mock.calls[0][0]).toMatchObject({ provider: 'chosen', prompt: 'transcribe all text verbatim' })
+  })
+
+  it('explicit model bypasses layered reuse and preserves model stickiness', async () => {
+    const { call, tool } = setup()
+    const file = imageFile()
+    const exec = { signal: new AbortController().signal } as never
+
+    const first = await tool.execute({ image: file, prompt: 'transcribe all text verbatim', model: 'chosen-model' }, exec)
+    const second = await tool.execute({ image: file, prompt: 'transcribe all text verbatim', model: 'chosen-model' }, exec)
+
+    expect(call).toHaveBeenCalledTimes(2)
+    expect(call.mock.calls[0][0]).toMatchObject({ model: 'chosen-model', prompt: 'transcribe all text verbatim' })
+    expect(call.mock.calls[1][0]).toMatchObject({ model: 'chosen-model', prompt: 'transcribe all text verbatim' })
+    expect(first.route).toMatchObject({ requestedModel: 'chosen-model', evidenceLayerEnabled: false, source: 'provider' })
+    expect(second.route).toMatchObject({ requestedModel: 'chosen-model', evidenceLayerEnabled: false, source: 'provider' })
   })
 })

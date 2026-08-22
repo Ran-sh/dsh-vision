@@ -13,7 +13,12 @@ import type { VisionCacheMode, VisionCacheStore, VisionTask, VisionTrace } from 
 import { loadImage } from '../media/load.ts'
 import type { LoadedImage } from '../media/types.ts'
 import { MAX_SESSION_BATCH_OFFSET, sessionAttachmentRefsByOffset } from '../attachments/session-history.ts'
-import { isReusableEvidenceTask, reusableEvidenceKey, reusableEvidencePrompt } from '../runtime/reusable-evidence.ts'
+import {
+  isReusableEvidenceTask,
+  reusableEvidenceKey,
+  reusableEvidencePrompt,
+  shouldRefocusReusableEvidence,
+} from '../runtime/reusable-evidence.ts'
 import { MAX_IMAGES_PER_REQUEST } from '../shared/image-limits.ts'
 
 export { MAX_IMAGES_PER_REQUEST } from '../shared/image-limits.ts'
@@ -324,38 +329,52 @@ export function understandImageTool(
       const callerPrompt = args.prompt ?? defaultPrompt()
       const task = inferVisionTask(callerPrompt, images.length)
       const { maxOutputTokens } = routeVisionTask(task).policy
-      const cacheMode = args.cache ?? 'use'
+      let cacheMode = args.cache ?? 'use'
       const explicitRoute = (args.provider?.trim().length ?? 0) > 0 || (args.model?.trim().length ?? 0) > 0
-      const useEvidenceLayer = evidenceCache !== undefined
+      let useEvidenceLayer = evidenceCache !== undefined
         && !explicitRoute
         && cacheMode !== 'no-store'
         && isReusableEvidenceTask(task)
-      const decision: UnderstandImageDecision = {
-        task,
-        cacheMode,
-        evidenceLayerEnabled: useEvidenceLayer,
-      }
       const understandingKey = useEvidenceLayer ? reusableEvidenceKey(images, task) : undefined
 
       if (understandingKey !== undefined && cacheMode === 'use') {
         const hit = evidenceCache!.getUnderstanding(understandingKey)
         if (hit !== undefined) {
-          const trace = cacheOnlyTrace()
-          return {
-            text: hit.facts,
-            model: hit.model,
-            provider: hit.provider,
-            route: understandImageRoute(args, hit.provider, hit.model, decision, trace, 'evidence-cache'),
-            images: images.map((image, index) => ({
-              source: sourceLabels[index],
-              mimeType: image.mimeType,
-              bytes: image.bytes.length,
-            })),
-            trace,
+          if (shouldRefocusReusableEvidence(callerPrompt, hit.facts)) {
+            // A task match alone does not prove that a broad answer contains
+            // a newly requested tiny detail. Make the smallest safe decision:
+            // bypass both cache layers for this focused read, while leaving
+            // the broad entry untouched for later reusable questions.
+            cacheMode = 'no-store'
+            useEvidenceLayer = false
+          } else {
+            const decision: UnderstandImageDecision = {
+              task,
+              cacheMode,
+              evidenceLayerEnabled: useEvidenceLayer,
+            }
+            const trace = cacheOnlyTrace()
+            return {
+              text: hit.facts,
+              model: hit.model,
+              provider: hit.provider,
+              route: understandImageRoute(args, hit.provider, hit.model, decision, trace, 'evidence-cache'),
+              images: images.map((image, index) => ({
+                source: sourceLabels[index],
+                mimeType: image.mimeType,
+                bytes: image.bytes.length,
+              })),
+              trace,
+            }
           }
         }
       }
 
+      const decision: UnderstandImageDecision = {
+        task,
+        cacheMode,
+        evidenceLayerEnabled: useEvidenceLayer,
+      }
       const requestPrompt = useEvidenceLayer ? reusableEvidencePrompt(task, images.length) : callerPrompt
       const result = await ctx.vision.call({
         provider: args.provider,
@@ -363,11 +382,11 @@ export function understandImageTool(
         prompt: requestPrompt,
         images,
         maxOutputTokens,
-        ...args.cache === undefined ? {} : { cache: args.cache },
+        ...cacheMode === 'use' && args.cache === undefined ? {} : { cache: cacheMode },
         signal: exec.signal,
       })
 
-      if (understandingKey !== undefined) {
+      if (understandingKey !== undefined && useEvidenceLayer && cacheMode !== 'no-store') {
         evidenceCache!.setUnderstanding({
           imageKey: understandingKey,
           facts: result.text,

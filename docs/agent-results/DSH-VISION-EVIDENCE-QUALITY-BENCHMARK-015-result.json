@@ -1,0 +1,139 @@
+{
+  "schema_version": 2,
+  "task_id": "DSH-VISION-EVIDENCE-QUALITY-BENCHMARK-015",
+  "source_commit": "5d144f605a025dd6355b9edb766fa9bead4be694",
+  "result_commit": "7c08334fcece77d4517190a3ee28087b7bd85c07",
+  "status": "PARTIAL",
+  "summary": "Continued the sole existing Draft PR #57 and preserved all prior Batch 015 commits. Corrected the frozen 100-case corpus so assertion answers do not leak into prompts, added automatic evidence-sufficiency refocus with truthful no-store/provider telemetry, executed a benchmark-only historical 3072-long-edge comparison on both long fixtures, regenerated benchmark outputs, and passed all repository/package/built gates plus final PR CI. Hosted visual-provider quality remains an honest SKIP because no explicitly authorized provider credential was available.",
+  "timeline": {
+    "started_at": "2026-08-22T22:08:47+08:00",
+    "completed_at": "2026-08-22T22:27:58+08:00"
+  },
+  "changed_files": [
+    "package.json",
+    "scripts/generate-vision-benchmark-corpus.mjs",
+    "scripts/compare-long-image-preprocess.mjs",
+    "packages/image-mind/src/runtime/reusable-evidence.ts",
+    "packages/image-mind/src/tools/understand-image.ts",
+    "packages/image-mind/tests/layered-evidence-cache.test.ts",
+    "tests/vision-corpus.test.ts",
+    "benchmarks/vision/cases.jsonl",
+    "benchmarks/vision/corpus-manifest.json",
+    "benchmarks/vision/results.baseline.jsonl",
+    "benchmarks/vision/results.candidate.jsonl",
+    "benchmarks/vision/reports/015-baseline-score.json",
+    "benchmarks/vision/reports/015-candidate-score.json",
+    "benchmarks/vision/reports/015-compare.json",
+    "benchmarks/vision/reports/015-long-image-preprocess.json",
+    "docs/agent-results/DSH-VISION-EVIDENCE-QUALITY-BENCHMARK-015-result.json",
+    "docs/agent-tasks/ACTIVE_TASK.json"
+  ],
+  "tests": [
+    {
+      "name": "task contract validation",
+      "status": "PASS",
+      "evidence": "node .agent-workflow/validator/validate-contract.mjs task docs/agent-tasks/ACTIVE_TASK.json -> VALID TASK CONTRACT"
+    },
+    {
+      "name": "source revision and execution branch",
+      "status": "PASS",
+      "evidence": "main LATEST resolved to 5d144f605a025dd6355b9edb766fa9bead4be694; execution branch feat/evidence-quality-benchmark-batch-015; main task commit merged non-destructively as 82703ea6b144916e833ee4ebc3a15b5185e687ee"
+    },
+    {
+      "name": "existing PR #57 checkpoint",
+      "status": "PASS",
+      "evidence": "Public GitHub API confirmed PR #57 is open, Draft, unmerged, and head 7c08334fcece77d4517190a3ee28087b7bd85c07"
+    },
+    {
+      "name": "benchmark anti-leak regression",
+      "status": "PASS",
+      "evidence": "100 regenerated cases contain no containsAll/containsAny/excludes token in the corresponding prompt; tests/vision-corpus.test.ts scans every case and guards the generator template"
+    },
+    {
+      "name": "corrected deterministic corpus and replay",
+      "status": "PASS",
+      "evidence": "npm run benchmark:corpus -> 100 cases, baseline 100 provider-path calls, candidate 80 provider calls and 20 evidence-cache hits, both task success rates 1.0"
+    },
+    {
+      "name": "benchmark score and default-threshold compare",
+      "status": "PASS",
+      "evidence": "benchmark:score passes for baseline/candidate; benchmark:compare passes with DEFAULT_BENCHMARK_THRESHOLDS, candidate calls 80/100 and zeroProviderReuseRate 0.20"
+    },
+    {
+      "name": "automatic narrow refocus",
+      "status": "PASS",
+      "evidence": "layered-evidence-cache.test.ts 7/7: missing positional detail automatically routes provider/cacheMode=no-store/evidenceLayerEnabled=false with providerCalls=1, while broad evidence remains reusable; sufficient cached anchors remain reusable"
+    },
+    {
+      "name": "route, trace, provider-health neutrality",
+      "status": "PASS",
+      "evidence": "Focused and full image-mind suites pass; corrected benchmark reports routeDecisionConsistencyRate 1.0 and explicit evidence-cache/provider source buckets with truthful providerCalls/cacheHits"
+    },
+    {
+      "name": "historical 3072-long-edge preprocessing comparison",
+      "status": "PASS",
+      "evidence": "npm run benchmark:preprocess executes decode, nearest-neighbour resize, PNG re-encode, output-byte/hash, deterministic processingUnits, readability density, and sampled row-order evidence for long-1440x10000 and long-1440x20000; report records current 1180x8192/590x8192 beside historical 442x3072/221x3072"
+    },
+    {
+      "name": "required focused regression matrix",
+      "status": "PASS",
+      "evidence": "Full image-mind suite covers evidence reuse, no-store, refresh, explicit provider/model, settings invalidation, photo/general, multi-image ordering/split, routeSourceOutcomes reconciliation, and long-image preprocessing"
+    },
+    {
+      "name": "npm run typecheck",
+      "status": "PASS",
+      "evidence": "Workspace TypeScript checks exit 0"
+    },
+    {
+      "name": "npm run build",
+      "status": "PASS",
+      "evidence": "vision and image-mind host/client builds exit 0"
+    },
+    {
+      "name": "npm test",
+      "status": "PASS",
+      "evidence": "vision 63 passed; image-mind 324 passed, 8 skipped; root 57 passed"
+    },
+    {
+      "name": "npm run test:package",
+      "status": "PASS",
+      "evidence": "11/11 package integrity tests"
+    },
+    {
+      "name": "npm run test:built",
+      "status": "PASS",
+      "evidence": "6/6 built-artifact tests"
+    },
+    {
+      "name": "controlled failing benchmark comparison",
+      "status": "PASS",
+      "evidence": "Three controlled wrong answers made benchmark:compare exit 1 as expected"
+    },
+    {
+      "name": "hosted/local provider visual quality",
+      "status": "SKIP",
+      "evidence": "No explicitly authorized visual provider/model credential was available; deterministic marker-backed stub is limited to cache/routing/telemetry/equivalence evidence and is not a visual-model quality claim"
+    },
+    {
+      "name": "final PR #57 GitHub Actions",
+      "status": "PASS",
+      "evidence": "Run 32578662381 for head 7c08334fcece77d4517190a3ee28087b7bd85c07: install-roundtrip, windows, test (22), test (24), and secret-scan all completed success"
+    }
+  ],
+  "blockers": [
+    "Hosted visual-provider quality remains SKIP because no explicitly authorized provider credential was available. No Harness settings, credential store, cookies, keys, or secret-bearing logs were read."
+  ],
+  "result_path": "docs/agent-results/DSH-VISION-EVIDENCE-QUALITY-BENCHMARK-015-result.json",
+  "notes": [
+    "Implementation commits pushed to the existing PR branch: 27218d8fdac748a62a17b5edfe17d8dfb4da7e70 and 7c08334fcece77d4517190a3ee28087b7bd85c07.",
+    "PR #57 remains Draft/open/unmerged; no new PR was created and no follow-up Batch 016 work was self-assigned.",
+    "Benchmark fixtures are repository-owned deterministic PNGs with stable metadata and no network dependency. Historical comparison is benchmark-only and does not alter production preprocessing policy.",
+    "Runtime: Windows, Node v24.18.1, npm 11.16.0. No task-owned processes or scratch artifacts remain."
+  ],
+  "result_validation": {
+    "status": "PASS",
+    "validator": "node .agent-workflow/validator/validate-contract.mjs result docs/agent-results/DSH-VISION-EVIDENCE-QUALITY-BENCHMARK-015-result.json --stamp",
+    "validated_at": "2026-08-22T14:29:06Z",
+    "evidence": "Exit 0: VALID RESULT CONTRACT: docs/agent-results/DSH-VISION-EVIDENCE-QUALITY-BENCHMARK-015-result.json"
+  }
+}

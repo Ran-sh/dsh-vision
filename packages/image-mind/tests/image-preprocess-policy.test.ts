@@ -1,6 +1,9 @@
-import { describe, expect, it } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   imagePreprocessPolicy,
+  prepareImageForDescribe,
   targetImageDimensions,
   LOSSY_COMPRESS_MAX_EDGE,
   PNG_COMPRESS_MAX_EDGE,
@@ -8,6 +11,8 @@ import {
   PNG_MAX_PIXELS,
   LONG_SCREENSHOT_ASPECT_RATIO,
 } from '../src/client/attach.ts'
+
+afterEach(() => vi.unstubAllGlobals())
 
 describe('image preprocessing policy', () => {
   it('keeps normal PNG screenshots lossless with a bounded pixel budget', () => {
@@ -32,6 +37,56 @@ describe('image preprocessing policy', () => {
     // retain substantially more horizontal text resolution.
     expect(target.width).toBeGreaterThan(1000)
     expect(target.width * target.height).toBeLessThanOrEqual(PNG_MAX_PIXELS)
+  })
+
+  it('keeps a substantially taller 1440x20000 page within the same bounded geometry', () => {
+    const policy = imagePreprocessPolicy('image/png', 1440, 20000)!
+    const target = targetImageDimensions(1440, 20000, policy)
+    expect(target.scaled).toBe(true)
+    expect(target.height).toBe(PNG_LONG_COMPRESS_MAX_EDGE)
+    expect(target.width).toBeGreaterThan(500)
+    expect(target.width * target.height).toBeLessThanOrEqual(PNG_MAX_PIXELS)
+  })
+
+  it('runs the browser preprocessing flow for a 1440x20000 PNG', async () => {
+    let canvasSize: { width: number; height: number } | undefined
+    const bitmap = { width: 1440, height: 20000, close: vi.fn() }
+    vi.stubGlobal('FileReader', class {
+      result: string | ArrayBuffer | null = null
+      onload?: () => void
+      onerror?: () => void
+      readAsDataURL(blob: Blob): void {
+        blob.arrayBuffer().then(bytes => {
+          this.result = `data:${blob.type};base64,${Buffer.from(bytes).toString('base64')}`
+          this.onload?.()
+        }).catch(() => this.onerror?.())
+      }
+    })
+    vi.stubGlobal('createImageBitmap', vi.fn(async () => bitmap))
+    vi.stubGlobal('document', {
+      createElement: () => {
+        const canvas = {
+          width: 0,
+          height: 0,
+          getContext: () => ({ fillStyle: '', fillRect: vi.fn(), drawImage: vi.fn() }),
+          toBlob: (callback: (blob: Blob | null) => void, type?: string) => {
+            canvasSize = { width: canvas.width, height: canvas.height }
+            callback(new Blob([new Uint8Array(1024)], { type }))
+          },
+        }
+        return canvas
+      },
+    })
+
+    const file = new File([
+      readFileSync(resolve(import.meta.dirname, '../../../benchmarks/vision/fixtures/generated/long-1440x20000.png')),
+    ], 'long.png', { type: 'image/png' })
+    expect(file.size).toBeGreaterThan(80_000)
+    const result = await prepareImageForDescribe(file)
+    expect(result).toMatchObject({ ok: true, mediaType: 'image/png' })
+    expect(createImageBitmap).toHaveBeenCalledWith(file)
+    expect(canvasSize).toEqual({ width: 590, height: 8192 })
+    expect(bitmap.close).toHaveBeenCalledOnce()
   })
 
   it('uses the pixel cap when a moderately elongated PNG would otherwise exceed it', () => {
