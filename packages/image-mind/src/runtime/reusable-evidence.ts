@@ -72,21 +72,17 @@ const POSITIONAL_ANCHOR = /\b(?:row|column|col|cell|line|field|section|button|la
 /**
  * Decide whether a caller is asking for a focused visual detail that a broad
  * reusable answer may not contain. This is deliberately conservative: a
- * focused request bypasses both cache layers, because free-form provider
- * prose cannot prove that a named tiny detail was actually inspected. A cache
- * hit must never be presented as sufficient evidence for an unverified detail
- * merely because the task class matches.
+ * focused request bypasses both cache layers unless the cached evidence
+ * explicitly contains every positional anchor named by the caller. A cache
+ * hit must never be presented as sufficient evidence merely because the task
+ * class matches.
  */
 export function shouldRefocusReusableEvidence(prompt: string, facts: string): boolean {
   const normalizedPrompt = prompt.normalize('NFKC').toLowerCase()
   if (!FOCUS_MARKERS.some(marker => normalizedPrompt.includes(marker))) return false
+  const normalizedFacts = facts.normalize('NFKC').toLowerCase()
   const anchors = normalizedPrompt.match(POSITIONAL_ANCHOR) ?? []
-  // Repeating a row/field label in broad prose is not proof that the requested
-  // value was actually read. Keep the decision conservative and inspect the
-  // pixels again for every focused marker; `facts` remains an explicit seam
-  // parameter so callers cannot accidentally omit the cached-evidence input.
-  void facts
-  if (anchors.length > 0) return true
+  if (anchors.length > 0) return anchors.some(anchor => !normalizedFacts.includes(anchor))
   // Without a stable positional anchor there is no safe way to establish
   // sufficiency from free-form provider prose. Refresh instead of guessing.
   return true

@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { createMemoryVisionCache } from '@ran-sh/dsh-vision'
 import { understandImageTool } from '../src/tools/understand-image.ts'
+import { shouldRefocusReusableEvidence } from '../src/runtime/reusable-evidence.ts'
 
 const PNG = Buffer.from([
   0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
@@ -42,6 +43,12 @@ function setup() {
 }
 
 describe('layered reusable evidence cache', () => {
+  it('only refocuses a positional detail when cached evidence lacks its anchors', () => {
+    const prompt = 'OCR the exact tiny value in row 3 column 2'
+    expect(shouldRefocusReusableEvidence(prompt, 'broad OCR evidence without cell coordinates')).toBe(true)
+    expect(shouldRefocusReusableEvidence(prompt, 'row 3 column 2 contains the blue value')).toBe(false)
+  })
+
   it('reuses same-image same-task evidence across different OCR questions', async () => {
     const { call, tool } = setup()
     const file = imageFile()
