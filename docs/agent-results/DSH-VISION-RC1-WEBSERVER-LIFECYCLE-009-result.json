@@ -1,0 +1,116 @@
+{
+  "schema_version": 2,
+  "task_id": "DSH-VISION-RC1-WEBSERVER-LIFECYCLE-009",
+  "source_commit": "7304043e24c020441a31738ff1387d98e6f20444",
+  "result_commit": null,
+  "status": "PARTIAL",
+  "summary": "Implemented Cordis webServer lifecycle registration for image-mind routes. The production path now uses ctx.inject(['webServer'], ...) with WeakSet deduplication per server instance, covering immediate availability, delayed availability, and replacement without bounded timer polling. Focused lifecycle coverage and the isolated exact rc.1 real-listener acceptance pass. The overall result is PARTIAL solely because the required full npm test command has one deterministic environment-caused DNS/SSRF failure in the pre-existing tool-thin URL test.",
+  "timeline": {
+    "started_at": "2026-08-22T13:32:19+08:00",
+    "completed_at": "2026-08-22T13:41:11+08:00"
+  },
+  "changed_files": [
+    "packages/image-mind/src/index.ts",
+    "packages/image-mind/src/runtime/webserver-lifecycle.ts",
+    "packages/image-mind/tests/webserver-lifecycle.test.ts",
+    "docs/agent-results/DSH-VISION-RC1-WEBSERVER-LIFECYCLE-009-result.json",
+    "docs/agent-tasks/ACTIVE_TASK.json"
+  ],
+  "tests": [
+    {
+      "name": "node .agent-workflow/validator/validate-contract.mjs task docs/agent-tasks/ACTIVE_TASK.json",
+      "status": "PASS",
+      "evidence": "Exit 0: VALID TASK CONTRACT. source_branch main and source_commit LATEST resolved to exact source SHA 7304043e24c020441a31738ff1387d98e6f20444."
+    },
+    {
+      "name": "source revision and execution environment",
+      "status": "PASS",
+      "evidence": "Source SHA 7304043e24c020441a31738ff1387d98e6f20444; Microsoft Windows 11 Professional 10.0.22631 x64; Node v24.18.1; npm 11.16.0; pnpm 11.7.0; exact target @deepseek-ai/dsh version 0.1.1-rc.1."
+    },
+    {
+      "name": "read-only real Harness composition verification at task start and completion",
+      "status": "PASS",
+      "evidence": "Bounded read-only checks over real web and github-e2e profile package/lock/cordis files found zero dsh-plugin-image-mind or @ran-sh/dsh-vision composition matches at start and completion. Read-only diagnose reported no active image-mind cordis rows. No real Harness files or installation operations were changed."
+    },
+    {
+      "name": "focused webServer lifecycle regression",
+      "status": "PASS",
+      "evidence": "npm --workspace dsh-plugin-image-mind exec vitest run tests/webserver-lifecycle.test.ts exited 0: 1 file and 7 tests passed, covering immediate service availability, delayed availability, same-instance deduplication, replacement, and apply() route composition."
+    },
+    {
+      "name": "production registration path no longer uses bounded polling",
+      "status": "PASS",
+      "evidence": "packages/image-mind/src/index.ts delegates route registration to observeWebServerLifecycle; the new helper uses the Cordis inject service lifecycle seam and contains no setTimeout polling."
+    },
+    {
+      "name": "npm run typecheck",
+      "status": "PASS",
+      "evidence": "Exit 0: both workspace package typechecks passed."
+    },
+    {
+      "name": "npm run build",
+      "status": "PASS",
+      "evidence": "Exit 0: both workspace packages built successfully from the recorded source SHA."
+    },
+    {
+      "name": "npm test",
+      "status": "FAIL",
+      "evidence": "Exit 1 with exactly one deterministic environment-caused failure: tests/tool-thin.test.ts URL-source behavior resolves example.com to 198.18.0.108 in this sandbox and the existing SSRF guard rejects it before the test fetch stub. Workspace result was 58 passed files, 2 skipped, 1 failed; 312 passed tests, 7 skipped, 1 failed. No product code was changed for this unrelated environment failure."
+    },
+    {
+      "name": "npm run test:package",
+      "status": "PASS",
+      "evidence": "Exit 0: 11 package-integrity tests passed."
+    },
+    {
+      "name": "npm run test:built",
+      "status": "PASS",
+      "evidence": "Exit 0: 5 built-artifact tests passed."
+    },
+    {
+      "name": "isolated exact rc.1 source-built composition",
+      "status": "PASS",
+      "evidence": "A task-owned temporary launcher/cache/DSH_HOME was used outside the repository. Official dsh plugin add composed current source-built dsh-plugin-image-mind 0.2.0 and @ran-sh/dsh-vision 0.2.0 into exact @deepseek-ai/dsh 0.1.1-rc.1. --dump-config showed both vision-runtime and image-mind rows."
+    },
+    {
+      "name": "real isolated dsh web GET /image-mind/catalog",
+      "status": "PASS",
+      "evidence": "Normal exact rc.1 dsh web boot on the task-owned localhost listener returned HTTP 200 for GET /image-mind/catalog with the plugin catalog JSON body."
+    },
+    {
+      "name": "real isolated dsh web additional image-mind route",
+      "status": "PASS",
+      "evidence": "The same real listener returned HTTP 422 for GET /image-mind/previews with the plugin envelope {ok:false,error:{code:'rejected',message:'sessionId is required'}}, proving dispatch into the plugin handler rather than host 404/405."
+    },
+    {
+      "name": "no duplicate registration on one server lifecycle",
+      "status": "PASS",
+      "evidence": "Focused tests passed same-instance restart churn with exactly one registration and new-instance replacement with one additional registration; the production helper uses WeakSet<object> deduplication."
+    },
+    {
+      "name": "task-owned temporary state and processes cleanup",
+      "status": "PASS",
+      "evidence": "The task-owned isolated tree was deleted, the dedicated listener port was free, and no task-owned process remained."
+    },
+    {
+      "name": "final real Harness read-only verification",
+      "status": "PASS",
+      "evidence": "Final bounded profile-file scan found zero active dsh-plugin-image-mind or @ran-sh/dsh-vision composition matches; the task-owned listener port was free."
+    }
+  ],
+  "blockers": [
+    "npm test is not fully green in this environment because the sandbox DNS maps example.com to RFC2544 address 198.18.0.108, which the existing SSRF protection correctly rejects before the test's mocked fetch. This is unrelated to the lifecycle change and should be rerun under public DNS/CI before calling the overall repository matrix PASS."
+  ],
+  "result_path": "docs/agent-results/DSH-VISION-RC1-WEBSERVER-LIFECYCLE-009-result.json",
+  "notes": [
+    "Implementation is limited to the allowed image-mind lifecycle and focused test files; no route behavior, trust policy, attachment ownership, provider logic, package metadata, or Harness state was changed.",
+    "The user-requested Ran-sh/dsh-crew test/v0.3-final-isolated-acceptance ref was fetched only as a read-only comparison ref; it is a separate project tree and was not merged or written to. ACTIVE_TASK authority and execution source remained Ran-sh/dsh-vision main at 7304043e24c020441a31738ff1387d98e6f20444.",
+    "No credentials, API keys, signed URLs, attachment ids, private local paths, or unredacted secret-bearing logs appear in this result."
+  ],
+  "result_validation": {
+    "status": "PASS",
+    "validator": "node .agent-workflow/validator/validate-contract.mjs result docs/agent-results/DSH-VISION-RC1-WEBSERVER-LIFECYCLE-009-result.json --stamp",
+    "validated_at": "2026-08-22T05:43:35Z",
+    "evidence": "Exit 0: VALID RESULT CONTRACT: docs/agent-results/DSH-VISION-RC1-WEBSERVER-LIFECYCLE-009-result.json"
+  }
+}

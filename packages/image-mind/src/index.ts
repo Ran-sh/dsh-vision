@@ -25,6 +25,7 @@ import { runConnectionTest, listEndpointModels } from './runtime/vision-rpc.ts'
 import { createProviderReliabilityTracker } from './runtime/provider-reliability.ts'
 import { ReliabilityVisionAdapter } from './runtime/reliability-adapter.ts'
 import { registerImageMindSystemPrompt } from './runtime/system-prompt-routing.ts'
+import { observeWebServerLifecycle } from './runtime/webserver-lifecycle.ts'
 import { VISION_PROVIDER_CATALOG } from './providers/catalog.ts'
 import { createVisionCache } from './cache/vision-cache.ts'
 import { DEFAULT_MAX_BYTES } from './media/types.ts'
@@ -177,9 +178,12 @@ export function apply(ctx: Context, config: ConfigType = {}): void {
     evidenceCacheView,
   ))
 
-  const registerRoutes = (): void => {
-    if (ctx.get('webServer') === undefined) return
-    registerAttachRoute(ctx, {
+  // Routes ride the webServer service lifecycle instead of a bounded timer
+  // poll: registration lands immediately when the server already exists,
+  // whenever it first appears, and again if its implementation is replaced —
+  // once per server instance (observeWebServerLifecycle deduplicates).
+  observeWebServerLifecycle(ctx, (injected) => {
+    registerAttachRoute(injected, {
       readMaxBytes: () => current().maxBytes ?? DEFAULT_MAX_BYTES,
       readConfigView: () => readConfigView(ctx),
       writeConfigView: (body) => writeConfigView(ctx, body),
@@ -187,19 +191,7 @@ export function apply(ctx: Context, config: ConfigType = {}): void {
       listEndpointModels: (body) => listEndpointModels(ctx, body as Parameters<typeof listEndpointModels>[1]),
       catalog: () => VISION_PROVIDER_CATALOG,
     })
-  }
-  registerRoutes()
-  if (ctx.get('webServer') === undefined) {
-    let attempts = 0
-    const pollForServer = (): void => {
-      if (ctx.get('webServer') !== undefined) { registerRoutes(); return }
-      if (attempts < 100) {
-        attempts += 1
-        setTimeout(pollForServer, 200)
-      }
-    }
-    pollForServer()
-  }
+  })
 }
 
 /**
