@@ -2,7 +2,7 @@
   "schema_version": 2,
   "task_id": "DSH-VISION-EVIDENCE-QUALITY-BENCHMARK-015",
   "source_commit": "0324dc6bf4aeac47b99da0a6cf103e9f9e1e34ef",
-  "result_commit": null,
+  "result_commit": "a5fd35206a614663c8ec790aa91c26ddcdee4bec",
   "status": "PARTIAL",
   "summary": "Implemented and locally verified the Batch 015 deterministic visible-fact corpus, real understand_image runner, layered evidence benchmark, compare ordering, CRC-safe PNG fixtures, and long-image regression coverage. All authorized repository/package/benchmark gates pass. Completion remains PARTIAL because GitHub authentication prevented opening the required Draft PR and therefore its final CI, and no explicitly authorized hosted/local visual provider was available.",
   "timeline": {
@@ -59,6 +59,11 @@
       "evidence": "candidate 42 evidence-cache hits with zero provider calls; compare outputs retain Image 1/2 facts and ordered fixture test passes"
     },
     {
+      "name": "recursive split and image numbering regression",
+      "status": "PASS",
+      "evidence": "existing packages/image-mind payload-split suite 3/3 passes; deterministic compare fixture additionally preserves Image 1/Image 2 order; no split was needed for the 100-case corpus payloads"
+    },
+    {
       "name": "benchmark score",
       "status": "PASS",
       "evidence": "npm run benchmark:score -- benchmarks/vision/cases.jsonl benchmarks/vision/results.baseline.jsonl; 100/100 task success, forbiddenHitCount 0, full route/trace/token coverage"
@@ -77,6 +82,11 @@
       "name": "long-image preprocessing",
       "status": "PASS",
       "evidence": "actual committed 1440x20000 PNG loaded through prepareImageForDescribe mock browser flow; target 590x8192, bounded PNG output"
+    },
+    {
+      "name": "historical long-edge 3072 comparison",
+      "status": "SKIP",
+      "evidence": "No separate historical runtime/visual-quality harness was authorized; current policy regression records 590x8192 geometry and the deterministic benchmark is explicitly not a provider OCR claim"
     },
     {
       "name": "npm run typecheck",
@@ -123,12 +133,13 @@
     "Execution branch: feat/evidence-quality-benchmark-batch-015; implementation commit pushed: 9bcb277cb9e6ce55da45a9cc8c44fbee369126f7.",
     "Runtime: Windows, Node v24.18.1, npm 11.16.0, pnpm 11.7.0; browser/tool check used agent-browser 0.34.0 only for unauthenticated Draft PR navigation, not provider runtime acceptance.",
     "Benchmark fixtures are repository-owned deterministic PNGs with standard CRCs, visible bitmap facts, stable metadata, no network dependency, and no private/copyrighted media.",
+    "Deterministic benchmark latencyMs is a reproducible payload-size estimate (provider 5+ceil(bytes/10000), cache 2), not wall-clock provider latency; hosted/provider quality and historical long-edge comparison remain unclaimed.",
     "No task-owned processes or scratch artifacts remain; PR was not merged."
   ],
   "result_validation": {
     "status": "PASS",
     "validator": "node .agent-workflow/validator/validate-contract.mjs result docs/agent-results/DSH-VISION-EVIDENCE-QUALITY-BENCHMARK-015-result.json --stamp",
-    "validated_at": "2026-08-22T13:51:43Z",
+    "validated_at": "2026-08-22T13:52:55Z",
     "evidence": "Exit 0: VALID RESULT CONTRACT: docs/agent-results/DSH-VISION-EVIDENCE-QUALITY-BENCHMARK-015-result.json"
   }
 }
