@@ -47,6 +47,18 @@ export function isProviderReliabilityFailure(error: unknown): boolean {
   return status === 413 || (status !== undefined && status >= 500)
 }
 
+/**
+ * A traced success only proves fresh endpoint health when it actually reached
+ * a provider and was not satisfied (fully or partially) from semantic cache.
+ * Untraced adapters remain backward-compatible: their successful result is
+ * treated as a real call because they expose no cache-work evidence.
+ */
+export function isFreshProviderSuccess(result: VisionResult): boolean {
+  const trace = result.trace
+  if (trace === undefined) return true
+  return trace.providerCalls > 0 && trace.cacheHits === 0
+}
+
 export class ReliabilityVisionAdapter extends VisionAdapter {
   readonly discoverModels?: (provider: string, request?: VisionModelDiscoveryRequest) => Promise<readonly VisionModel[]>
   readonly probe?: (provider: string, request: VisionRequest) => Promise<VisionResult>
@@ -72,7 +84,9 @@ export class ReliabilityVisionAdapter extends VisionAdapter {
       // A different final provider means the wrapped adapter recovered from a
       // provider-level primary failure through its own bounded fallback path.
       if (result.provider !== provider) this.reliability.recordFailure(provider, elapsed)
-      this.reliability.recordSuccess(result.provider, elapsed)
+      // Cache reuse is useful work avoidance, not evidence that the final
+      // provider is healthy right now. Do not inflate health from cached data.
+      if (isFreshProviderSuccess(result)) this.reliability.recordSuccess(result.provider, elapsed)
       return result
     } catch (error) {
       if (isProviderReliabilityFailure(error)) {
