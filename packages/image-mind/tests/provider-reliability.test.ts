@@ -24,20 +24,24 @@ function config(): ResolvedConfig {
   }
 }
 
+function ids(plans: ReturnType<ReturnType<typeof createProviderReliabilityTracker>['fallbacks']>): string[] {
+  return plans.map(plan => plan.provider)
+}
+
 describe('provider reliability tracker', () => {
   it('preserves configured preference before health observations', () => {
     const tracker = createProviderReliabilityTracker()
-    expect(tracker.fallbacks(config(), 'primary', {})).toEqual(['first', 'second'])
+    expect(ids(tracker.fallbacks(config(), 'primary', {}))).toEqual(['first', 'second'])
   })
 
   it('moves a repeatedly failing backup behind healthier candidates', () => {
     const tracker = createProviderReliabilityTracker()
     tracker.recordFailure('first', 5000)
     tracker.recordFailure('first', 5000)
-    expect(tracker.fallbacks(config(), 'primary', {})).toEqual(['second', 'third'])
+    expect(ids(tracker.fallbacks(config(), 'primary', {}))).toEqual(['second', 'third'])
   })
 
-  it('admits exactly one recovery fallback after circuit cooldown', () => {
+  it('admits exactly one no-store recovery fallback after circuit cooldown', () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date(1000))
     try {
@@ -46,21 +50,66 @@ describe('provider reliability tracker', () => {
       tracker.recordFailure('first', 100)
       tracker.recordFailure('first', 100)
       expect(tracker.snapshot('first').circuit.state).toBe('open')
-      expect(tracker.fallbacks(config(), 'primary', {})).not.toContain('first')
+      expect(ids(tracker.fallbacks(config(), 'primary', {}))).not.toContain('first')
 
       vi.setSystemTime(new Date(31_100))
       const recovery = tracker.fallbacks(config(), 'primary', {})
-      expect(recovery[0]).toBe('first')
-      expect(recovery).toContain('first')
+      expect(recovery[0]).toEqual({ provider: 'first', cache: 'no-store' })
+      expect(ids(recovery)).toContain('first')
       expect(tracker.snapshot('first').circuit.state).toBe('half-open')
 
       // The admitted half-open probe is exclusive. A concurrent fallback
       // resolution must not route a second request to the same provider until
       // the first probe records success or failure.
-      expect(tracker.fallbacks(config(), 'primary', {})).not.toContain('first')
+      expect(ids(tracker.fallbacks(config(), 'primary', {}))).not.toContain('first')
 
       tracker.recordSuccess('first', 50)
       expect(tracker.snapshot('first').circuit.state).toBe('closed')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('re-opens a reserved half-open probe that never reached the provider', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(1000))
+    try {
+      const tracker = createProviderReliabilityTracker()
+      tracker.recordFailure('first', 100)
+      tracker.recordFailure('first', 100)
+      tracker.recordFailure('first', 100)
+      vi.setSystemTime(new Date(31_100))
+      expect(tracker.fallbacks(config(), 'primary', {})[0]).toEqual({ provider: 'first', cache: 'no-store' })
+      expect(tracker.snapshot('first').circuit.state).toBe('half-open')
+
+      tracker.releaseProbe('first')
+      expect(tracker.snapshot('first').circuit.state).toBe('open')
+      expect(tracker.snapshot('first').health.failures).toBe(3)
+
+      vi.setSystemTime(new Date(61_200))
+      expect(tracker.fallbacks(config(), 'primary', {})[0]).toEqual({ provider: 'first', cache: 'no-store' })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('closes half-open on a fresh reachable non-outage response without inventing a success', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(1000))
+    try {
+      const tracker = createProviderReliabilityTracker()
+      tracker.recordFailure('first', 100)
+      tracker.recordFailure('first', 100)
+      tracker.recordFailure('first', 100)
+      vi.setSystemTime(new Date(31_100))
+      tracker.fallbacks(config(), 'primary', {})
+      expect(tracker.snapshot('first').circuit.state).toBe('half-open')
+
+      tracker.recordReachable('first')
+      const snapshot = tracker.snapshot('first')
+      expect(snapshot.circuit.state).toBe('closed')
+      expect(snapshot.health.successes).toBe(0)
+      expect(snapshot.health.failures).toBe(3)
     } finally {
       vi.useRealTimers()
     }
