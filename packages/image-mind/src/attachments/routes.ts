@@ -11,6 +11,7 @@ import { decodeBase64, isImageMimeType, sniffMimeType, type ImageMimeType } from
 import { handleAttach } from './routes-core.ts'
 import {
   commitSessionAttachmentBatch,
+  discardSessionAttachmentBatch,
   durableAttachmentRefById,
   previewAttachmentRef,
   sessionAttachmentPreviewBatches,
@@ -224,6 +225,21 @@ export function registerAttachRoute(
           return
         }
         json(res, { ok: true, value: { committed: true } })
+        return
+      }
+
+      if (req.method === 'POST' && pathname === `${ROUTE_PREFIX}/preview/discard`) {
+        if (!isTrustedLocalRequest(req)) {
+          json(res, { ok: false, error: { code: 'rejected', message: 'untrusted origin' } }, 403)
+          return
+        }
+        const body = previewCommitBody(await readJsonBody(req, 8 * 1024))
+        if (body === undefined) {
+          json(res, { ok: false, error: { code: 'rejected', message: 'sessionId and batchId are required' } }, 422)
+          return
+        }
+        const discarded = await discardSessionAttachmentBatch(ctx, body.sessionId, body.batchId)
+        json(res, { ok: true, value: { discarded } })
         return
       }
 

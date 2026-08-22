@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   commitImagePreviewBatch: vi.fn(),
+  discardImageRoutingBatch: vi.fn(),
   prepareImageForDescribe: vi.fn(),
   uploadImage: vi.fn(),
   showToast: vi.fn(),
@@ -11,6 +12,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('../src/client/attach.ts', () => ({
   commitImagePreviewBatch: mocks.commitImagePreviewBatch,
+  discardImageRoutingBatch: mocks.discardImageRoutingBatch,
   prepareImageForDescribe: mocks.prepareImageForDescribe,
   uploadImage: mocks.uploadImage,
 }))
@@ -55,6 +57,7 @@ describe('image send count limit', () => {
     expect(mocks.uploadImage).not.toHaveBeenCalled()
     expect(prompt).not.toHaveBeenCalled()
     expect(mocks.commitImagePreviewBatch).not.toHaveBeenCalled()
+    expect(mocks.discardImageRoutingBatch).not.toHaveBeenCalled()
     expect(releaseDraftImage).not.toHaveBeenCalled()
     expect(mocks.showToast).toHaveBeenCalledWith(expect.stringContaining('最多 8 张'), 'error')
     expect(mocks.showToast).toHaveBeenCalledWith(expect.stringContaining('草稿图片已保留'), 'error')
