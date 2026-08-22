@@ -137,6 +137,42 @@ describe('provider fallback + retry + semantic cache reliability accounting', ()
     expect(tracker.snapshot('second').health.successes).toBe(1)
   })
 
+  it('keeps retry and every fallback attempt visible in trace and reliability state', async () => {
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const host = new URL(String(input)).hostname
+      if (host === 'second.example') return ok('second recovered after chain')
+      if (host === 'first.example') return new Response('payload too large', { status: 413 })
+      return unavailable()
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const tracker = createProviderReliabilityTracker()
+    const adapter = new OpenAICompatibleVisionAdapter({
+      resolveProviderOptions: provider => options(provider),
+      resolveApiKey: async provider => `sk-${provider.provider}-test-key`,
+      resolveProviderFallbacks: () => ['first', 'second'],
+      onProviderAttempt: event => recordProviderAttempt(tracker, event),
+      retry: { maxRetries: 1, backoff: { initialDelayMs: 1, maxDelayMs: 1, jitterRatio: 0 } },
+    })
+
+    const result = await adapter.call('primary', REQUEST)
+    expect(result.provider).toBe('second')
+    expect(result.trace).toMatchObject({
+      providerCalls: 4,
+      retries: 1,
+      cacheHits: 0,
+      modelFallbacks: 0,
+      providerFallbacks: 2,
+      splits: 0,
+    })
+    expect(fetchMock.mock.calls.map(call => new URL(String(call[0])).hostname)).toEqual([
+      'primary.example', 'primary.example', 'first.example', 'second.example',
+    ])
+    expect(tracker.snapshot('primary').health).toMatchObject({ successes: 0, failures: 1 })
+    expect(tracker.snapshot('first').health).toMatchObject({ successes: 0, failures: 1 })
+    expect(tracker.snapshot('second').health).toMatchObject({ successes: 1, failures: 0 })
+  })
+
   it('forces a half-open recovery fallback past a warm semantic cache', async () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date(1000))
@@ -221,5 +257,37 @@ describe('provider fallback + retry + semantic cache reliability accounting', ()
     expect(backup.circuit.state).toBe('open')
     expect(backup.health.failures).toBe(3)
     expect(backup.health.successes).toBe(0)
+  })
+
+  it('reopens a half-open circuit after a fresh provider failure', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(1000))
+    const tracker = createProviderReliabilityTracker()
+    tracker.recordFailure('backup', 100)
+    tracker.recordFailure('backup', 100)
+    tracker.recordFailure('backup', 100)
+    vi.setSystemTime(new Date(31_100))
+
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const host = new URL(String(input)).hostname
+      return host === 'primary.example' || host === 'backup.example'
+        ? unavailable()
+        : ok('unexpected')
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const adapter = new OpenAICompatibleVisionAdapter({
+      resolveProviderOptions: provider => options(provider),
+      resolveApiKey: async provider => `sk-${provider.provider}-test-key`,
+      resolveProviderFallbacks: (provider, request) => tracker.fallbacks(reliabilityConfig(), provider, request),
+      onProviderAttempt: event => recordProviderAttempt(tracker, event),
+      retry: { maxRetries: 0 },
+    })
+
+    await expect(adapter.call('primary', REQUEST)).rejects.toThrow()
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    const backup = tracker.snapshot('backup')
+    expect(backup.circuit.state).toBe('open')
+    expect(backup.health).toMatchObject({ successes: 0, failures: 4, consecutiveFailures: 4 })
   })
 })
