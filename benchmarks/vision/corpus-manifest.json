@@ -4,6 +4,7 @@
   "deterministic": true,
   "networkRequired": false,
   "provider": "deterministic-local-stub",
+  "qualityScope": "deterministic visible-fact/routing/cache/telemetry benchmark; not a hosted-provider OCR or visual-model quality claim",
   "totalCases": 100,
   "categoryCounts": {
     "ui-review": 20,
@@ -75,292 +76,394 @@
     {
       "path": "fixtures/generated/ui-01.png",
       "width": 640,
-      "height": 360
+      "height": 360,
+      "bytes": 1545,
+      "sha256": "6ae67380d5ba6c63fb459218fa9fb603337c1c30dad5ac7054f382b5d0a19bd1"
     },
     {
       "path": "fixtures/generated/ui-02.png",
       "width": 640,
-      "height": 360
+      "height": 360,
+      "bytes": 1550,
+      "sha256": "8727261a03b47e2665efd6e616660db30b034fa9183518da517db351f8efd5e0"
     },
     {
       "path": "fixtures/generated/ui-03.png",
       "width": 640,
-      "height": 360
+      "height": 360,
+      "bytes": 1529,
+      "sha256": "ad86dcc5d1b9e8de8d7d58716fdec77192f18842adcd9b6ef7788df5efc407aa"
     },
     {
       "path": "fixtures/generated/ui-04.png",
       "width": 640,
-      "height": 360
+      "height": 360,
+      "bytes": 1566,
+      "sha256": "3ef4f42e470b9600ead9ed691c118f5bae711e75ddb1a3894877c1d522944953"
     },
     {
       "path": "fixtures/generated/ui-05.png",
       "width": 640,
-      "height": 360
+      "height": 360,
+      "bytes": 1547,
+      "sha256": "caa1144a080abbec69b93d8f23c71e40f7397d6adb9ff14e24f3490028e5525c"
     },
     {
       "path": "fixtures/generated/ui-06.png",
       "width": 640,
-      "height": 360
+      "height": 360,
+      "bytes": 1511,
+      "sha256": "fc8d927bd2cf3564ce1632e2ccf5b9ded56eb6f7f45a156d9aed21976b9fed06"
     },
     {
       "path": "fixtures/generated/ui-07.png",
       "width": 640,
-      "height": 360
+      "height": 360,
+      "bytes": 1511,
+      "sha256": "f837b6160ec81f54c11a4418d26eb3fa3362d33183bc59d2a33f62bafd60979a"
     },
     {
       "path": "fixtures/generated/ui-08.png",
       "width": 640,
-      "height": 360
+      "height": 360,
+      "bytes": 1492,
+      "sha256": "6a91e8308f430a342776b2dd31ee5c06cdf5b3bf7b5c9b0ffcc98a1d683b1cfb"
     },
     {
       "path": "fixtures/generated/ui-09.png",
       "width": 640,
-      "height": 360
-    },
-    {
-      "path": "fixtures/generated/ui-10.png",
-      "width": 640,
-      "height": 360
+      "height": 360,
+      "bytes": 1512,
+      "sha256": "683a289d92b5b65cae29a57cff5fb3084d01c71a1c66f2a8375b7f77cc497d7c"
     },
     {
       "path": "fixtures/generated/ide-terminal-01.png",
       "width": 640,
-      "height": 360
+      "height": 360,
+      "bytes": 1559,
+      "sha256": "6f9ecd2570d47a2a75207072910f352ce47249af1825f63e533b81c7e36c427c"
     },
     {
       "path": "fixtures/generated/ide-terminal-02.png",
       "width": 640,
-      "height": 360
+      "height": 360,
+      "bytes": 1557,
+      "sha256": "a8ff6b8a73f0c043f68761a8d520312bb5a34a36e531fec4b8c2abd4e779d21c"
     },
     {
       "path": "fixtures/generated/ide-terminal-03.png",
       "width": 640,
-      "height": 360
+      "height": 360,
+      "bytes": 1535,
+      "sha256": "49ba2abfbec6816f0476c01309100bb83db7ebb69c3a2ec6edc2bef389e71851"
     },
     {
       "path": "fixtures/generated/ide-terminal-04.png",
       "width": 640,
-      "height": 360
+      "height": 360,
+      "bytes": 1576,
+      "sha256": "52ad58f3269146e3106ea85333a02a3d2e81be59792769bd227758ddd0c99251"
     },
     {
       "path": "fixtures/generated/ide-terminal-05.png",
       "width": 640,
-      "height": 360
+      "height": 360,
+      "bytes": 1537,
+      "sha256": "f75038a3b84d330ca6dab4faf571d6fa03196a0e80805b4321178f3619bd9d32"
     },
     {
       "path": "fixtures/generated/ide-terminal-06.png",
       "width": 640,
-      "height": 360
+      "height": 360,
+      "bytes": 1523,
+      "sha256": "4e13aa57a873b1ee050ffc0e88e1f74a7ebce591d4a4d0bc7008bd0944e150a4"
     },
     {
       "path": "fixtures/generated/ide-terminal-07.png",
       "width": 640,
-      "height": 360
+      "height": 360,
+      "bytes": 1512,
+      "sha256": "187c88a026c059bf010ab829643745ee6003934bdd7e3f0a2310a72fb1a4c7a5"
     },
     {
       "path": "fixtures/generated/ide-terminal-08.png",
       "width": 640,
-      "height": 360
+      "height": 360,
+      "bytes": 1501,
+      "sha256": "146477179a771df08f57986058dde2e76b6b2fcae1b71642f1610da09e1987ff"
     },
     {
       "path": "fixtures/generated/ide-terminal-09.png",
       "width": 640,
-      "height": 360
+      "height": 360,
+      "bytes": 1523,
+      "sha256": "67218c1ebedfc136c94cf6de407fad46e274b6bfaeea783fb8c46fd97e47bbe3"
     },
     {
       "path": "fixtures/generated/ide-terminal-10.png",
       "width": 640,
-      "height": 360
+      "height": 360,
+      "bytes": 1544,
+      "sha256": "8cc04114ef75a33f27ac06de1fadd093251e2dfbec22b7dafcbb09c7499be487"
     },
     {
       "path": "fixtures/generated/document-01.png",
       "width": 640,
-      "height": 900
+      "height": 900,
+      "bytes": 3419,
+      "sha256": "535e1dc7445a25c68dd88ce13ef35b8c11cd555289f57379ada703ca72145f60"
     },
     {
       "path": "fixtures/generated/document-02.png",
       "width": 640,
-      "height": 900
+      "height": 900,
+      "bytes": 3427,
+      "sha256": "580588276fba467ae355ff121f7c09a25c995269dd0f394f0a06a16c960aa90b"
     },
     {
       "path": "fixtures/generated/document-03.png",
       "width": 640,
-      "height": 900
+      "height": 900,
+      "bytes": 3392,
+      "sha256": "67f3d20d82238efed7cd3bb0193fd516862af05fbf101bad336c4d5e2d9a80a6"
     },
     {
       "path": "fixtures/generated/document-04.png",
       "width": 640,
-      "height": 900
+      "height": 900,
+      "bytes": 3390,
+      "sha256": "0e7734835fec043f2047cc9f2d1bfe6401815226a13521f706e6ecda45f53bc9"
     },
     {
       "path": "fixtures/generated/document-05.png",
       "width": 640,
-      "height": 900
+      "height": 900,
+      "bytes": 3395,
+      "sha256": "9f1668afcfab8e8b2ae92fec333407f2520825633878331a7941989c12340e2a"
     },
     {
       "path": "fixtures/generated/document-06.png",
       "width": 640,
-      "height": 900
+      "height": 900,
+      "bytes": 3377,
+      "sha256": "153f4db53ea6a676a1a2992e0473371da009cffd0da0a5408f03d754f9828625"
     },
     {
       "path": "fixtures/generated/document-07.png",
       "width": 640,
-      "height": 900
+      "height": 900,
+      "bytes": 3387,
+      "sha256": "5f2f9130a9aaf2cdda315ea1a8490bc25c2d27c31fa5b1d3bbb95084fd4f267b"
     },
     {
       "path": "fixtures/generated/document-08.png",
       "width": 640,
-      "height": 900
+      "height": 900,
+      "bytes": 3387,
+      "sha256": "e3550b845dcb3b052398995eb784cf406be6d82d33ebfec47dda14ed83edb324"
     },
     {
       "path": "fixtures/generated/document-09.png",
       "width": 640,
-      "height": 900
-    },
-    {
-      "path": "fixtures/generated/document-10.png",
-      "width": 640,
-      "height": 900
+      "height": 900,
+      "bytes": 3377,
+      "sha256": "5c9ad1cabe27704c154f30152e11c2b366f18514cbdabbd4612f53cfcce0abb6"
     },
     {
       "path": "fixtures/generated/chart-01.png",
       "width": 800,
-      "height": 500
+      "height": 500,
+      "bytes": 2087,
+      "sha256": "12951da50168e3fec7c0dd15f7fb35fee38eecd8bef7be9be6354ac094c39666"
     },
     {
       "path": "fixtures/generated/chart-02.png",
       "width": 800,
-      "height": 500
+      "height": 500,
+      "bytes": 2113,
+      "sha256": "9a66729f01679953012017ff3b5eabc19a4569d97a2489004d84a661eac881e1"
     },
     {
       "path": "fixtures/generated/chart-03.png",
       "width": 800,
-      "height": 500
+      "height": 500,
+      "bytes": 2042,
+      "sha256": "7aae32e09dc8fed9de8f0b06006d6c6012cbac11f2218d928b01c71a32929543"
     },
     {
       "path": "fixtures/generated/chart-04.png",
       "width": 800,
-      "height": 500
+      "height": 500,
+      "bytes": 2060,
+      "sha256": "3a13635ebae374a96a4eccdaa79d15e855b679a454b6a545c9522ab9ad9bbfd1"
     },
     {
       "path": "fixtures/generated/chart-05.png",
       "width": 800,
-      "height": 500
+      "height": 500,
+      "bytes": 2059,
+      "sha256": "300adb661a4b7ab8b8a390183d1cfb2312ab315ddde4e4b5b307619a79a197de"
     },
     {
       "path": "fixtures/generated/chart-06.png",
       "width": 800,
-      "height": 500
+      "height": 500,
+      "bytes": 2038,
+      "sha256": "beb94a102f6bb4013898fdd71f24b95e270540c886e33d2fc3101a5620f9677b"
     },
     {
       "path": "fixtures/generated/chart-07.png",
       "width": 800,
-      "height": 500
+      "height": 500,
+      "bytes": 2054,
+      "sha256": "ef07627caf623a8d7309564244cfaaa93e51729f47f8862b1bd4b5d45d9cb705"
     },
     {
       "path": "fixtures/generated/chart-08.png",
       "width": 800,
-      "height": 500
+      "height": 500,
+      "bytes": 2022,
+      "sha256": "3c114a41e5bc0d3bed4e6ce98e892caf6154138c6356ff4ac8e419c13f66fdf8"
     },
     {
       "path": "fixtures/generated/photo-01.png",
       "width": 640,
-      "height": 480
+      "height": 480,
+      "bytes": 1998,
+      "sha256": "e6589c5be2b70bc0bea1666a17216953febe83544710b1d40e423b127e3bdb54"
     },
     {
       "path": "fixtures/generated/photo-02.png",
       "width": 640,
-      "height": 480
+      "height": 480,
+      "bytes": 1984,
+      "sha256": "c01e6abbc33f349f0477d07240e2f780539278413425664f761f64e2054e7215"
     },
     {
       "path": "fixtures/generated/photo-03.png",
       "width": 640,
-      "height": 480
+      "height": 480,
+      "bytes": 1963,
+      "sha256": "b655963d4870b976a59372f2fa7b1db070540a8f040c79591c9cc082f0e87e52"
     },
     {
       "path": "fixtures/generated/photo-04.png",
       "width": 640,
-      "height": 480
+      "height": 480,
+      "bytes": 1970,
+      "sha256": "fe35d9ac0f07aa2c2d77e0cc5e5aeb8f90ad9105bc9596a9a2e4f78025a9671f"
     },
     {
       "path": "fixtures/generated/photo-05.png",
       "width": 640,
-      "height": 480
+      "height": 480,
+      "bytes": 1984,
+      "sha256": "2e9daa04c84061db98cb08d2508291f046730e0b62acc0ac8a130f035c02f870"
     },
     {
       "path": "fixtures/generated/photo-06.png",
       "width": 640,
-      "height": 480
+      "height": 480,
+      "bytes": 1971,
+      "sha256": "e48bded357c957e77ed44c86a5c0373e0da74e0f18ee5a2268178fc9714d934d"
     },
     {
       "path": "fixtures/generated/photo-07.png",
       "width": 640,
-      "height": 480
+      "height": 480,
+      "bytes": 1965,
+      "sha256": "c2dc6b619078f7526cea39705f0c053d4b99f85d9033db16ba1ffa035c54afa3"
     },
     {
       "path": "fixtures/generated/photo-08.png",
       "width": 640,
-      "height": 480
+      "height": 480,
+      "bytes": 1957,
+      "sha256": "23e8d70367f18648f16a0854429189ce585e036888b5a1f90f588ab69139f9f3"
     },
     {
       "path": "fixtures/generated/compare-a-01.png",
       "width": 640,
-      "height": 480
+      "height": 480,
+      "bytes": 1933,
+      "sha256": "78cff95e9acc6bcf4e5a199908290651df93a6a4bcb5ace753b5038f61d3717c"
     },
     {
       "path": "fixtures/generated/compare-b-01.png",
       "width": 640,
-      "height": 480
+      "height": 480,
+      "bytes": 1935,
+      "sha256": "eb4576280e6f50f16997d0424778688902c60c54032bfa6fe40a37dc2afeadbd"
     },
     {
       "path": "fixtures/generated/compare-a-02.png",
       "width": 640,
-      "height": 480
+      "height": 480,
+      "bytes": 1927,
+      "sha256": "089284627d97ddf8d80e65fa4fcd401c86b4a09cb12e8ca724768c2c56752eda"
     },
     {
       "path": "fixtures/generated/compare-b-02.png",
       "width": 640,
-      "height": 480
+      "height": 480,
+      "bytes": 1951,
+      "sha256": "d5de08cb5919755cb414ec556dc66597409a7ba3eea32e4007de129527b5dce6"
     },
     {
       "path": "fixtures/generated/compare-a-03.png",
       "width": 640,
-      "height": 480
+      "height": 480,
+      "bytes": 1950,
+      "sha256": "7a480aa4b2e06300e782a3e625eb128fbee11c2f79d09b1d5e06dacd7f4a3f09"
     },
     {
       "path": "fixtures/generated/compare-b-03.png",
       "width": 640,
-      "height": 480
+      "height": 480,
+      "bytes": 1955,
+      "sha256": "20efe712897d4b998abebe3b3a6fa2a59291f83149d5afffa6930ec00b33cfb7"
     },
     {
       "path": "fixtures/generated/compare-a-04.png",
       "width": 640,
-      "height": 480
+      "height": 480,
+      "bytes": 1954,
+      "sha256": "9e0028c3aac1f24f24e2f7e1989ac6445d83c1c901b04908037ed8e0027d6f79"
     },
     {
       "path": "fixtures/generated/compare-b-04.png",
       "width": 640,
-      "height": 480
+      "height": 480,
+      "bytes": 1939,
+      "sha256": "69916e42ea1594ae34cf328a147c724a1e08af2990c9d8f9b7470097350d8420"
     },
     {
       "path": "fixtures/generated/compare-a-05.png",
       "width": 640,
-      "height": 480
+      "height": 480,
+      "bytes": 1951,
+      "sha256": "51a2a4273bc4be55b461d379b15b6705e47531538b5c0de8af637cbf1793c7bc"
     },
     {
       "path": "fixtures/generated/compare-b-05.png",
       "width": 640,
-      "height": 480
+      "height": 480,
+      "bytes": 1946,
+      "sha256": "ebd4e982b4c02ba491626a19b41666ff1fed2a28b5d5d4eaeea470e9350bc4de"
     },
     {
       "path": "fixtures/generated/long-1440x10000.png",
       "width": 1440,
-      "height": 10000
+      "height": 10000,
+      "bytes": 43416,
+      "sha256": "b8ec6c2c38845ddaacda07d3d9d5b4eb6c4d7875a713c9262d28d1c970365dac"
     },
     {
       "path": "fixtures/generated/long-1440x20000.png",
       "width": 1440,
-      "height": 20000
+      "height": 20000,
+      "bytes": 86476,
+      "sha256": "ed4d9a71999d4a213cc60b0cc46e80a462958c09ff1000cadae6775f5f019f13"
     }
   ],
   "pairPolicy": "Odd cases are broad reusable evidence; even cases ask a materially different follow-up over the same ordered fixture set.",

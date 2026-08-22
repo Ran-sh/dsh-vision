@@ -124,6 +124,7 @@ describe('layered reusable evidence cache', () => {
 
     expect(call).toHaveBeenCalledTimes(2)
     expect(call.mock.calls[0][0]).toMatchObject({ model: 'chosen-model', prompt: 'transcribe all text verbatim' })
+    expect(call.mock.calls[1][0]).toMatchObject({ model: 'chosen-model', prompt: 'transcribe all text verbatim' })
     expect(first.route).toMatchObject({ requestedModel: 'chosen-model', evidenceLayerEnabled: false, source: 'provider' })
     expect(second.route).toMatchObject({ requestedModel: 'chosen-model', evidenceLayerEnabled: false, source: 'provider' })
   })
