@@ -17,6 +17,7 @@
     "test:package": "vitest run --config vitest.config.ts tests/package.test.ts",
     "test:built": "vitest run --config vitest.config.ts tests/built.test.ts",
     "benchmark:run": "node scripts/run-vision-benchmark.mjs",
+    "benchmark:corpus": "node scripts/generate-vision-benchmark-corpus.mjs",
     "benchmark:score": "node scripts/vision-benchmark-score.mjs",
     "benchmark:compare": "node scripts/vision-benchmark-compare.mjs"
   },

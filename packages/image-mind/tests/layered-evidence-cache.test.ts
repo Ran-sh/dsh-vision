@@ -113,4 +113,18 @@ describe('layered reusable evidence cache', () => {
     expect(call).toHaveBeenCalledTimes(2)
     expect(call.mock.calls[0][0]).toMatchObject({ provider: 'chosen', prompt: 'transcribe all text verbatim' })
   })
+
+  it('explicit model bypasses layered reuse and preserves model stickiness', async () => {
+    const { call, tool } = setup()
+    const file = imageFile()
+    const exec = { signal: new AbortController().signal } as never
+
+    const first = await tool.execute({ image: file, prompt: 'transcribe all text verbatim', model: 'chosen-model' }, exec)
+    const second = await tool.execute({ image: file, prompt: 'transcribe all text verbatim', model: 'chosen-model' }, exec)
+
+    expect(call).toHaveBeenCalledTimes(2)
+    expect(call.mock.calls[0][0]).toMatchObject({ model: 'chosen-model', prompt: 'transcribe all text verbatim' })
+    expect(first.route).toMatchObject({ requestedModel: 'chosen-model', evidenceLayerEnabled: false, source: 'provider' })
+    expect(second.route).toMatchObject({ requestedModel: 'chosen-model', evidenceLayerEnabled: false, source: 'provider' })
+  })
 })

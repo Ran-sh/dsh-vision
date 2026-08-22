@@ -1,0 +1,373 @@
+{
+  "schemaVersion": 1,
+  "generator": "scripts/generate-vision-benchmark-corpus.mjs",
+  "deterministic": true,
+  "networkRequired": false,
+  "provider": "deterministic-local-stub",
+  "totalCases": 100,
+  "categoryCounts": {
+    "ui-review": 20,
+    "ide-terminal": 20,
+    "document-ocr": 20,
+    "chart": 15,
+    "photo-general": 15,
+    "compare-diff": 10
+  },
+  "fixtureRefs": [
+    "fixtures/generated/chart-01.png",
+    "fixtures/generated/chart-02.png",
+    "fixtures/generated/chart-03.png",
+    "fixtures/generated/chart-04.png",
+    "fixtures/generated/chart-05.png",
+    "fixtures/generated/chart-06.png",
+    "fixtures/generated/chart-07.png",
+    "fixtures/generated/chart-08.png",
+    "fixtures/generated/compare-a-01.png",
+    "fixtures/generated/compare-a-02.png",
+    "fixtures/generated/compare-a-03.png",
+    "fixtures/generated/compare-a-04.png",
+    "fixtures/generated/compare-a-05.png",
+    "fixtures/generated/compare-b-01.png",
+    "fixtures/generated/compare-b-02.png",
+    "fixtures/generated/compare-b-03.png",
+    "fixtures/generated/compare-b-04.png",
+    "fixtures/generated/compare-b-05.png",
+    "fixtures/generated/document-01.png",
+    "fixtures/generated/document-02.png",
+    "fixtures/generated/document-03.png",
+    "fixtures/generated/document-04.png",
+    "fixtures/generated/document-05.png",
+    "fixtures/generated/document-06.png",
+    "fixtures/generated/document-07.png",
+    "fixtures/generated/document-08.png",
+    "fixtures/generated/document-09.png",
+    "fixtures/generated/ide-terminal-01.png",
+    "fixtures/generated/ide-terminal-02.png",
+    "fixtures/generated/ide-terminal-03.png",
+    "fixtures/generated/ide-terminal-04.png",
+    "fixtures/generated/ide-terminal-05.png",
+    "fixtures/generated/ide-terminal-06.png",
+    "fixtures/generated/ide-terminal-07.png",
+    "fixtures/generated/ide-terminal-08.png",
+    "fixtures/generated/ide-terminal-09.png",
+    "fixtures/generated/ide-terminal-10.png",
+    "fixtures/generated/long-1440x10000.png",
+    "fixtures/generated/long-1440x20000.png",
+    "fixtures/generated/photo-01.png",
+    "fixtures/generated/photo-02.png",
+    "fixtures/generated/photo-03.png",
+    "fixtures/generated/photo-04.png",
+    "fixtures/generated/photo-05.png",
+    "fixtures/generated/photo-06.png",
+    "fixtures/generated/photo-07.png",
+    "fixtures/generated/photo-08.png",
+    "fixtures/generated/ui-01.png",
+    "fixtures/generated/ui-02.png",
+    "fixtures/generated/ui-03.png",
+    "fixtures/generated/ui-04.png",
+    "fixtures/generated/ui-05.png",
+    "fixtures/generated/ui-06.png",
+    "fixtures/generated/ui-07.png",
+    "fixtures/generated/ui-08.png",
+    "fixtures/generated/ui-09.png"
+  ],
+  "fixtureMetadata": [
+    {
+      "path": "fixtures/generated/ui-01.png",
+      "width": 640,
+      "height": 360
+    },
+    {
+      "path": "fixtures/generated/ui-02.png",
+      "width": 640,
+      "height": 360
+    },
+    {
+      "path": "fixtures/generated/ui-03.png",
+      "width": 640,
+      "height": 360
+    },
+    {
+      "path": "fixtures/generated/ui-04.png",
+      "width": 640,
+      "height": 360
+    },
+    {
+      "path": "fixtures/generated/ui-05.png",
+      "width": 640,
+      "height": 360
+    },
+    {
+      "path": "fixtures/generated/ui-06.png",
+      "width": 640,
+      "height": 360
+    },
+    {
+      "path": "fixtures/generated/ui-07.png",
+      "width": 640,
+      "height": 360
+    },
+    {
+      "path": "fixtures/generated/ui-08.png",
+      "width": 640,
+      "height": 360
+    },
+    {
+      "path": "fixtures/generated/ui-09.png",
+      "width": 640,
+      "height": 360
+    },
+    {
+      "path": "fixtures/generated/ui-10.png",
+      "width": 640,
+      "height": 360
+    },
+    {
+      "path": "fixtures/generated/ide-terminal-01.png",
+      "width": 640,
+      "height": 360
+    },
+    {
+      "path": "fixtures/generated/ide-terminal-02.png",
+      "width": 640,
+      "height": 360
+    },
+    {
+      "path": "fixtures/generated/ide-terminal-03.png",
+      "width": 640,
+      "height": 360
+    },
+    {
+      "path": "fixtures/generated/ide-terminal-04.png",
+      "width": 640,
+      "height": 360
+    },
+    {
+      "path": "fixtures/generated/ide-terminal-05.png",
+      "width": 640,
+      "height": 360
+    },
+    {
+      "path": "fixtures/generated/ide-terminal-06.png",
+      "width": 640,
+      "height": 360
+    },
+    {
+      "path": "fixtures/generated/ide-terminal-07.png",
+      "width": 640,
+      "height": 360
+    },
+    {
+      "path": "fixtures/generated/ide-terminal-08.png",
+      "width": 640,
+      "height": 360
+    },
+    {
+      "path": "fixtures/generated/ide-terminal-09.png",
+      "width": 640,
+      "height": 360
+    },
+    {
+      "path": "fixtures/generated/ide-terminal-10.png",
+      "width": 640,
+      "height": 360
+    },
+    {
+      "path": "fixtures/generated/document-01.png",
+      "width": 640,
+      "height": 900
+    },
+    {
+      "path": "fixtures/generated/document-02.png",
+      "width": 640,
+      "height": 900
+    },
+    {
+      "path": "fixtures/generated/document-03.png",
+      "width": 640,
+      "height": 900
+    },
+    {
+      "path": "fixtures/generated/document-04.png",
+      "width": 640,
+      "height": 900
+    },
+    {
+      "path": "fixtures/generated/document-05.png",
+      "width": 640,
+      "height": 900
+    },
+    {
+      "path": "fixtures/generated/document-06.png",
+      "width": 640,
+      "height": 900
+    },
+    {
+      "path": "fixtures/generated/document-07.png",
+      "width": 640,
+      "height": 900
+    },
+    {
+      "path": "fixtures/generated/document-08.png",
+      "width": 640,
+      "height": 900
+    },
+    {
+      "path": "fixtures/generated/document-09.png",
+      "width": 640,
+      "height": 900
+    },
+    {
+      "path": "fixtures/generated/document-10.png",
+      "width": 640,
+      "height": 900
+    },
+    {
+      "path": "fixtures/generated/chart-01.png",
+      "width": 800,
+      "height": 500
+    },
+    {
+      "path": "fixtures/generated/chart-02.png",
+      "width": 800,
+      "height": 500
+    },
+    {
+      "path": "fixtures/generated/chart-03.png",
+      "width": 800,
+      "height": 500
+    },
+    {
+      "path": "fixtures/generated/chart-04.png",
+      "width": 800,
+      "height": 500
+    },
+    {
+      "path": "fixtures/generated/chart-05.png",
+      "width": 800,
+      "height": 500
+    },
+    {
+      "path": "fixtures/generated/chart-06.png",
+      "width": 800,
+      "height": 500
+    },
+    {
+      "path": "fixtures/generated/chart-07.png",
+      "width": 800,
+      "height": 500
+    },
+    {
+      "path": "fixtures/generated/chart-08.png",
+      "width": 800,
+      "height": 500
+    },
+    {
+      "path": "fixtures/generated/photo-01.png",
+      "width": 640,
+      "height": 480
+    },
+    {
+      "path": "fixtures/generated/photo-02.png",
+      "width": 640,
+      "height": 480
+    },
+    {
+      "path": "fixtures/generated/photo-03.png",
+      "width": 640,
+      "height": 480
+    },
+    {
+      "path": "fixtures/generated/photo-04.png",
+      "width": 640,
+      "height": 480
+    },
+    {
+      "path": "fixtures/generated/photo-05.png",
+      "width": 640,
+      "height": 480
+    },
+    {
+      "path": "fixtures/generated/photo-06.png",
+      "width": 640,
+      "height": 480
+    },
+    {
+      "path": "fixtures/generated/photo-07.png",
+      "width": 640,
+      "height": 480
+    },
+    {
+      "path": "fixtures/generated/photo-08.png",
+      "width": 640,
+      "height": 480
+    },
+    {
+      "path": "fixtures/generated/compare-a-01.png",
+      "width": 640,
+      "height": 480
+    },
+    {
+      "path": "fixtures/generated/compare-b-01.png",
+      "width": 640,
+      "height": 480
+    },
+    {
+      "path": "fixtures/generated/compare-a-02.png",
+      "width": 640,
+      "height": 480
+    },
+    {
+      "path": "fixtures/generated/compare-b-02.png",
+      "width": 640,
+      "height": 480
+    },
+    {
+      "path": "fixtures/generated/compare-a-03.png",
+      "width": 640,
+      "height": 480
+    },
+    {
+      "path": "fixtures/generated/compare-b-03.png",
+      "width": 640,
+      "height": 480
+    },
+    {
+      "path": "fixtures/generated/compare-a-04.png",
+      "width": 640,
+      "height": 480
+    },
+    {
+      "path": "fixtures/generated/compare-b-04.png",
+      "width": 640,
+      "height": 480
+    },
+    {
+      "path": "fixtures/generated/compare-a-05.png",
+      "width": 640,
+      "height": 480
+    },
+    {
+      "path": "fixtures/generated/compare-b-05.png",
+      "width": 640,
+      "height": 480
+    },
+    {
+      "path": "fixtures/generated/long-1440x10000.png",
+      "width": 1440,
+      "height": 10000
+    },
+    {
+      "path": "fixtures/generated/long-1440x20000.png",
+      "width": 1440,
+      "height": 20000
+    }
+  ],
+  "pairPolicy": "Odd cases are broad reusable evidence; even cases ask a materially different follow-up over the same ordered fixture set.",
+  "longScreenshotCases": [
+    "ui-19-broad",
+    "ui-20-followup",
+    "document-19-broad",
+    "document-20-followup"
+  ]
+}

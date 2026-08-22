@@ -1,0 +1,253 @@
+{
+  "schemaVersion": 1,
+  "corpus": "benchmarks/vision/cases.jsonl",
+  "baseline": "benchmarks/vision/results.baseline.jsonl",
+  "candidate": "benchmarks/vision/results.candidate.jsonl",
+  "comparison": {
+    "pass": true,
+    "checks": [
+      {
+        "name": "missing-results",
+        "pass": true,
+        "baseline": 0,
+        "candidate": 0,
+        "limit": 0,
+        "direction": "max"
+      },
+      {
+        "name": "routing-success-rate",
+        "pass": true,
+        "baseline": 1,
+        "candidate": 1,
+        "limit": 0.99,
+        "direction": "min"
+      },
+      {
+        "name": "task-success-rate",
+        "pass": true,
+        "baseline": 1,
+        "candidate": 1,
+        "limit": 0.98,
+        "direction": "min"
+      },
+      {
+        "name": "forbidden-hit-count",
+        "pass": true,
+        "baseline": 0,
+        "candidate": 0,
+        "limit": 0,
+        "direction": "max"
+      },
+      {
+        "name": "trace-coverage",
+        "pass": true,
+        "baseline": 1,
+        "candidate": 1,
+        "limit": 0.9,
+        "direction": "min"
+      },
+      {
+        "name": "route-coverage",
+        "pass": true,
+        "baseline": 1,
+        "candidate": 1,
+        "limit": 0.9,
+        "direction": "min"
+      },
+      {
+        "name": "route-decision-coverage",
+        "pass": true,
+        "baseline": 1,
+        "candidate": 1,
+        "limit": 0.9,
+        "direction": "min"
+      },
+      {
+        "name": "token-usage-coverage",
+        "pass": true,
+        "baseline": 1,
+        "candidate": 1,
+        "limit": 0.9,
+        "direction": "min"
+      },
+      {
+        "name": "p95-latency-ms",
+        "pass": true,
+        "baseline": 215.05,
+        "candidate": 210.05,
+        "limit": 465.05,
+        "direction": "max"
+      },
+      {
+        "name": "provider-calls",
+        "pass": true,
+        "baseline": 100,
+        "candidate": 58,
+        "limit": 114.99999999999999,
+        "direction": "max"
+      },
+      {
+        "name": "payload-bytes",
+        "pass": true,
+        "baseline": 10005050,
+        "candidate": 5803164,
+        "limit": 12006060,
+        "direction": "max"
+      },
+      {
+        "name": "input-tokens",
+        "pass": true,
+        "baseline": 105050,
+        "candidate": 61164,
+        "limit": 126060,
+        "direction": "max"
+      },
+      {
+        "name": "output-tokens",
+        "pass": true,
+        "baseline": 8000,
+        "candidate": 4640,
+        "limit": 9600,
+        "direction": "max"
+      }
+    ],
+    "summary": {
+      "baselineTaskSuccessRate": 1,
+      "candidateTaskSuccessRate": 1,
+      "baselineTraceCoverage": 1,
+      "candidateTraceCoverage": 1,
+      "baselineRouteCoverage": 1,
+      "candidateRouteCoverage": 1,
+      "baselineRouteDecisionCoverage": 1,
+      "candidateRouteDecisionCoverage": 1,
+      "baselineRouteDecisionConsistencyRate": 1,
+      "candidateRouteDecisionConsistencyRate": 1,
+      "baselineEvidenceLayerEnabledRate": 0.85,
+      "candidateEvidenceLayerEnabledRate": 0.85,
+      "baselineRouteSources": {
+        "provider": 100,
+        "semanticCache": 0,
+        "evidenceCache": 0,
+        "unknown": 0
+      },
+      "candidateRouteSources": {
+        "provider": 58,
+        "semanticCache": 0,
+        "evidenceCache": 42,
+        "unknown": 0
+      },
+      "baselineRouteTasks": {
+        "ocr": 0,
+        "ui-review": 20,
+        "code": 20,
+        "document": 20,
+        "chart": 15,
+        "compare": 10,
+        "photo": 15,
+        "screenshot": 0,
+        "translate": 0,
+        "general": 0,
+        "unknown": 0
+      },
+      "candidateRouteTasks": {
+        "ocr": 0,
+        "ui-review": 20,
+        "code": 20,
+        "document": 20,
+        "chart": 15,
+        "compare": 10,
+        "photo": 15,
+        "screenshot": 0,
+        "translate": 0,
+        "general": 0,
+        "unknown": 0
+      },
+      "baselineRouteCacheModes": {
+        "use": 100,
+        "refresh": 0,
+        "noStore": 0,
+        "unknown": 0
+      },
+      "candidateRouteCacheModes": {
+        "use": 100,
+        "refresh": 0,
+        "noStore": 0,
+        "unknown": 0
+      },
+      "baselineRouteSourceOutcomes": {
+        "provider": {
+          "cases": 100,
+          "passed": 100,
+          "weight": 100,
+          "providerCalls": 100,
+          "cacheHits": 0,
+          "passRate": 1,
+          "taskSuccessRate": 1
+        },
+        "semanticCache": {
+          "cases": 0,
+          "passed": 0,
+          "weight": 0,
+          "providerCalls": 0,
+          "cacheHits": 0
+        },
+        "evidenceCache": {
+          "cases": 0,
+          "passed": 0,
+          "weight": 0,
+          "providerCalls": 0,
+          "cacheHits": 0
+        },
+        "unknown": {
+          "cases": 0,
+          "passed": 0,
+          "weight": 0,
+          "providerCalls": 0,
+          "cacheHits": 0
+        }
+      },
+      "candidateRouteSourceOutcomes": {
+        "provider": {
+          "cases": 58,
+          "passed": 58,
+          "weight": 58,
+          "providerCalls": 58,
+          "cacheHits": 0,
+          "passRate": 1,
+          "taskSuccessRate": 1
+        },
+        "semanticCache": {
+          "cases": 0,
+          "passed": 0,
+          "weight": 0,
+          "providerCalls": 0,
+          "cacheHits": 0
+        },
+        "evidenceCache": {
+          "cases": 42,
+          "passed": 42,
+          "weight": 42,
+          "providerCalls": 0,
+          "cacheHits": 42,
+          "passRate": 1,
+          "taskSuccessRate": 1
+        },
+        "unknown": {
+          "cases": 0,
+          "passed": 0,
+          "weight": 0,
+          "providerCalls": 0,
+          "cacheHits": 0
+        }
+      },
+      "baselineTokenUsageCoverage": 1,
+      "candidateTokenUsageCoverage": 1,
+      "baselineZeroProviderReuseRate": 0,
+      "candidateZeroProviderReuseRate": 0.42,
+      "baselineCalls": 100,
+      "candidateCalls": 58,
+      "baselineInputTokens": 105050,
+      "candidateInputTokens": 61164
+    }
+  }
+}

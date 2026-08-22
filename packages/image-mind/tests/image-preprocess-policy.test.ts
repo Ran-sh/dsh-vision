@@ -34,6 +34,15 @@ describe('image preprocessing policy', () => {
     expect(target.width * target.height).toBeLessThanOrEqual(PNG_MAX_PIXELS)
   })
 
+  it('keeps a substantially taller 1440x20000 page within the same bounded geometry', () => {
+    const policy = imagePreprocessPolicy('image/png', 1440, 20000)!
+    const target = targetImageDimensions(1440, 20000, policy)
+    expect(target.scaled).toBe(true)
+    expect(target.height).toBe(PNG_LONG_COMPRESS_MAX_EDGE)
+    expect(target.width).toBeGreaterThan(500)
+    expect(target.width * target.height).toBeLessThanOrEqual(PNG_MAX_PIXELS)
+  })
+
   it('uses the pixel cap when a moderately elongated PNG would otherwise exceed it', () => {
     const policy = imagePreprocessPolicy('image/png', 2500, 6250)!
     const target = targetImageDimensions(2500, 6250, policy)
