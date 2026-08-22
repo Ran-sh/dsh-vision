@@ -47,14 +47,20 @@ function recordingCache(): VisionCache & { keys: string[] } {
   }
 }
 
+function markerFromAuthorization(init?: RequestInit): string {
+  const authorization = new Headers(init?.headers).get('authorization') ?? ''
+  if (authorization.includes('-A-')) return 'A'
+  if (authorization.includes('-B-')) return 'B'
+  return 'unknown'
+}
+
 afterEach(() => vi.unstubAllGlobals())
 
 describe('credential-scoped semantic cache', () => {
   it('changes cache identity immediately when the resolved credential rotates', async () => {
     let key = 'sk-credential-A-12345678'
     const fetchMock = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
-      const authorization = new Headers(init?.headers).get('authorization')
-      return response(authorization === `Bearer ${key}` ? `answer:${key.slice(-1)}` : 'unexpected')
+      return response(`answer:${markerFromAuthorization(init)}`)
     })
     vi.stubGlobal('fetch', fetchMock)
 
@@ -86,16 +92,15 @@ describe('credential-scoped semantic cache', () => {
   })
 
   it('keeps concurrent calls with different resolved credentials in separate async-local cache scopes', async () => {
-    let selected = 'A'
+    const queuedMarkers = ['A', 'B']
     const resolveApiKey = vi.fn(async () => {
-      const captured = selected
+      const captured = queuedMarkers.shift()
+      if (captured === undefined) throw new Error('test credential queue exhausted')
       if (captured === 'A') await new Promise(resolve => setTimeout(resolve, 15))
       return `sk-concurrent-${captured}-12345678`
     })
     const fetchMock = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
-      const authorization = new Headers(init?.headers).get('authorization') ?? ''
-      const marker = authorization.includes('-A-') ? 'A' : 'B'
-      return response(`answer:${marker}`)
+      return response(`answer:${markerFromAuthorization(init)}`)
     })
     vi.stubGlobal('fetch', fetchMock)
 
@@ -106,20 +111,17 @@ describe('credential-scoped semantic cache', () => {
     })
     const request = { prompt: 'same semantic request', images: [image], cache: 'use' as const }
 
-    selected = 'A'
-    const callA = vision.call('p', request)
-    await Promise.resolve()
-    selected = 'B'
-    const callB = vision.call('p', request)
-
-    const [a, b] = await Promise.all([callA, callB])
+    const [a, b] = await Promise.all([
+      vision.call('p', request),
+      vision.call('p', request),
+    ])
     expect(a.text).toBe('answer:A')
     expect(b.text).toBe('answer:B')
     expect(fetchMock).toHaveBeenCalledTimes(2)
 
-    selected = 'A'
+    queuedMarkers.push('A')
     expect((await vision.call('p', request)).text).toBe('answer:A')
-    selected = 'B'
+    queuedMarkers.push('B')
     expect((await vision.call('p', request)).text).toBe('answer:B')
     expect(fetchMock).toHaveBeenCalledTimes(2)
   })
