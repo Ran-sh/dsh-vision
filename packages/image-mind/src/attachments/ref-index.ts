@@ -302,6 +302,39 @@ export async function commitSessionAttachmentBatch(
   return true
 }
 
+/**
+ * Discard the current uncommitted routing batch after upload/send failure.
+ * Attachment bytes remain owned by DSH and are never deleted here. If the
+ * session has committed history, routing is restored to the newest committed
+ * batch; otherwise the transient session routing record is removed.
+ */
+export async function discardSessionAttachmentBatch(
+  ctx: Context,
+  sessionId: string,
+  batchId: string,
+): Promise<boolean> {
+  const holder = await ensureLoaded(ctx)
+  const session = holder.state.value.sessions[sessionId]
+  if (session === undefined || session.batchId !== batchId) return false
+  if (session.history.some(batch => batch.batchId === batchId)) return false
+
+  const previous = session.history.at(-1)
+  if (previous === undefined) {
+    delete holder.state.value.sessions[sessionId]
+  } else {
+    holder.state.value.sessions[sessionId] = {
+      batchId: previous.batchId,
+      count: previous.count,
+      refs: { ...previous.refs },
+      updatedAt: previous.updatedAt,
+      history: session.history,
+    }
+  }
+  trimRefs(holder.state.value)
+  await persist(holder)
+  return true
+}
+
 /** Return bounded committed preview batches without exposing attachment ids. */
 export async function sessionAttachmentPreviewBatches(ctx: Context, sessionId: string): Promise<SessionPreviewBatch[]> {
   const holder = await ensureLoaded(ctx)
