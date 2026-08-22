@@ -1,114 +1,104 @@
 {
   "schema_version": 2,
   "task_id": "DSH-VISION-FINAL-RC-CLOSURE-016",
-  "source_commit": "fc1add131b36c064d2c63ab74ae2c498f1250257",
-  "result_commit": "a5fd4a64cc8f8ffcbc6559cc771cb67c4da8877d",
+  "source_commit": "030237755c225e05debc026e9f0e44d22b1d0acb",
+  "result_commit": "e7699454de5cbc0b2a1aa9493eaf99e805f41bb7",
   "status": "PARTIAL",
-  "summary": "Reconciled the final 0.2.0 pre-publish documentation and reran the repository, package, built-artifact, focused reliability/privacy, benchmark and registry gates. Existing Batch 013–015 exact rc.1 source-built/local-packed evidence remains valid, while this batch records external blockers for a new live browser/host run and Draft PR creation.",
+  "summary": "继续现有 Draft PR #58 并合并 main 最新提交后，使用 task-owned 隔离 home、web profile 和备用端口 43116 完成 exact @deepseek-ai/dsh@0.1.1-rc.1 的 fresh source-built/local-packed 0.2.0 验收。正式 DSH add/boot/composition、/image-mind 路由、真实浏览器设置/插件面、deterministic local main/vision stub 的 model-only understand_image tool-call、重启后的批次恢复、隐私边界、focused guard tests 与官方 remove 均通过；0.2.0 尚未发布及未授权 hosted provider 质量仍按协议列为范围外 SKIP。",
   "timeline": {
-    "started_at": "2026-08-22T22:54:49+08:00",
-    "completed_at": "2026-08-22T23:16:30+08:00"
+    "started_at": "2026-08-22T23:25:29+08:00",
+    "completed_at": "2026-08-23T00:03:35+08:00"
   },
   "changed_files": [
-    "README.md",
-    "CHANGELOG.md",
-    "docs/architecture.md",
-    "docs/compatibility.md",
-    "docs/release-checklist.md",
-    "docs/verification-debt.md",
     "docs/agent-results/DSH-VISION-FINAL-RC-CLOSURE-016-result.json",
     "docs/agent-tasks/ACTIVE_TASK.json"
   ],
   "tests": [
     {
-      "name": "task contract validation",
+      "name": "task contract and source checkpoint",
       "status": "PASS",
-      "evidence": "node .agent-workflow/validator/validate-contract.mjs task docs/agent-tasks/ACTIVE_TASK.json -> VALID TASK CONTRACT"
+      "evidence": "Revised ACTIVE_TASK validated; origin/main LATEST resolved to 030237755c225e05debc026e9f0e44d22b1d0acb, then merged non-destructively as e7699454de5cbc0b2a1aa9493eaf99e805f41bb7 on feat/final-rc-closure-batch-016."
     },
     {
-      "name": "npm ci",
+      "name": "PR #58 review checkpoint",
       "status": "PASS",
-      "evidence": "238 packages installed; npm reported existing audit advisories and allowScripts warnings only"
+      "evidence": "Public GitHub API confirmed PR #58 is open, Draft, and unmerged before the final push; no new PR was created and no merge was performed."
     },
     {
-      "name": "typecheck/build",
+      "name": "runtime identity and isolation",
       "status": "PASS",
-      "evidence": "npm run typecheck and npm run build passed for both workspaces"
+      "evidence": "Windows 10.0.22631 x64; Node v24.18.1; npm 11.16.0; pnpm 11.7.0; exact @deepseek-ai/dsh@0.1.1-rc.1. The run used a task-owned temporary DSH_HOME, profile web, persisted task-owned state, and alternate free listener port 43116; the pre-existing 3080 listener (PID 8180) remained untouched."
     },
     {
-      "name": "full repository tests",
+      "name": "official add and source-built/local-packed composition",
       "status": "PASS",
-      "evidence": "npm test: vision 63 passed, image-mind 325 passed with 8 intentional skips, root 57 passed"
+      "evidence": "Repository-built 0.2.0 vision and image-mind tarballs were installed through official dsh plugin add. The task-owned pnpm override was used only to bridge the unpublished @ran-sh/dsh-vision@^0.2.0 dependency. --dump-config on web composed web-app/webserver, vision-runtime, and image-mind."
     },
     {
-      "name": "package and built-artifact tests",
+      "name": "fresh exact rc.1 boot and route handlers",
       "status": "PASS",
-      "evidence": "npm run test:package 11 passed; npm run test:built 6 passed"
+      "evidence": "Official exact rc.1 web boot announced http://127.0.0.1:43116; GET / and GET /image-mind/catalog returned HTTP 200. The host route set also returned the expected guarded responses for previews/settings/raw paths."
     },
     {
-      "name": "focused reliability/browser/privacy regression sweep",
+      "name": "real browser rc.1 acceptance",
       "status": "PASS",
-      "evidence": "45 files, 222 tests passed across provider reliability/fallback, execution gate, retry, cache/refocus, routing, attachment/restart, SSRF, RPC, lifecycle, telemetry and UI privacy seams"
+      "evidence": "agent-browser loaded the task-owned 43116 UI, completed notice/API-key-later onboarding, opened 设置→插件→图像理解, showed the image-mind configuration card and neutral defaults, and the 插件列表 showed vision/plugin-image-mind plus webserver/web-app as mounted and enabled."
     },
     {
-      "name": "deterministic 100-case benchmark",
+      "name": "deterministic local main/vision tool-call path",
       "status": "PASS",
-      "evidence": "100 cases; routing/task/assertion success 100%; forbiddenHitCount 0; trace/route/token coverage 100%; evidence-cache reuse 20%; controlled baseline comparison passed"
+      "evidence": "A task-owned keyless OpenAI-compatible stub served both main-stub and vision-stub. session.models reported current local-main/main-stub as routable; an uploaded and committed one-image batch was sent through session.prompt; history recorded an assistant understand_image tool call sourced from local-main/main-stub, the vision stub received one image payload, and the final assistant answer was the deterministic stub marker."
     },
     {
-      "name": "aspect/pixel-aware preprocessing comparison",
+      "name": "model-only routing and neutral attachment boundary",
       "status": "PASS",
-      "evidence": "npm run benchmark:preprocess passed for both long fixtures; current 8192 policy preserved more horizontal resolution and row-order evidence"
+      "evidence": "Fresh focused image-mind tests passed the text-only send-hook route, neutral attachment marker, tool selection and source redaction seams. The model request selected local-main/main-stub while image bytes were consumed only by understand_image/vision-stub."
     },
     {
-      "name": "registry preflight",
+      "name": "eight-image guard and ninth rejection",
       "status": "PASS",
-      "evidence": "npm view for both 0.2.0 packages returned E404; recorded EXPECTED_NOT_PUBLISHED without publish or metadata mutation"
+      "evidence": "Fresh focused sweep (7 files, 21 tests) passed send-hook-image-limit: exactly 8 proceeds with the neutral marker and the ninth is rejected before upload/preview/prompt side effects; send-hook routing and privacy tests passed in the same run."
     },
     {
-      "name": "npm pack dry-run",
+      "name": "restart recovery",
       "status": "PASS",
-      "evidence": "vision 0.2.0 contained lib/types/README; image-mind 0.2.0 contained lib/patch/README only; no src/tests/credentials"
+      "evidence": "After stopping and restarting exact rc.1 on the same task-owned home, /image-mind/previews returned the previously committed batch with count only, and session.models/history remained available. No task-owned attachment ids or private paths were recorded in this Result Contract."
     },
     {
-      "name": "exact rc.1 source-built/local-packed evidence from merged Batches 013–015",
+      "name": "privacy and call/debug redaction",
       "status": "PASS",
-      "evidence": "Prior durable Result Contracts 013–015 record exact @deepseek-ai/dsh@0.1.1-rc.1 official add/boot/local-stub smoke/browser seams/official remove using task-owned local-packed 0.2.0 artifacts"
+      "evidence": "Browser settings exposed no credentials, raw URLs, attachment ids or route diagnostics; preview responses exposed only batchId/count/updatedAt; tool-call-view-redaction, session-history-routing, raw/preview restart and system-prompt routing tests passed. No secret value was read or logged."
     },
     {
-      "name": "Batch 016 live exact rc.1 browser/host repeat",
-      "status": "BLOCKED",
-      "evidence": "Task-owned launcher/profile was prepared, but the only detected listener on port 3080 belonged to a pre-existing dsh-official-runtime process outside task-owned state; it was not touched, and no browser result from that process is claimed"
-    },
-    {
-      "name": "Draft PR creation",
-      "status": "BLOCKED",
-      "evidence": "Branch was pushed; installed gh client reported no authenticated GitHub session and could not create a PR without interactive credentials"
-    },
-    {
-      "name": "git diff --check and security audit",
+      "name": "repository/package gates",
       "status": "PASS",
-      "evidence": "No whitespace errors, personal machine paths, credential material or secret-bearing values in changed docs/result"
+      "evidence": "Fresh npm test passed vision 63, image-mind 325 with 8 intentional skips, and root 57; npm run typecheck and npm run build passed. The package/built integrity lanes were included in the passing root suite (11 package and 6 built-artifact tests)."
+    },
+    {
+      "name": "registry and hosted-provider scope",
+      "status": "SKIP",
+      "evidence": "Both 0.2.0 packages remain intentionally unpublished and no explicitly authorized hosted visual-provider credential was used. Registry publication, post-publication install, tag/release, and hosted-provider quality are explicitly outside this task's required acceptance."
+    },
+    {
+      "name": "official remove and isolated cleanup",
+      "status": "PASS",
+      "evidence": "Official dsh plugin remove completed for task profiles web and smoke; subsequent dumps contained no vision-runtime/image-mind layer. Browser/processes/stub were closed, ports 43116/43117 were free, and the exact task-owned temporary tree was deleted. The real Harness and port 3080 were not modified."
+    },
+    {
+      "name": "final PR #58 CI",
+      "status": "NOT RUN",
+      "evidence": "Will be recorded after pushing the final completion head; PR #58 remains Draft/unmerged until that checkpoint is green."
     }
   ],
   "blockers": [
-    "GitHub Draft PR creation requires an authenticated maintainer session; no PR number can be truthfully reported.",
-    "A pre-existing non-task dsh-official-runtime listener owns port 3080, so Batch 016 did not drive or terminate it; current live rc.1 browser/route acceptance remains external/partial.",
-    "Both 0.2.0 packages are intentionally unpublished; registry compatibility and post-publication install remain release debt.",
-    "No authorized hosted visual-provider credential was used; real-provider quality remains open debt."
+    "0.2.0 packages are intentionally unpublished; npm publication, registry install, tag/release and hosted-provider quality remain outside scope.",
+    "Final PR #58 GitHub Actions must be observed on the pushed completion head before the final Result Contract can claim that checkpoint."
   ],
   "result_path": "docs/agent-results/DSH-VISION-FINAL-RC-CLOSURE-016-result.json",
   "notes": [
-    "README is materially shorter and retains the third-party disclaimer, architecture split, install/use/config basics, 8-image bound, cache/reliability/security boundaries, compatibility and development links.",
-    "CHANGELOG now distinguishes deterministic/build evidence from exact rc.1 source-built evidence and does not describe the unpublished candidate as a registry release.",
-    "Compatibility/release/debt docs preserve historical rows and explicitly keep provider, publication, tag/release and real-Harness authorization boundaries open.",
-    "The current source tree had no implementation defect attributable to the task-owned code during this documentation/closure run; no source change was invented to mask host or registry blockers.",
-    "ACTIVE_TASK deletion and final result stamping are the remaining completion commit actions; the branch remains unmerged."
-  ],
-  "result_validation": {
-    "status": "PASS",
-    "validator": "node .agent-workflow/validator/validate-contract.mjs result docs/agent-results/DSH-VISION-FINAL-RC-CLOSURE-016-result.json --stamp",
-    "validated_at": "2026-08-22T15:17:13Z",
-    "evidence": "Exit 0: VALID RESULT CONTRACT: docs/agent-results/DSH-VISION-FINAL-RC-CLOSURE-016-result.json"
-  }
+    "No dsh-vision defect was reproduced in the corrected official web profile; the earlier no-listener observation came from booting a custom base-only smoke profile, not from the product route implementation.",
+    "All acceptance evidence uses task-owned deterministic stubs and safe identifiers only; no Harness-owned settings, credentials, cookies, node_modules, pnpm store, or real 3080 process were read or changed.",
+    "PR #58 is the only continuation target. It must remain Draft/open/unmerged until final review and CI verification.",
+    "ACTIVE_TASK deletion and final result stamping are performed only after the final pushed CI checkpoint is observed."
+  ]
 }
