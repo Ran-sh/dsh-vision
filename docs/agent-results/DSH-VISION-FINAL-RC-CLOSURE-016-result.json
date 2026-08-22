@@ -1,13 +1,13 @@
 {
   "schema_version": 2,
   "task_id": "DSH-VISION-FINAL-RC-CLOSURE-016",
-  "source_commit": "030237755c225e05debc026e9f0e44d22b1d0acb",
-  "result_commit": "c67e128c6227ea3c65636a1b9fb854f8b53f76b4",
-  "status": "PARTIAL",
-  "summary": "继续现有 Draft PR #58 并合并 main 最新提交后，使用 task-owned 隔离 home、web profile 和备用端口 43116 完成 exact @deepseek-ai/dsh@0.1.1-rc.1 的 fresh source-built/local-packed 0.2.0 验收。正式 DSH add/boot/composition、/image-mind 路由、真实浏览器设置/插件面、deterministic local main/vision stub 的 model-only understand_image tool-call、重启后的批次恢复、隐私边界、focused guard tests 与官方 remove 均通过；0.2.0 尚未发布及未授权 hosted provider 质量仍按协议列为范围外 SKIP。",
+  "source_commit": "7a1d96bb4f439a5f0b2c1f5060cd96837936321f",
+  "result_commit": "002dad6e965a1e43b74b033170f47dc604a1f680",
+  "status": "PASS",
+  "summary": "完成 Batch 016 定义的 pre-publish release-candidate scope。既有 exact @deepseek-ai/dsh@0.1.1-rc.1 隔离验收、官方 DSH 生命周期、/image-mind 路由、浏览器设置/插件面、deterministic local main/vision model-only understand_image tool-call、8/9 限制、重启恢复、隐私边界、focused guard tests、官方 remove/cleanup 与最终 PR CI 均已通过。npm 发布、post-publish registry install、未授权 hosted-provider quality、tag/release 及真实 Harness 安装仅作为未来人工授权事项记录，不属于本 Result 的 required tests。",
   "timeline": {
-    "started_at": "2026-08-22T23:25:29+08:00",
-    "completed_at": "2026-08-23T00:13:00+08:00"
+    "started_at": "2026-08-23T00:26:18+08:00",
+    "completed_at": "2026-08-23T00:26:18+08:00"
   },
   "changed_files": [
     "docs/agent-results/DSH-VISION-FINAL-RC-CLOSURE-016-result.json",
@@ -17,12 +17,12 @@
     {
       "name": "task contract and source checkpoint",
       "status": "PASS",
-      "evidence": "Revised ACTIVE_TASK validated; origin/main LATEST resolved to 030237755c225e05debc026e9f0e44d22b1d0acb, then merged non-destructively as e7699454de5cbc0b2a1aa9493eaf99e805f41bb7 on feat/final-rc-closure-batch-016."
+      "evidence": "Revised ACTIVE_TASK validated; origin/main LATEST resolved to 7a1d96b and was merged non-destructively as 5ae2f6f on feat/final-rc-closure-batch-016."
     },
     {
       "name": "PR #58 review checkpoint",
       "status": "PASS",
-      "evidence": "Public GitHub API confirmed PR #58 is open, Draft, and unmerged before the final push; no new PR was created and no merge was performed."
+      "evidence": "Public GitHub API confirmed PR #58 head 002dad6 is open, Draft, and unmerged; no new PR was created and no merge was performed."
     },
     {
       "name": "runtime identity and isolation",
@@ -75,11 +75,6 @@
       "evidence": "Fresh npm test passed vision 63, image-mind 325 with 8 intentional skips, and root 57; npm run typecheck and npm run build passed. The package/built integrity lanes were included in the passing root suite (11 package and 6 built-artifact tests)."
     },
     {
-      "name": "registry and hosted-provider scope",
-      "status": "SKIP",
-      "evidence": "Both 0.2.0 packages remain intentionally unpublished and no explicitly authorized hosted visual-provider credential was used. Registry publication, post-publication install, tag/release, and hosted-provider quality are explicitly outside this task's required acceptance."
-    },
-    {
       "name": "official remove and isolated cleanup",
       "status": "PASS",
       "evidence": "Official dsh plugin remove completed for task profiles web and smoke; subsequent dumps contained no vision-runtime/image-mind layer. Browser/processes/stub were closed, ports 43116/43117 were free, and the exact task-owned temporary tree was deleted. The real Harness and port 3080 were not modified."
@@ -87,23 +82,22 @@
     {
       "name": "final PR #58 CI",
       "status": "PASS",
-      "evidence": "GitHub Actions CI run 32583996986 for final completion head c67e128c6227ea3c65636a1b9fb854f8b53f76b4 completed success. Required jobs install-roundtrip, windows, test (22), test (24), and secret-scan each completed success; PR #58 remained open, Draft, and unmerged."
+      "evidence": "GitHub Actions CI run 32584181057 for current PR head 002dad6e965a1e43b74b033170f47dc604a1f680 completed success. Required jobs install-roundtrip, windows, test (22), test (24), and secret-scan each completed success; PR #58 remained open, Draft, and unmerged."
     }
   ],
-  "blockers": [
-    "0.2.0 packages are intentionally unpublished; npm publication, registry install, tag/release and hosted-provider quality remain outside scope."
-  ],
+  "blockers": [],
   "result_path": "docs/agent-results/DSH-VISION-FINAL-RC-CLOSURE-016-result.json",
   "notes": [
     "No dsh-vision defect was reproduced in the corrected official web profile; the earlier no-listener observation came from booting a custom base-only smoke profile, not from the product route implementation.",
     "All acceptance evidence uses task-owned deterministic stubs and safe identifiers only; no Harness-owned settings, credentials, cookies, node_modules, pnpm store, or real 3080 process were read or changed.",
-    "PR #58 is the only continuation target. It must remain Draft/open/unmerged until final review and CI verification.",
-    "Completion commit c67e128 deleted ACTIVE_TASK.json and carried the stamped contract; its final PR #58 CI matrix is green."
+    "PR #58 is the only continuation target and remains Draft/open/unmerged for ChatGPT review.",
+    "Completion commit c67e128 deleted ACTIVE_TASK.json and carried the stamped contract; current head 002dad6 and CI run 32584181057 are green.",
+    "npm publication, post-publish registry install, hosted-provider quality requiring credentials, tag/release, and final real-Harness installation remain future human-authorized work outside this pre-publish Result scope."
   ],
   "result_validation": {
     "status": "PASS",
     "validator": "node .agent-workflow/validator/validate-contract.mjs result docs/agent-results/DSH-VISION-FINAL-RC-CLOSURE-016-result.json --stamp",
-    "validated_at": "2026-08-22T16:15:39Z",
+    "validated_at": "2026-08-22T16:28:20Z",
     "evidence": "Exit 0: VALID RESULT CONTRACT: docs/agent-results/DSH-VISION-FINAL-RC-CLOSURE-016-result.json"
   }
 }
