@@ -1,0 +1,136 @@
+{
+  "schema_version": 2,
+  "task_id": "DSH-VISION-PROVIDER-PROTOCOL-TELEMETRY-014",
+  "source_commit": "5ae5386ca5f52d4e9c96298daaf82b8fcab46788",
+  "result_commit": "ecfadf6fb1556922575cf5d05206cb405524c282",
+  "status": "PARTIAL",
+  "summary": "Validated the latest main source on a single feature branch. Existing provider-protocol, fallback, cancellation, telemetry, package, built-artifact, benchmark, and deterministic rc.1 host/browser checks pass without source changes. Remaining partials are the unavailable published package/install path, unavailable authorized real-provider credential check, and feature-branch CI/PR evidence not available until a PR is opened. The exact eight-image host acceptance required an explicit task-owned maxImagesPerMessage=8 setting because the unconfigured rc.1 default is 20.",
+  "timeline": {
+    "started_at": "2026-08-22T20:07:47+08:00",
+    "completed_at": "2026-08-22T20:44:31+08:00"
+  },
+  "changed_files": [
+    "docs/agent-results/DSH-VISION-PROVIDER-PROTOCOL-TELEMETRY-014-result.json",
+    "docs/agent-tasks/ACTIVE_TASK.json"
+  ],
+  "tests": [
+    {
+      "name": "task contract validation",
+      "status": "PASS",
+      "evidence": "node .agent-workflow/validator/validate-contract.mjs task docs/agent-tasks/ACTIVE_TASK.json: VALID TASK CONTRACT"
+    },
+    {
+      "name": "focused provider protocol/fallback/retry/cancellation/trace/lifecycle matrix",
+      "status": "PASS",
+      "evidence": "Vitest: 20 files, 117 tests passed against deterministic local stubs, including Chat Completions/Responses parsing and usage, model override/discovery, compatible endpoint request shaping, retry/error mapping, split, cancellation, fallback/circuit, telemetry, and privacy behavior"
+    },
+    {
+      "name": "npm ci",
+      "status": "PASS",
+      "evidence": "npm ci exited 0; 238 packages installed. npm reported 5 audit findings (3 moderate, 1 high, 1 critical) and an allowScripts warning"
+    },
+    {
+      "name": "npm test",
+      "status": "PASS",
+      "evidence": "Root, vision, and image-mind suites exited 0: 8 root files/52 tests, 6 vision files/63 tests, 59 image-mind files/320 tests, plus 7 configured skips"
+    },
+    {
+      "name": "typecheck",
+      "status": "PASS",
+      "evidence": "npm run typecheck exited 0"
+    },
+    {
+      "name": "build",
+      "status": "PASS",
+      "evidence": "npm run build exited 0; vision and image-mind host/client artifacts built"
+    },
+    {
+      "name": "package integrity",
+      "status": "PASS",
+      "evidence": "npm run test:package exited 0: 1 file, 11 tests passed"
+    },
+    {
+      "name": "built artifact verification",
+      "status": "PASS",
+      "evidence": "npm run test:built exited 0: 1 file, 6 tests passed"
+    },
+    {
+      "name": "benchmark score",
+      "status": "PASS",
+      "evidence": "npm run benchmark:score ... exited 0; 3 cases, routing/assertion/task success 1.0, forbiddenHitCount 0, trace/route/decision/token coverage 1.0"
+    },
+    {
+      "name": "benchmark compare",
+      "status": "PASS",
+      "evidence": "npm run benchmark:compare baseline/results/results exited 0; all 13 comparison checks passed"
+    },
+    {
+      "name": "controlled benchmark regression",
+      "status": "PASS",
+      "evidence": "One answer was deterministically changed to CONTROLLED_REGRESSION_WRONG; compare rejected it with failedChecks=[task-success-rate]"
+    },
+    {
+      "name": "latest main GitHub CI",
+      "status": "PASS",
+      "evidence": "origin/main source SHA 5ae5386ca5f52d4e9c96298daaf82b8fcab46788 run 32571826075 completed success: Windows, Node 22, Node 24, install-roundtrip, and secret-scan jobs passed"
+    },
+    {
+      "name": "exact @deepseek-ai/dsh@0.1.1-rc.1 package bootstrap",
+      "status": "PARTIAL",
+      "evidence": "Official add reproduced ERR_PNPM_NO_MATCHING_VERSION for upstream @ran-sh/dsh-vision@^0.2.0; official add succeeded only after a task-owned local packed-artifact override. No publish, tag, or registry mutation was performed"
+    },
+    {
+      "name": "exact rc.1 main-model/tool-call routing",
+      "status": "PASS",
+      "evidence": "Task-owned deterministic local main-model endpoint routed vague image text to understand_image; tool payload contained only prompt and omitted image/images for the current session batch"
+    },
+    {
+      "name": "exact rc.1 composer count gate",
+      "status": "PASS",
+      "evidence": "Actual browser composer admitted exactly 8 images and sent successfully; a ninth-image drop was rejected before upload/message/session side effects under explicit task-owned limit 8"
+    },
+    {
+      "name": "exact rc.1 rendered privacy/call-card inspection",
+      "status": "PASS",
+      "evidence": "Rendered user bubble showed only text plus neutral attachment marker; trajectory/tool view exposed no signed URL, attachment id, bare sha, credential, endpoint secret, route internals, or private path"
+    },
+    {
+      "name": "official OpenAI detail-policy provider check",
+      "status": "SKIP",
+      "evidence": "No explicitly authorized real-provider credential was available; no Harness settings or credential store was read"
+    },
+    {
+      "name": "real hosted-provider smoke",
+      "status": "SKIP",
+      "evidence": "Optional real-provider checks were not run because no authorized credentials were available"
+    },
+    {
+      "name": "task-branch applicable CI/PR gate",
+      "status": "BLOCKED",
+      "evidence": "The workflow requires final task-branch CI and a feature PR; this execution was not authorized to merge and no PR was opened in the local run"
+    },
+    {
+      "name": "temporary runtime cleanup",
+      "status": "PASS",
+      "evidence": "Task-owned DSH_HOME/cache/package/stub/browser/runtime artifacts were removed, task-owned processes stopped, and task-owned ports released; pre-existing external DSH state was not touched"
+    }
+  ],
+  "blockers": [
+    "@ran-sh/dsh-vision@^0.2.0 is not available from the upstream registry used by the exact rc.1 official add flow; local packed artifacts plus a task-owned override were required, and publishing is forbidden by the task.",
+    "No authorized real-provider credential was available, so official OpenAI detail-policy and hosted-provider smoke checks remain SKIP.",
+    "Feature-branch CI/PR evidence remains BLOCKED until a PR is opened; origin/main CI is green and this branch was not merged."
+  ],
+  "result_path": "docs/agent-results/DSH-VISION-PROVIDER-PROTOCOL-TELEMETRY-014-result.json",
+  "notes": [
+    "Execution environment: Microsoft Windows 11, Node v24.18.1, npm 11.16.0, pnpm 11.7.0, agent-browser 0.34.0, exact @deepseek-ai/dsh@0.1.1-rc.1.",
+    "No implementation or test defect was confirmed in the latest main source, so no files under the task's source/test allowlist were changed.",
+    "The unconfigured rc.1 attachment-local default projected maxImagesPerMessage=20; exact eight-image acceptance was therefore exercised with an explicit task-owned limit of 8 and the discrepancy is reported rather than hidden.",
+    "No credentials, signed URLs, attachment identifiers, private paths, or secret-bearing provider bodies are included in this result."
+  ],
+  "result_validation": {
+    "status": "PASS",
+    "validator": "node .agent-workflow/validator/validate-contract.mjs result docs/agent-results/DSH-VISION-PROVIDER-PROTOCOL-TELEMETRY-014-result.json --stamp",
+    "validated_at": "2026-08-22T12:46:10Z",
+    "evidence": "Exit 0: VALID RESULT CONTRACT: docs/agent-results/DSH-VISION-PROVIDER-PROTOCOL-TELEMETRY-014-result.json"
+  }
+}
