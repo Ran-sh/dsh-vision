@@ -2,7 +2,7 @@
   "schema_version": 2,
   "task_id": "DSH-VISION-WINDOWS-RELEASE-SAFETY-013",
   "source_commit": "0d8891bcda943d30693fd50dab132dfbff3351dd",
-  "result_commit": null,
+  "result_commit": "0d375bb",
   "status": "PASS",
   "summary": "Closed the confirmed Windows Node24 ESM bundle defect by replacing the dynamic node:crypto require in the OpenAI-compatible adapter with a static import and adding a built-artifact regression assertion. The complete Windows Node24 lane, exact rc.1 isolated official add/boot/smoke/remove roundtrip, browser settings acceptance, generated public types, package-content inspection, benchmark scorer/compare gates, and current-head CI evidence passed.",
   "timeline": {
@@ -75,7 +75,7 @@
   "result_validation": {
     "status": "PASS",
     "validator": "node .agent-workflow/validator/validate-contract.mjs result docs/agent-results/DSH-VISION-WINDOWS-RELEASE-SAFETY-013-result.json --stamp",
-    "validated_at": "2026-08-22T10:56:57Z",
+    "validated_at": "2026-08-22T10:58:14Z",
     "evidence": "Exit 0: VALID RESULT CONTRACT: docs/agent-results/DSH-VISION-WINDOWS-RELEASE-SAFETY-013-result.json"
   }
 }
