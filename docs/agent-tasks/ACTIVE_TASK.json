@@ -4,7 +4,7 @@
   "source_branch": "main",
   "source_commit": "LATEST",
   "objective": "Batch-fix provider reliability accounting across retry/fallback/cache/circuit interactions, remove the sandbox-DNS-dependent test failure that has caused repeated PARTIAL executor results, and then run one consolidated exact-rc.1 runtime/browser acceptance pass. Prefer one complete executor cycle over multiple tiny handoffs.",
-  "context": "Recent work established several adjacent facts that should be fixed and verified together. PR #46 stopped semantic-cache hits from being counted as fresh provider health. Follow-up review found that the current reliability decorator still observes only the final adapter outcome, so intermediate provider fallback failures are invisible. The provider reliability tracker may also admit an open circuit into half-open before the wire adapter executes the fallback; if that recovery fallback is satisfied from semantic cache, no fresh provider result reaches the circuit and the breaker can remain half-open indefinitely because the underlying circuit primitive has no automatic half-open timeout. In addition, Codex tasks 008 and 009 each reported one unrelated local npm-test failure because the executor DNS maps example.com to RFC2544 198.18.0.0/15 and the SSRF guard correctly blocks it. GitHub CI passes, so that test must be made DNS-deterministic without weakening SSRF. PR #52 fixed the rc.1 real-web route lifecycle, so browser count-guard checks that were previously blocked by missing /image-mind/* routes should be retried in this same batch when practical. The user now explicitly allows real local DeepSeek Harness lifecycle operations when useful, including stop/restart and official uninstall/reinstall/plugin add-remove; however project code/scripts must still never directly mutate Harness-owned files/state.",
+  "context": "Recent work established several adjacent facts that should be fixed and verified together. PR #46 stopped semantic-cache hits from being counted as fresh provider health. Follow-up review found that the current reliability decorator still observes only the final adapter outcome, so intermediate provider fallback failures are invisible. The provider reliability tracker may also admit an open circuit into half-open before the wire adapter executes the fallback; if that recovery fallback is satisfied from semantic cache, no fresh provider result reaches the circuit and the breaker can remain half-open indefinitely because the underlying circuit primitive has no automatic half-open timeout. In addition, Codex tasks 008 and 009 each reported one unrelated local npm-test failure because the executor DNS maps example.com to RFC2544 198.18.0.0/15 and the SSRF guard correctly blocks it. GitHub CI passes, so that test must be made DNS-deterministic without weakening SSRF. PR #52 fixed the rc.1 real-web route lifecycle, so browser count-guard checks that were previously blocked by missing /image-mind/* routes should be retried in this same batch when practical. Existing draft PR #53 on branch fix/per-provider-reliability-probes already contains the first reliability implementation slice and must be preserved and continued rather than duplicated or discarded. At task start, validate this canonical task on latest main, then fetch the existing PR #53 branch and non-destructively bring the validated latest main source commit into that branch so the canonical task commit is part of the execution branch; do not force-push, reset, rewrite, or drop the existing PR commits. The prior executor attempt stopped correctly because an earlier task revision used an unsupported implementation_requirements property; main commit 9053c37507700e82bc3a0db9e85e95ecefba7688 corrected that contract shape. Any stale local-only task-queue commit from that failed attempt is not product work and must not replace the canonical remote history. The user now explicitly allows real local DeepSeek Harness lifecycle operations when useful, including stop/restart and official uninstall/reinstall/plugin add-remove; however project code/scripts must still never directly mutate Harness-owned files/state.",
   "allowed_changes": [
     "packages/image-mind/src/runtime/provider-reliability.ts",
     "packages/image-mind/src/runtime/reliability-adapter.ts",
@@ -45,6 +45,8 @@
   "validation": [
     "node .agent-workflow/validator/validate-contract.mjs task docs/agent-tasks/ACTIVE_TASK.json",
     "record exact source commit, OS, Node, npm, pnpm, and exact @deepseek-ai/dsh@0.1.1-rc.1 versions",
+    "after canonical validation on latest main, fetch existing branch fix/per-provider-reliability-probes for PR #53, preserve its existing implementation commits, and non-destructively merge or fast-forward the exact validated latest main source commit into that branch before implementation; do not force-push, reset, rewrite, or discard the PR history",
+    "confirm docs/agent-tasks/ACTIVE_TASK.json on the execution branch is the same validated Batch 010 contract before product work begins",
     "run focused reliability/circuit/cache tests covering all acceptance scenarios before the full suite",
     "prove primary failure -> fallback-1 failure -> fallback-2 fresh success records primary failure, fallback-1 failure, and fallback-2 success exactly once each",
     "prove a normal non-half-open backup semantic-cache hit still avoids provider traffic and does not create a fake success",
@@ -69,6 +71,7 @@
   ],
   "acceptance_criteria": [
     "Task Contract validates before execution and exact source SHA is recorded.",
+    "Existing draft PR #53 and branch fix/per-provider-reliability-probes remain the execution vehicle for this batch: preserve its existing implementation commits, sync the validated latest main source commit into it non-destructively, push completion back to that branch, and do not merge PR #53 during executor execution.",
     "Preserve retry, model fallback, provider fallback, split, credential-scoped semantic-cache, explicit-provider stickiness, and execution-trace behavior unless this task explicitly tightens reliability semantics.",
     "Make reliability observe each configured provider attempt (primary and every automatic provider fallback) rather than infer intermediate outcomes only from the final result.",
     "A provider-level terminal failure on fallback-1 must update fallback-1 health/circuit even if fallback-2 later succeeds.",
@@ -120,10 +123,12 @@
     "executor": "CODEX",
     "purpose": "batched-reliability-circuit-cache-rc1-acceptance",
     "related_issue": "21",
+    "resume_pr": "53",
+    "resume_branch": "fix/per-provider-reliability-probes",
     "compatibility_target": "@deepseek-ai/dsh@0.1.1-rc.1",
     "source_line": "current-0.2.x-unpublished",
     "handoff_policy": "batch-related-work-before-codex",
     "real_harness_policy": "official-lifecycle-operations-authorized-no-direct-file-mutation",
-    "prepared_from_commit": "4c711da496a091bca1779916279ed000fe2a937b"
+    "prepared_from_commit": "9053c37507700e82bc3a0db9e85e95ecefba7688"
   }
 }
