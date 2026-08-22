@@ -42,19 +42,6 @@
     "real credential/API-key disclosure, signed URL secrets, attachment ids, private local paths, or unredacted secret-bearing logs",
     "unrelated files"
   ],
-  "implementation_requirements": [
-    "Preserve retry, model fallback, provider fallback, split, credential-scoped semantic-cache, explicit-provider stickiness, and execution-trace behavior unless this task explicitly tightens reliability semantics.",
-    "Make reliability observe each configured provider attempt (primary and every automatic provider fallback) rather than infer intermediate outcomes only from the final result.",
-    "A provider-level terminal failure on fallback-1 must update fallback-1 health/circuit even if fallback-2 later succeeds.",
-    "A semantic-cache hit must never count as a fresh provider health success.",
-    "A half-open recovery probe must perform a real provider attempt and must not be satisfied by semantic cache. Prefer a request-scoped no-store/refresh mechanism over clearing global cache. The recovery probe must still preserve ordinary cache behavior for unrelated providers and requests.",
-    "If a half-open recovery probe succeeds, its circuit must close and health success must increment exactly once. If it fails with a provider-level reliability failure, its circuit must return to open and failure accounting must increment exactly once.",
-    "Concurrent callers must preserve the existing exactly-one half-open probe guarantee; a second caller must not route another recovery probe while the first is in flight.",
-    "Do not double-count provider outcomes. If production accounting moves into the wire adapter/provider-attempt seam, remove or bypass overlapping outer-decorator accounting in the production composition.",
-    "Keep aggregate VisionTrace semantics correct across retries and provider fallbacks: providerCalls/retries/cacheHits/modelFallbacks/providerFallbacks/splits must remain truthful and providerFallbacks must count actual alternate provider attempts.",
-    "Fix the tool-thin/example.com regression test so it is independent of public DNS and remains fully offline/deterministic. Do not weaken the SSRF implementation or whitelist RFC2544/non-public ranges just to make the test pass. Mock/fixture the DNS or loading seam instead.",
-    "Keep all new reliability metadata provider-neutral and free of credentials/endpoints/secrets beyond existing safe provider ids."
-  ],
   "validation": [
     "node .agent-workflow/validator/validate-contract.mjs task docs/agent-tasks/ACTIVE_TASK.json",
     "record exact source commit, OS, Node, npm, pnpm, and exact @deepseek-ai/dsh@0.1.1-rc.1 versions",
@@ -82,6 +69,17 @@
   ],
   "acceptance_criteria": [
     "Task Contract validates before execution and exact source SHA is recorded.",
+    "Preserve retry, model fallback, provider fallback, split, credential-scoped semantic-cache, explicit-provider stickiness, and execution-trace behavior unless this task explicitly tightens reliability semantics.",
+    "Make reliability observe each configured provider attempt (primary and every automatic provider fallback) rather than infer intermediate outcomes only from the final result.",
+    "A provider-level terminal failure on fallback-1 must update fallback-1 health/circuit even if fallback-2 later succeeds.",
+    "A semantic-cache hit must never count as a fresh provider health success.",
+    "A half-open recovery probe must perform a real provider attempt and must not be satisfied by semantic cache. Prefer a request-scoped no-store/refresh mechanism over clearing global cache. The recovery probe must still preserve ordinary cache behavior for unrelated providers and requests.",
+    "If a half-open recovery probe succeeds, its circuit must close and health success must increment exactly once. If it fails with a provider-level reliability failure, its circuit must return to open and failure accounting must increment exactly once.",
+    "Concurrent callers must preserve the existing exactly-one half-open probe guarantee; a second caller must not route another recovery probe while the first is in flight.",
+    "Do not double-count provider outcomes. If production accounting moves into the wire adapter/provider-attempt seam, remove or bypass overlapping outer-decorator accounting in the production composition.",
+    "Keep aggregate VisionTrace semantics correct across retries and provider fallbacks: providerCalls/retries/cacheHits/modelFallbacks/providerFallbacks/splits must remain truthful and providerFallbacks must count actual alternate provider attempts.",
+    "Fix the tool-thin/example.com regression test so it is independent of public DNS and remains fully offline/deterministic. Do not weaken the SSRF implementation or whitelist RFC2544/non-public ranges just to make the test pass. Mock/fixture the DNS or loading seam instead.",
+    "Keep all new reliability metadata provider-neutral and free of credentials/endpoints/secrets beyond existing safe provider ids.",
     "All product changes remain within allowed image-mind reliability/adapter/test files; no Harness-owned file is directly edited by project code or executor.",
     "Intermediate automatic provider fallback failures become first-class reliability observations rather than being lost behind the final fallback result.",
     "Half-open recovery cannot be completed from semantic cache and cannot become permanently stuck because of a cache hit; it ends in closed on fresh success or open on fresh provider failure.",
