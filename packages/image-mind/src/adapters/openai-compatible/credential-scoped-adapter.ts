@@ -3,16 +3,17 @@
  *
  * The underlying semantic cache key already isolates provider/model/endpoint,
  * image bytes and prompt. This wrapper adds the *resolved credential identity*
- * without ever storing the literal API key: a SHA-256 fingerprint is carried
- * in AsyncLocalStorage for the current call, then combined with the semantic
- * key and hashed again before the shared cache sees it.
+ * without ever storing the literal API key.
  *
- * Async-local scoping keeps concurrent calls with different credentials from
- * racing through one mutable global "current key" slot.
+ * Each public call gets a fresh base-adapter delegate plus a tiny local
+ * credential slot. That slot is updated immediately after the delegate
+ * resolves a credential and is read only by that delegate's cache wrapper.
+ * Concurrent calls therefore never share mutable credential state.
  */
 
-import { AsyncLocalStorage } from 'node:async_hooks'
 import { createHash } from 'node:crypto'
+import { VisionAdapter } from '@ran-sh/dsh-vision'
+import type { VisionModel, VisionModelDiscoveryRequest, VisionRequest, VisionResult } from '@ran-sh/dsh-vision'
 import { OpenAICompatibleVisionAdapter as BaseOpenAICompatibleVisionAdapter } from './adapter.ts'
 import type { OpenAICompatibleAdapterOptions } from './adapter.ts'
 import type { VisionCache } from '../../cache/vision-cache.ts'
@@ -27,20 +28,19 @@ export function credentialCacheFingerprint(apiKey: string): string {
 }
 
 function scopedCacheKey(credentialFingerprint: string | undefined, semanticKey: string): string {
-  // A cache lookup should only happen after resolveApiKey has run. Fail closed
-  // to an isolated sentinel namespace if a future call path violates that
-  // ordering rather than falling back to an unscoped semantic key.
+  // Base adapter cache access happens after credential resolution. Fail closed
+  // to an isolated sentinel namespace if a future path violates that ordering.
   const scope = credentialFingerprint ?? 'credential-scope-missing'
   return sha256(`image-mind:semantic-cache:v1\0${scope}\0${semanticKey}`)
 }
 
-function credentialScopedCache(cache: VisionCache, scope: AsyncLocalStorage<string>): VisionCache {
+function credentialScopedCache(cache: VisionCache, currentFingerprint: () => string | undefined): VisionCache {
   return {
     get(key) {
-      return cache.get(scopedCacheKey(scope.getStore(), key))
+      return cache.get(scopedCacheKey(currentFingerprint(), key))
     },
     set(key, text) {
-      cache.set(scopedCacheKey(scope.getStore(), key), text)
+      cache.set(scopedCacheKey(currentFingerprint(), key), text)
     },
     get size() {
       return cache.size
@@ -54,24 +54,37 @@ function credentialScopedCache(cache: VisionCache, scope: AsyncLocalStorage<stri
 /**
  * Public adapter class with credential-safe semantic caching.
  *
- * The base adapter remains responsible for protocol/retry/fallback semantics;
- * this thin layer only injects per-call cache namespace state.
+ * A fresh base delegate is created per public operation. The base adapter still
+ * owns protocol, retry, split, model fallback and provider fallback semantics;
+ * this layer only gives that one operation an isolated cache namespace slot.
  */
-export class OpenAICompatibleVisionAdapter extends BaseOpenAICompatibleVisionAdapter {
-  constructor(options: OpenAICompatibleAdapterOptions) {
-    const credentialScope = new AsyncLocalStorage<string>()
-    const cache = options.cache === undefined
-      ? undefined
-      : credentialScopedCache(options.cache, credentialScope)
+export class OpenAICompatibleVisionAdapter extends VisionAdapter {
+  constructor(private readonly options: OpenAICompatibleAdapterOptions) {
+    super()
+  }
 
-    super({
-      ...options,
+  private delegate(): BaseOpenAICompatibleVisionAdapter {
+    let credentialFingerprint: string | undefined
+    const cache = this.options.cache === undefined
+      ? undefined
+      : credentialScopedCache(this.options.cache, () => credentialFingerprint)
+
+    return new BaseOpenAICompatibleVisionAdapter({
+      ...this.options,
       cache,
       resolveApiKey: async (connection) => {
-        const apiKey = await options.resolveApiKey(connection)
-        credentialScope.enterWith(credentialCacheFingerprint(apiKey))
+        const apiKey = await this.options.resolveApiKey(connection)
+        credentialFingerprint = credentialCacheFingerprint(apiKey)
         return apiKey
       },
     })
+  }
+
+  override async call(provider: string, request: VisionRequest): Promise<VisionResult> {
+    return this.delegate().call(provider, request)
+  }
+
+  override async discoverModels(provider: string, request?: VisionModelDiscoveryRequest): Promise<readonly VisionModel[]> {
+    return this.delegate().discoverModels(provider, request)
   }
 }
