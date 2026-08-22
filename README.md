@@ -1,227 +1,112 @@
-# dsh-vision — 给 DeepSeek Harness 增加图像理解能力
+# dsh-vision
 
-> This is an **independent community plugin** for DeepSeek Harness and is **not an official DeepSeek package**.
-> 本项目是独立第三方插件，与 DeepSeek 官方无隶属关系；架构设计参考 DeepSeek Harness 的 capability/provider 模式。
+> Independent community plugin for DeepSeek Harness (DSH); not an official
+> DeepSeek package. 本项目与 DeepSeek 官方无隶属关系。
 
-Vision for text-only DSH agents: `understand_image` lets the main model inspect images through an OpenAI-compatible visual-perception backend while keeping image bytes out of the conversation log.
+`dsh-plugin-image-mind` gives a text-only DSH agent an `understand_image` tool.
+Images stay in the host attachment store; only a neutral attachment marker is
+shown in the conversation. A provider returns visual evidence to the main
+model, which remains the conversation model.
 
-给 DeepSeek Harness（DSH）Web UI 用的图像理解工具。纯文本主模型本身不直接接收图片；本插件把图片存进宿主 attachment store，只把安全的中性附件标记留在用户消息里，模型需要像素信息时调用 **`understand_image`**，视觉端点返回的文字证据再交回主模型继续推理。
+## Architecture
 
-> **定位**：视觉模型是 DeepSeek 的“感知后端”，不是主会话模型。它不会出现在主模型选择器里，也不会替换 `ctx.llm`。
-
-## 架构（Service + Provider Plugin）
-
-本仓库是一个 npm workspace，拆成两个真正独立的包：
-
-```text
-@ran-sh/dsh-vision          ← Service Definition，owns ctx.vision
-       │
-       ▼
-    ctx.vision
-       ▲
-       │ inject ['vision']
-       │
-dsh-plugin-image-mind       ← Provider + Tool + UI
-       │
-       ├── Provider directory / active provider
-       ├── OpenAICompatibleVisionAdapter
-       ├── credentials / settings / attachments
-       ├── task-aware vision planner
-       └── understand_image（薄工具）
-```
-
-调用链：
+This npm workspace contains two packages:
 
 ```text
-DeepSeek main model
-      │
-      │ understand_image
-      ▼
-media loader
-      │
-      ▼
-ctx.vision.call({ provider, model, prompt, images, cache, signal })
-      │
-      ├── provider selection / adapter dispatch
-      ▼
-OpenAICompatibleVisionAdapter
-      │
-      ├── task-aware evidence prompt
-      ├── semantic cache / refresh / no-store
-      ├── global endpoint backpressure
-      ├── transient retry
-      ├── bounded model fallback
-      └── HTTP 413 adaptive multi-image splitting
-      ▼
-Vision API
+@ran-sh/dsh-vision       provider-neutral Service Definition (ctx.vision)
+        ▲
+        │ inject ['vision']
+dsh-plugin-image-mind     Provider + Tool + UI + OpenAI-compatible adapter
+        │
+        ▼
+     configured visual endpoint
 ```
 
-**ownership 边界**：
+The service owns `VisionRuntime`, adapters, provider-neutral requests/results,
+directory metadata and lifecycle events. The plugin owns provider settings,
+credentials, media/SSRF policy, cache, reliability, attachments, UI and the
+thin `understand_image` tool. The service never knows endpoints, API keys,
+wire protocols or vendor names; see [docs/architecture.md](docs/architecture.md).
 
-| 内容 | owner |
-|---|---|
-| `ctx.vision` / VisionRuntime / VisionAdapter / VisionError / provider registry / directory / discoverModels / probe / `VisionRequest` | `@ran-sh/dsh-vision`（provider-neutral） |
-| Provider Catalog / OpenAI-compatible wire / credentials / settings / media / cache / planner / fallback / attachments / tool / client | `dsh-plugin-image-mind` |
+## Current behavior
 
-`image-mind` 不创建 `VisionRuntime`；它 `inject ['vision']`，通过 `ctx.vision.registerAdapter(...)`、`registerConfigurableProviders(...)` 和 default-provider resolver 注册进 Service。卸载 Provider 只撤销自己的路由，Service 生命周期独立。
+- Accepts local absolute paths, `http(s)` URLs and DSH attachment references.
+- `images[]` accepts at most **8 images**, preserves order, loads with bounded
+  concurrency and keeps the combined byte limit.
+- PNG screenshots/documents use the aspect- and pixel-aware lossless path;
+  JPEG/WebP photos use the bounded lossy path. The old 3072-long-edge rule is
+  not the policy.
+- `use`, `refresh` and `no-store` semantic cache modes are explicit. Stable
+  OCR/UI/code/document/chart/compare evidence can be reused; a narrow follow-up
+  automatically refocuses with a fresh `no-store` read instead of guessing.
+- Retry is limited to network/timeout/429/5xx; deterministic 4xx and explicit
+  provider/model choices are not silently rerouted. Model/provider fallback,
+  FIFO backpressure, circuit probes and HTTP-413 recursive splitting are
+  bounded and traced.
+- User-visible messages never contain attachment IDs, hashes, raw URLs,
+  bytes, credentials or routing instructions. Lifecycle/diagnostic telemetry
+  is metadata-only and redacted.
 
-## 主要能力
+## Security boundaries
 
-| 能力 | 当前行为 |
-| --- | --- |
-| 图片输入 | 本地绝对路径、http(s) URL、完整 attachment JSON、或宿主可解析的 attachment 引用 |
-| 直接发图 | 拖入/粘贴图片后，发送钩子先把图片提交到宿主 attachment store，用户消息只保留中性“已附加图片”标记；失败 **fail closed**，保留草稿图片供重试，不退回 text-only raw-image send |
-| 重启后旧图 | 完整 attachment 引用与 session 映射保存在有界的 host-side durable index；重启后只要 DSH attachment backend 仍保留字节，就能恢复旧图，无需把 attachment id、SHA、raw URL 或 routing 指令写进用户消息 |
-| 历史图片预览 | 已发送图片会在 conversation history 中恢复为 opaque preview 缩略图；单图/多图保持顺序，支持 session switch 与 host restart/reopen，并可点击打开 lightbox |
-| 高保真预处理 | PNG 截图/文档保持无损 PNG，最长边上限 3072；JPEG/WebP 照片走 2048 + JPEG 0.85；小图/GIF 保持原样 |
-| Task-aware perception | Adapter 在上游 wire 前自动识别 OCR / UI / code / chart / document / compare / translate 等任务，要求“观察事实优先、推断分离、保留文字数字、显式不确定性” |
-| 图内 prompt-injection 防护 | 视觉模型明确把图片中的命令、提示词、策略、工具文本当作**不可信视觉内容**，可转录但不得执行 |
-| 多图 | `images[]` 最多 **8 张**；顺序保持；加载并发固定 2；总字节仍受 `2 × maxBytes` 独立上限约束，因此放宽的是“小截图数量”，不是无限 payload |
-| 413 自适应 | 多图请求若端点真实返回 HTTP 413，会递归二分并顺序分析，再把批次证据合并；单图 413 直接失败，不无限重试 |
-| 视觉模型 fallback | 配置默认模型若明确报“模型不存在”或“不支持图片”，已知 Provider plan 最多尝试 2 个有序视觉备选；自定义未知端点不猜模型；显式 `model` override 从不被偷偷替换 |
-| 瞬时错误重试 | 网络失败 / timeout / HTTP 429 / 5xx 才自动重试（指数退避 + 抖动 + capped Retry-After）；确定性的 4xx 不重试 |
-| 全局 backpressure | 进程级 FIFO 并发门默认最多 4 个真正的视觉 wire operation；排队可取消，retry/backoff 睡眠不占槽位 |
-| 语义缓存 | cache key 包含 provider / endpoint / model / protocol / ordered image digests / prompt；`use` 可复用，`refresh` 强制重新看像素并更新缓存，`no-store` 完全绕过读写 |
-| 响应兼容 | Chat Completions 同时接受 `message.content` 字符串和 text-parts 数组；Responses 接受标准 message output 与兼容端点的 `output_text`；reasoning/tool parts 不混入视觉证据 |
-| 模型发现 | Host 侧 `/models` discovery + 已知计划候选；浏览器不持有 Provider API Key |
-| 两种协议 | `chat-completions` 与 OpenAI `responses` |
+Only `http(s)` URLs are accepted; redirects, embedded URL credentials and
+private-network DNS/IP targets are rejected unless the explicit local-network
+policy is enabled. This is SSRF filtering, not a DNS-rebinding guarantee.
+Image magic bytes, size, output tokens and timeouts are bounded. Browser code
+sees credential references, never key material. Image text is untrusted data
+and is never executed as a command or tool instruction.
 
-## 安全边界
+## Install and use
 
-- 图片 URL 只允许 http(s)，redirect 拒绝；URL 内嵌凭据拒绝。
-- 私网 IP（IPv4 / IPv6 / mapped）和 DNS 解析到私网默认拒绝，`allowPrivateNetwork` 显式开启才放行；localhost 为本地视觉端点场景保留支持。
-- 这是 SSRF 防护，不是网络沙箱：无法把真实连接 pin 到预解析 IP，因此不能宣称绝对抵御 DNS rebinding。
-- `maxBytes` / combined image bytes / `maxOutputTokens` / `timeoutMs` 都有界。
-- 图片 magic bytes 会重新 sniff；声明 MIME 与真实类型不一致会拒绝。
-- Provider 错误摘录有长度上限并做 Authorization / Bearer / api_key / `sk-*` redaction。
-- API Key 通过 DSH credential seam 保存；浏览器只知道“已配置”，拿不到明文。
-- 图片字节不进入 conversation log；用户可见消息不包含 attachment id、SHA-256、raw URL、原始字节或 `understand_image` routing 指令，host-side durable index 单独保存恢复所需引用。
-- 图片内出现的提示词、命令或工具调用文字被 Vision Planner 明确视为不可信数据。
-
-## 安装（Harness 官方插件机制）
-
-本项目**不修改你的 DSH profile**。安装与启用交给 Harness 自己的 bundle/plugin 管理。
-
-要求：DeepSeek Harness 已安装、Node.js 22+，profile 包管理器为 pnpm。
+DSH owns installation and profile composition. This repository does not edit a
+user profile. After an authorized npm publication, install through the
+official plugin manager:
 
 ```sh
 npx @deepseek-ai/dsh plugin --profile web add dsh-plugin-image-mind@0.2.0
-```
-
-`@ran-sh/dsh-vision@0.2.0` 是 `dsh-plugin-image-mind@0.2.0` 的 npm 依赖，会随插件自动安装，**无需单独安装**。安装后重启（或触发 HMR 刷新）对应 web profile。
-
-不要把 Harness 官方安装和手工修改 profile `cordis.patch.yml` 混用，否则会重复加载相同 bundle 层。
-
-只读诊断：
-
-```sh
-npm run diagnose:dsh
-```
-
-卸载：
-
-```sh
 npx @deepseek-ai/dsh plugin --profile web remove dsh-plugin-image-mind
 ```
 
-## 兼容性
+The 0.2.0 packages are currently **not published**; the command is the future
+registry install path, not evidence of current availability. For local
+development, build/pack the workspace and use an isolated DSH profile. Do not
+hand-edit `cordis.patch.yml` or install into a real profile.
 
-| 插件版本 | vision 版本 | 已验证 DSH | 状态 |
-|---|---|---|---|
-| 0.2.0 | 0.2.0 | DSH CLI/runtime 0.1.0-rc.7 | KNOWN_GOOD（发布级；final real-DSH 10/10 PASS） |
-| 0.1.1 | 0.1.0 | DSH CLI/runtime 0.1.0-rc.7 | 历史发布 |
-| 0.1.0 | 0.1.0 | DSH CLI/runtime 0.1.0-rc.7 | 历史发布 |
-| `main` / Unreleased | Unreleased | 以 CI + compatibility lane 为准 | 开发中 |
+In the web UI, configure a provider under 设置 → 插件 → 图像理解. API keys
+are stored through the DSH credential seam. A green status means a recent
+visual challenge passed; “configured” alone is not success.
 
-DSH 仍在开发预览；宿主 `@deepseek-ai/dsh-*` 以 bounded peerDependencies 提供。本插件不承诺未来所有 DSH 版本自动兼容。详见 `docs/compatibility.md`。
+## Compatibility
 
-## 使用
+The current candidate is `dsh-plugin-image-mind@0.2.0` plus
+`@ran-sh/dsh-vision@0.2.0`, with bounded DSH `0.1.x-rc.7` peers. Exact
+`@deepseek-ai/dsh@0.1.1-rc.1` source-built/local-packed acceptance is tracked
+separately from registry publication; see [docs/compatibility.md](docs/compatibility.md).
 
-在对话里：
-
-- 直接拖/粘贴图片发送；用户消息只保留中性附件标记，图片内容相关回答会通过 model-only routing guidance 提示先调用 `understand_image`。
-- 说「分析 `/path/to/截图.png` 里的表格并转成 CSV」或提供图片 URL。
-- 多图比较可一次传入最多 8 张；如果 Provider 的真实 payload 限制更小，413 会自动拆批。
-- 要求「重新看」「重新 OCR」「不要用刚才结果」时，工具可使用 `cache: "refresh"` 强制重新分析像素。
-- 对隐私/一次性场景可使用 `cache: "no-store"`，绕过短时语义缓存读写。
-
-## 在界面里配置
-
-设置 → 插件 → 插件配置 → **图像理解**。
-
-提供方编辑器支持：目录模板 / 自定义端点、API Key credential ref、模型发现、active provider、协议与输出上限等高级设置。
-
-内置模板包括：Opencode Go、Command Code Goat、阿里云百炼 DashScope、智谱 BigModel、Moonshot Kimi、火山方舟豆包、腾讯混元、Google Gemini、OpenAI、SiliconFlow、OpenRouter、Groq、Mistral、Together、Fireworks、NVIDIA NIM、DeepInfra、Hyperbolic、MiniMax、xAI Grok、百度千帆、本地 Ollama、本地 LM Studio。
-
-模板只是配置起点，不是永久兼容保证；自定义 OpenAI-compatible 端点始终可以配置。
-
-**状态灯是真实视觉验证**：绿色只表示当前 connection fingerprint 最近一次视觉 challenge 真正通过，不是“有 Key 就绿”。测试连接会发送内置小图并验证模型确实看到了颜色。
-
-**密钥安全**：API Key 通过官方 `credentials.set` 保存；settings 只保存引用名。legacy inline key 启动时会尽力迁移，失败则保留 host-only fallback，不丢配置。
-
-## 代码结构
-
-```text
-packages/vision/
-  src/runtime.ts              VisionRuntime / registry / provider selection
-  src/adapter.ts              provider-neutral VisionAdapter
-  src/types.ts                VisionRequest / cache mode / result / model metadata
-
-packages/image-mind/
-  src/index.ts                composition root / settings / registration
-  src/tools/understand-image.ts
-  src/runtime/vision-planner.ts
-  src/runtime/execution-gate.ts
-  src/adapters/openai-compatible/
-    adapter.ts                retry / cache / fallback / 413 split / gate
-    parse.ts                  wire builder + tolerant response parsing
-    discovery.ts              endpoint discovery + known-plan candidates
-  src/media/                  load / validation / network policy
-  src/cache/                  short-lived semantic cache
-  src/attachments/            durable references + attach/raw/RPC routes
-  src/client/                 settings UI / send hook / history preview / upload
-
-tests/                       cross-package composition / package boundaries
-```
-
-### 分层职责
-
-- `understand_image` 保持薄：只加载 media、验证参数、调用 `ctx.vision.call(request)`；不读取 baseURL/API Key/protocol/retry 等 Provider 事实。
-- `VisionRuntime` 只做 provider selection 与 adapter dispatch，不知道任何厂商、endpoint、credential 或 OpenAI wire。
-- Adapter 每次调用解析并 deep-freeze 当前 provider snapshot；在途请求不观察设置变化，下次调用重新解析。
-- Planner / retry / cache / fallback / payload adaptation / parsing 全属于 Provider Adapter 一侧，不污染 Core seam。
-- settings 采用 last-good：运行时坏配置不会把现有可用连接瞬间打坏，修复后自动切回新快照。
-
-## 开发
+## Development
 
 ```sh
-npm install
+npm ci
 npm run typecheck
-npm test
 npm run build
+npm test
 npm run test:package
 npm run test:built
+npm run benchmark:deterministic
+npm run benchmark:preprocess
 ```
 
-默认测试离线、无密钥、确定性。真实视觉端点验证：
+The full benchmark commands are `benchmark:run`, `benchmark:score` and
+`benchmark:compare`; thresholds must not be loosened. Real-provider and DSH
+browser checks require explicit credentials/host authorization and must use an
+isolated profile. See [docs/release-checklist.md](docs/release-checklist.md),
+[docs/verification-debt.md](docs/verification-debt.md), and
+[docs/provider-development.md](docs/provider-development.md).
 
-```sh
-RUN_VISION_E2E=1 npm exec --workspace packages/image-mind -- vitest run tests/e2e-real.test.ts
-```
+## Scope and license
 
-DSH profile 联调辅助：
+In scope: image attachments, visual providers, OCR/image understanding,
+multi-image comparison, reliability and DSH tool integration. Out of scope:
+replacing the main model, video/audio/PDF-native parsing and model training.
 
-```sh
-node packages/image-mind/scripts/devhelpers/link-sdk.mjs
-node packages/image-mind/scripts/devhelpers/link-sdk.mjs --remove
-```
-
-## 项目范围
-
-**IN SCOPE**：图片附件、图片 URL/路径、视觉提供方、OCR/图像理解、DeepSeek 工具集成、多图比较、视觉调用可靠性与质量编排。
-
-**OUT OF SCOPE**：替换主模型、视频、音频、PDF 原生解析、训练视觉模型。
-
-## 许可
-
-MIT License。本插件与 DeepSeek 官方无隶属关系；架构设计参考 DeepSeek Harness 的 capability/provider 模式。
+MIT License.

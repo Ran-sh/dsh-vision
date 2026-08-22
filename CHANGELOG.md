@@ -1,292 +1,95 @@
 # Changelog
 
-All notable changes to dsh-vision are documented here. The project follows
-[Semantic Versioning](https://semver.org/) (0.x: breaking changes bump the
-minor version). Package names: `@ran-sh/dsh-vision` (Service) and
-`dsh-plugin-image-mind` (Provider + Tool + UI).
+All notable changes to `@ran-sh/dsh-vision` (Service) and
+`dsh-plugin-image-mind` (Provider + Tool + UI) are recorded here. The project
+is independent of DeepSeek and follows SemVer for its 0.x line.
 
 ## [Unreleased]
 
-### Added
+- Batch 016 closes documentation and final pre-publish evidence reconciliation.
+- Route diagnostics expose provider, semantic-cache, reusable-evidence,
+  explicit-route and bounded fallback sources without endpoint or credential
+  data.
+- Narrow cached follow-ups automatically request focused `cache: "no-store"`
+  evidence instead of guessing; benchmark JSONL/scoring preserves and checks
+  route/trace coverage.
 
-- `understand_image` now exposes structured, non-rendered route diagnostics so
-  consumers can distinguish provider responses, semantic-cache hits, reusable
-  evidence-cache hits, explicit route intent, and automatic model/provider
-  fallback without exposing endpoint or credential data.
-- Route diagnostics now also record the inferred visual task, effective cache
-  mode, and whether task-scoped evidence reuse was enabled. This makes cache
-  misses explainable without exposing prompt text, endpoint data, or secrets.
-- Model-only image routing guidance now treats cached evidence as evidence, not
-  authority: when a cache hit lacks the exact visual detail needed for a narrow
-  follow-up, the main model is instructed to issue a focused `cache: "no-store"`
-  pixel read instead of guessing. This bypasses both cache layers without
-  replacing the broader reusable evidence entry.
-- Real benchmark JSONL now preserves `understand_image.route` telemetry. The
-  offline scorer reports route coverage, provider/semantic-cache/evidence-cache
-  source counts, requested/selected provider/model identities, and route-vs-
-  trace fallback consistency; the compare gate rejects material route-coverage
-  regressions.
-- Benchmark scoring reports per-route-source quality and provider/cache work so
-  evidence-cache savings can be compared against the correctness of answers
-  produced by provider, semantic-cache, and evidence-cache paths.
+## [0.2.0] — candidate, not published
 
-## [0.2.0] — 2026-08-21
+`0.2.0` is the repository candidate for both packages. It is not a registry
+release and must not be described as a published KNOWN_GOOD package.
 
 ### Added
 
-- Task-aware visual intent routing for OCR, UI review, code/terminal,
-  documents, charts, screenshots, translation, photos, and multi-image
-  compare/diff. One provider-neutral token/pixel policy is now the single
-  source of truth for quality budgets.
-- Reusable visual-evidence cache for stable evidence tasks, with bounded
-  in-memory TTL/LRU storage, `use` / `refresh` / `no-store` semantics, and
-  automatic invalidation after provider/settings changes. Ordinary
-  photo/general questions and explicit provider/model calls stay
-  question-specific and bypass this layer.
-- Provider-neutral execution telemetry: provider calls, serialized payload
-  bytes, cache hits, retries, model fallback, provider fallback, adaptive
-  splits, and provider-reported input/output token usage.
-- Metadata-only `VisionRuntime.subscribeLifecycle()` observers with correlated
-  started/completed/failed events. Lifecycle payloads intentionally exclude
-  prompts, image bytes/references/paths, provider response text, endpoint
-  URLs, credentials, and error messages; observer failures are contained.
-- Provider health scoring, circuit-breaker primitives, and a deterministic
-  selector used by image-mind's reliability layer to rank bounded backup
-  providers after endpoint-level failures.
-- Offline visual benchmark scoring now measures routing/task quality,
-  forbidden-answer hits, p50/p95 latency, trace/token telemetry coverage,
-  provider work, token cost, and zero-provider reusable-evidence hits.
-  `npm run benchmark:compare` adds a baseline-vs-candidate regression gate
-  that refuses to trade quality for lower cost and only compares cost when
-  telemetry coverage is trustworthy.
-- Official OpenAI endpoint-only task-aware image `detail`: high-precision
-  GPT-5.6 OCR/UI/code-style work uses `original`, older OpenAI vision models
-  use `high`, photo work uses `low`, and general work uses `auto`. Generic
-  OpenAI-compatible endpoints never receive this OpenAI-specific field.
-- A bounded host-side durable attachment-reference/session index lets
-  image-mind recover complete DSH attachment metadata after restart without
-  exposing ids, dimensions, MIME metadata, or raw attachment URLs in the
-  user-visible conversation.
-- Model-only image routing guidance is registered through DSH's optional
-  `systemPrompt` service. User messages now contain only a neutral attachment
-  marker; tool names and routing instructions stay out of the conversation
-  bubble.
-- Sent-image history previews now survive admission, session switching and
-  host restart/reopen while keeping the user-visible marker strict and opaque.
+- Task-aware OCR/UI/code/document/chart/photo/compare routing with one bounded
+  token and pixel policy.
+- Provider-neutral trace and metadata-only lifecycle events for calls, bytes,
+  cache hits, retries, model/provider fallback, 413 splits and reported token
+  usage. Lifecycle observers cannot leak prompts, paths, bytes, endpoints or
+  credentials.
+- Bounded semantic and reusable-evidence caches with explicit `use`, `refresh`
+  and `no-store`; settings/provider changes invalidate reusable evidence.
+- Host-side durable attachment references and session recovery without putting
+  IDs, hashes, raw URLs or routing instructions in conversation messages.
+- Health/circuit primitives, FIFO backpressure, bounded model/provider
+  recovery and recursive 413 handling that preserves original `Image N` labels.
+- Offline benchmark corpus/scoring/compare gates for route truth, forbidden
+  answers, quality, latency and telemetry coverage.
 
 ### Changed
 
-- Screenshot/document preprocessing is media-, aspect-, and pixel-budget
-  aware: PNG remains lossless with a larger resolution budget and alpha
-  preserved, while photographic JPEG/WebP use the bounded lossy path. Tall
-  screenshots are no longer reduced solely by a 3072-long-edge rule.
-- `understand_image` accepts up to 8 images while retaining the combined byte
-  ceiling and bounded load concurrency. Task classification now flows from the
-  core vision package into the planner, tool budget, selector, and cache
-  policy instead of maintaining duplicate vocabularies.
-- Multi-image HTTP 413 recovery recursively splits oversized batches while
-  preserving original `Image N` identities through every child request and
-  cache key; successful child usage is aggregated.
-- Default provider recovery is now bounded and health-aware. Explicit
-  provider/model intent remains sticky, and provider health is degraded only
-  by endpoint/service failures rather than auth/config/model incompatibility.
-- Semantic caching supports explicit refresh/no-store behavior, while the
-  reusable-evidence layer may satisfy same-image/same-task follow-up questions
-  with zero provider calls when broad evidence is already available.
-- `understand_image` can resolve the current DSH session's latest uploaded
-  image batch when the model omits explicit `image`/`images` arguments. This
-  keeps host attachment references out of user text while preserving normal
-  image-only routing.
-- Release metadata aligns the root workspace, `@ran-sh/dsh-vision`, and
-  `dsh-plugin-image-mind` on version 0.2.0; the plugin depends on
+- `images[]` now accepts at most 8 ordered images with bounded loading and a
+  combined byte ceiling (the historical 0.1.x limit of 4 is superseded).
+- PNG screenshots/documents use aspect-/pixel-aware lossless preprocessing;
+  JPEG/WebP photos use the bounded lossy path. The old 3072-long-edge-only
+  policy is no longer authoritative.
+- Automatic refocus is model-only guidance: a narrow question that lacks
+  sufficient cached detail triggers a fresh pixel read; it never exposes tool
+  routing in the user bubble.
+- Official OpenAI `detail` is sent only to the official OpenAI endpoint; other
+  OpenAI-compatible endpoints do not receive that field.
+- All package manifests remain on 0.2.0 and the plugin depends on
   `@ran-sh/dsh-vision@^0.2.0`.
 
 ### Fixed
 
-- Preserve PNG screenshot/OCR fidelity instead of converting every large
-  image to a 2048px JPEG with a white background.
-- Fail closed when image-send rewriting cannot finish; never fall back to
-  sending raw image blocks to the text-only main model, and retain drafts so
-  the user can retry.
-- Recover complete attachment references through the host-side durable index
-  so `/image-mind/raw/<id>` and session image resolution can survive host
-  restart when DSH's attachment backend still retains the bytes. Attachment
-  metadata is no longer stored in supposedly hidden conversation comments.
-- Keep image-tool routing instructions out of the rendered user message;
-  neutral attachment markers are paired with a DSH system-prompt section
-  instead of HTML comments that the web UI may display verbatim.
-- Make the built ESM host bundle compatible with Node built-in dynamic
-  `require()` paths via a `createRequire(import.meta.url)` bridge, closing the
-  real-DSH `Dynamic require of "node:crypto" is not supported` blocker; built
-  artifact coverage now guards this source-vs-bundle boundary.
-- Correct HTTP retry classification: deterministic 400/404 responses are no
-  longer repeatedly retried; caller abort is not counted as retry/fallback,
-  and Node timeout naming is normalized.
-- Add bounded model fallback for explicit model-compatibility failures and
-  bounded cross-provider recovery for retry-exhausted timeout/network/429/5xx
-  and terminal 413 failures, while refusing unsafe rerouting for auth,
-  deterministic 4xx, invalid responses, or explicit routing.
-- Accept common OpenAI-compatible structured response content in both Chat
-  Completions and Responses APIs instead of rejecting text-part arrays as
-  malformed responses.
-- Prevent 413 split children from renumbering their original images or sharing
-  incompatible cache entries with unrelated smaller requests.
-- Distinguish missing benchmark telemetry from genuine zero-cost telemetry;
-  JSON `null` fields no longer count as reported zero token/trace usage.
-- Restrict circuit-breaker half-open recovery to one probe and ensure an
-  expired backup can actually re-enter bounded fallback selection instead of
-  being permanently starved by healthier closed candidates.
-- Remove a Node/V8 microtask-count assumption from the execution-gate FIFO
-  regression test; it now waits for the queued operation's actual start event.
-- Bring orchestration integration expectations in line with the public trace
-  contract instead of failing when a successful result correctly contains
-  provider-call/cache/fallback telemetry.
-- Make benchmark runner/scorer/compare modules import-safe for the root Vitest
-  suites by removing unnecessary executable shebangs; the Windows Node 24
-  transform failure still requires an external rerun to confirm this fix.
-- Match committed history-preview markers against the rendered message stack
-  rather than host timestamp chrome, restoring NEW-R1 historical thumbnails
-  without weakening the strict neutral-marker parser.
-- Run build-dependent package/built-artifact tests after `npm run build` in CI.
+- Built ESM host code uses static `node:crypto` imports, preventing the prior
+  dynamic-require failure in the shipped Node 24 bundle.
+- Deterministic 4xx, explicit routing, caller abort and malformed responses no
+  longer trigger unsafe retry/fallback; retry/backoff and health accounting are
+  bounded.
+- Attachment admission fails closed and retains drafts; history previews and
+  restart recovery use host-side references only.
+- Structured Chat Completions/Responses text parts are parsed without mixing
+  reasoning/tool content into visual evidence.
+- Benchmark modules are import-safe on Windows Node 24 and package/built tests
+  run after build.
 
-### Verification
+### Verification boundary
 
-- Final real-DSH release retest: 10 PASS / 0 FAIL / 0 PARTIAL-BLOCKED.
-- Severity counts: BLOCKER 0 / HIGH 0 / MEDIUM 0.
-- NEW-R1, F002, F003, FR-001 and release safety all PASS.
-- Release PR CI: Node 22, Node 24, Windows, install/package roundtrip,
-  built-artifact verification and secret scan all PASS.
+- Batches 013–015 provide deterministic, built, Windows, privacy, benchmark
+  and host smoke evidence; their Result Contracts remain the durable source.
+- Batch 016 adds exact `@deepseek-ai/dsh@0.1.1-rc.1` source-built/local-packed
+  isolated evidence where executable. Registry install remains `EXPECTED_NOT_PUBLISHED`.
+- No real provider, npm publication, tag/release or real Harness credentials
+  are implied by this entry; those are explicit post-authorization debt.
 
 ## [0.1.1] — 2026-08-20
 
-### Fixed
-
-- Register the `/image-mind/*` Host route after a late `webServer` service
-  attachment, so supported plugin requests no longer fall through to the DSH
-  HTML shell or return the old 405.
-- Return the browser contract's `ok/value` and `ok/error` envelopes from the
-  connection-test and model-discovery Host routes, preserving the actual
-  payload instead of producing an empty/undefined client result.
-- Add deterministic regression coverage for late route registration, JSON
-  content type, intentional unsupported-method handling, local-origin gates,
-  successful RPC payloads, and error envelopes.
-
-`@ran-sh/dsh-vision` remains at 0.1.0; this patch does not change the
-VisionRuntime API or `packages/vision/src`.
+- Fixed late web-server route registration and JSON `ok/value` / `ok/error`
+  envelopes for connection and model discovery RPCs.
+- Added deterministic route, local-origin, RPC and error-envelope regression
+  coverage. The service package remained at 0.1.0.
 
 ## [0.1.0] — 2026-08-20
 
-### Added
-
-- **Bundle-native distribution**: install is now the DeepSeek Harness
-  official mechanism (`dsh plugin --profile <name> add <package>`); the
-  package's `dsh.bundle` declaration joins the profile bundle stack and the
-  harness owns the profile composition. `cordis.patch.yml` ships with the
-  package and mounts both the `vision-runtime` service row and the
-  `image-mind` provider row from one install unit.
-- `npm run test:package` and `npm run test:built`: package/bundle metadata,
-  dependency closure, real `npm pack --dry-run` content checks for both
-  packages, and built-artifact verification (embedded visual fixtures, RPC
-  exports) against `packages/image-mind/lib`.
-- Visual-challenge fixtures embedded as base64 in a provider-side module
-  (`runtime/visual-fixtures.ts`) — the probe no longer reads `tests/`.
-- `@ran-sh/dsh-vision` now emits `lib/types/*.d.ts` declarations on build
-  (the published package carries types).
-- Keyless catalog facts (Ollama / LM Studio) flow through to the draft;
-  catalog default models refreshed against provider docs (Moonshot
-  `kimi-k2.6`, Gemini `gemini-2.5-flash`, LM Studio discovery-filled).
-- `understand_image` multi-image: `images[]` (≤ 4) alongside the legacy
-  single `image`; both serialize into one wire request; cache key hashes
-  every image.
-- Real-HTTP mock-server test layer; settings-seam integration tests
-  (add/active/model/remove flow); credential integration tests
-  (set → resolve → missing, secrets never in settings/browser replies).
-- Docs: architecture.md, provider-development.md, release-checklist.md.
-
-### Fixed
-
-- **Profile mutation removed**: `install:dsh` / `uninstall:dsh` (which
-  wrote the profile's `cordis.patch.yml`) and `test:install` are deleted —
-  the plugin no longer modifies any user profile, per the RC hardening
-  spec. `diagnose:dsh` stays, strictly read-only.
-- **Client bundle no longer ships server-only packages**: the browser
-  settings store imported `deriveKeyRef` from `credentials/migrate.ts`,
-  which imports `@deepseek-ai/dsh-credentials`; esbuild bundled that
-  server dependency into `lib/client.js` and the web shell refused the
-  plugin, breaking DSH web startup. The identity helpers now live in
-  `client/settings/identity.ts` with zero imports (both halves use it).
-- **Keyless is a strict boolean end to end**: a typed
-  `setProviderKeyless(id, value: boolean)` replaces the string-typed
-  `editProvider('keyless', …)` path (a `'false'` string was truthy and
-  saved as `keyless: true`).
-- **displayName / keyless persistence for existing providers**: `planOps`
-  now emits `displayName` and `keyless` set/unset ops for providers that
-  already exist — previously those edits made the card dirty but saved
-  nothing (dirty-but-no-op invariant restored; covered by 5 new store
-  tests).
-- **Provider settings workflow**: React hooks moved out of a conditional
-  into a real `ProviderEditor` component; catalog providers keep their
-  stable `entry.id` (display names never generate route ids); custom ids
-  are validated up front; keyless local providers work without a key;
-  status lamps only turn green after a real visual test on the current
-  connection fingerprint; typed keys debounce before discovery and stale
-  discovery responses are suppressed.
-- **Visual test connection**: the probe now sends a random 32x32
-  solid-color fixture and requires the model to name the color — a
-  text-only model fails with `visualFailed` instead of passing on HTTP
-  200. The probe overlays the saved record of the named provider only.
-- **Secret-bearing RPC fence**: /test, /models, and the legacy config
-  POST require a loopback socket + loopback Host + same-origin markers;
-  cross-origin or remote requests are refused 403. RPC errors are
-  redacted (keys, Authorization, api_key).
-- **Multi-image hardening**: `image` + `images` together fail loudly;
-  empty strings rejected; combined byte bound enforced before any
-  provider request; bounded-concurrency loading preserves order; the
-  result carries safe identities (basename / host) — never full paths or
-  URL queries.
-- **URL/SSRF hardening**: node:net-based IP classification (IPv4/IPv6/
-  IPv4-mapped private ranges), DNS pre-resolution rejecting private
-  A/AAAA, embedded URL credentials refused, error excerpts strip query
-  strings.
-- **Adapter hardening**: cache keys are fixed-length SHA-256 digests
-  (no image bytes in the map); caller abort is distinguished from
-  timeout; provider error excerpts are redacted.
-
-### Changed
-
-- Exports and `files` no longer publish `./src/*` or the `src/` tree —
-  the runtime never imports source from an installed package.
-- SDK dependencies moved from profile junctions to pinned registry
-  dependencies (cordis 4.0.1, dsh-* 0.1.0-rc.7 family): `npm install` is
-  safe and self-contained, never touching the DSH profile SDK tree.
-- Tool result shape: per-image `images[]` entries (image/mimeType/bytes)
-  replace the single `image` field.
-- `deriveKeyRef` now has one host-side owner re-exported by the browser
-  store.
-
-### Added
-
-- Two-package workspace: `@ran-sh/dsh-vision` (Service Definition owning
-  `ctx.vision`) + `dsh-plugin-image-mind` (Provider Plugin injecting
-  `['vision']`), mirroring `dsh-llm` / `llm-deepseek`.
-- `VisionRuntime`: adapter registry (atomic `registerAdapter` +
-  `replace([])`), provider directory, single-owner default-provider
-  lifecycle, `vision/adapters-updated` events, deep-freeze snapshots.
-- Provider-neutral seam: `packages/vision` knows no vendor, protocol,
-  credential, or endpoint vocabulary (seam-audit test enforces zero hits).
-- `OpenAICompatibleVisionAdapter` owning its own endpoint/credential/wire
-  resolution; chat-completions and responses protocols; retry with backoff;
-  `/models` discovery with known-plan fallback.
-- Settings card in 设置 → 插件 → 图像理解: provider list with truthful
-  status lamps, add from directory / custom, one-at-a-time editor, real
-  connection test (tiny embedded image), model autofill, credential store
-  integration (keys never in settings.yaml).
-- Attachment flow: upload → sha256 dedup → `[image attachment …]` note +
-  markdown reference; raw route; preview; SSRF guard with
-  `allowPrivateNetwork` opt-in.
-- `understand_image` tool; last-good configuration; legacy inline-key
-  migration; semantic cache.
-
-### Fixed
-
-- Garbled error strings and stale architecture comments cleaned up.
+- Introduced the two-package Service Definition / Provider Plugin split,
+  bundle-native DSH installation, provider settings and credentials seam,
+  `understand_image`, attachment handling, SSRF policy, semantic cache and
+  Chat Completions/Responses adapters.
+- Added package/built-artifact tests, deterministic mock-server coverage and
+  generated public types. The historical multi-image limit was 4; 0.2.0
+  supersedes it with an 8-image bound.
+- Removed profile mutation and browser exposure of server-only dependencies,
+  and hardened key storage, URL validation, error redaction and adapter abort
+  handling.
