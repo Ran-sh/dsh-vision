@@ -83,7 +83,7 @@ Host (apply)
 
 ## Multi-image
 
-`understand_image` accepts `image` (single) or `images` (array, ≤ 4). Both normalize to `LoadedImage[]`; the adapter serializes every image in one wire request. The semantic cache key hashes every image.
+`understand_image` accepts `image` (single) or `images` (array, ≤ 8). Both normalize to `LoadedImage[]`; the adapter serializes every image in one wire request, preserves original order, and enforces the combined byte bound. The semantic cache key hashes every ordered image. The ≤4 limit in the historical 0.1.0 changelog is superseded.
 
 ## Errors
 

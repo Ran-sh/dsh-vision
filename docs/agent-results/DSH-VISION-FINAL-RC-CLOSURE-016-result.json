@@ -1,0 +1,103 @@
+{
+  "schema_version": 2,
+  "task_id": "DSH-VISION-FINAL-RC-CLOSURE-016",
+  "source_commit": "7a1d96bb4f439a5f0b2c1f5060cd96837936321f",
+  "result_commit": "002dad6e965a1e43b74b033170f47dc604a1f680",
+  "status": "PASS",
+  "summary": "完成 Batch 016 定义的 pre-publish release-candidate scope。既有 exact @deepseek-ai/dsh@0.1.1-rc.1 隔离验收、官方 DSH 生命周期、/image-mind 路由、浏览器设置/插件面、deterministic local main/vision model-only understand_image tool-call、8/9 限制、重启恢复、隐私边界、focused guard tests、官方 remove/cleanup 与最终 PR CI 均已通过。npm 发布、post-publish registry install、未授权 hosted-provider quality、tag/release 及真实 Harness 安装仅作为未来人工授权事项记录，不属于本 Result 的 required tests。",
+  "timeline": {
+    "started_at": "2026-08-23T00:26:18+08:00",
+    "completed_at": "2026-08-23T00:26:18+08:00"
+  },
+  "changed_files": [
+    "docs/agent-results/DSH-VISION-FINAL-RC-CLOSURE-016-result.json",
+    "docs/agent-tasks/ACTIVE_TASK.json"
+  ],
+  "tests": [
+    {
+      "name": "task contract and source checkpoint",
+      "status": "PASS",
+      "evidence": "Revised ACTIVE_TASK validated; origin/main LATEST resolved to 7a1d96b and was merged non-destructively as 5ae2f6f on feat/final-rc-closure-batch-016."
+    },
+    {
+      "name": "PR #58 review checkpoint",
+      "status": "PASS",
+      "evidence": "Public GitHub API confirmed PR #58 head 002dad6 is open, Draft, and unmerged; no new PR was created and no merge was performed."
+    },
+    {
+      "name": "runtime identity and isolation",
+      "status": "PASS",
+      "evidence": "Windows 10.0.22631 x64; Node v24.18.1; npm 11.16.0; pnpm 11.7.0; exact @deepseek-ai/dsh@0.1.1-rc.1. The run used a task-owned temporary DSH_HOME, profile web, persisted task-owned state, and alternate free listener port 43116; the pre-existing 3080 listener (PID 8180) remained untouched."
+    },
+    {
+      "name": "official add and source-built/local-packed composition",
+      "status": "PASS",
+      "evidence": "Repository-built 0.2.0 vision and image-mind tarballs were installed through official dsh plugin add. The task-owned pnpm override was used only to bridge the unpublished @ran-sh/dsh-vision@^0.2.0 dependency. --dump-config on web composed web-app/webserver, vision-runtime, and image-mind."
+    },
+    {
+      "name": "fresh exact rc.1 boot and route handlers",
+      "status": "PASS",
+      "evidence": "Official exact rc.1 web boot announced http://127.0.0.1:43116; GET / and GET /image-mind/catalog returned HTTP 200. The host route set also returned the expected guarded responses for previews/settings/raw paths."
+    },
+    {
+      "name": "real browser rc.1 acceptance",
+      "status": "PASS",
+      "evidence": "agent-browser loaded the task-owned 43116 UI, completed notice/API-key-later onboarding, opened 设置→插件→图像理解, showed the image-mind configuration card and neutral defaults, and the 插件列表 showed vision/plugin-image-mind plus webserver/web-app as mounted and enabled."
+    },
+    {
+      "name": "deterministic local main/vision tool-call path",
+      "status": "PASS",
+      "evidence": "A task-owned keyless OpenAI-compatible stub served both main-stub and vision-stub. session.models reported current local-main/main-stub as routable; an uploaded and committed one-image batch was sent through session.prompt; history recorded an assistant understand_image tool call sourced from local-main/main-stub, the vision stub received one image payload, and the final assistant answer was the deterministic stub marker."
+    },
+    {
+      "name": "model-only routing and neutral attachment boundary",
+      "status": "PASS",
+      "evidence": "Fresh focused image-mind tests passed the text-only send-hook route, neutral attachment marker, tool selection and source redaction seams. The model request selected local-main/main-stub while image bytes were consumed only by understand_image/vision-stub."
+    },
+    {
+      "name": "eight-image guard and ninth rejection",
+      "status": "PASS",
+      "evidence": "Fresh focused sweep (7 files, 21 tests) passed send-hook-image-limit: exactly 8 proceeds with the neutral marker and the ninth is rejected before upload/preview/prompt side effects; send-hook routing and privacy tests passed in the same run."
+    },
+    {
+      "name": "restart recovery",
+      "status": "PASS",
+      "evidence": "After stopping and restarting exact rc.1 on the same task-owned home, /image-mind/previews returned the previously committed batch with count only, and session.models/history remained available. No task-owned attachment ids or private paths were recorded in this Result Contract."
+    },
+    {
+      "name": "privacy and call/debug redaction",
+      "status": "PASS",
+      "evidence": "Browser settings exposed no credentials, raw URLs, attachment ids or route diagnostics; preview responses exposed only batchId/count/updatedAt; tool-call-view-redaction, session-history-routing, raw/preview restart and system-prompt routing tests passed. No secret value was read or logged."
+    },
+    {
+      "name": "repository/package gates",
+      "status": "PASS",
+      "evidence": "Fresh npm test passed vision 63, image-mind 325 with 8 intentional skips, and root 57; npm run typecheck and npm run build passed. The package/built integrity lanes were included in the passing root suite (11 package and 6 built-artifact tests)."
+    },
+    {
+      "name": "official remove and isolated cleanup",
+      "status": "PASS",
+      "evidence": "Official dsh plugin remove completed for task profiles web and smoke; subsequent dumps contained no vision-runtime/image-mind layer. Browser/processes/stub were closed, ports 43116/43117 were free, and the exact task-owned temporary tree was deleted. The real Harness and port 3080 were not modified."
+    },
+    {
+      "name": "final PR #58 CI",
+      "status": "PASS",
+      "evidence": "GitHub Actions CI run 32584181057 for current PR head 002dad6e965a1e43b74b033170f47dc604a1f680 completed success. Required jobs install-roundtrip, windows, test (22), test (24), and secret-scan each completed success; PR #58 remained open, Draft, and unmerged."
+    }
+  ],
+  "blockers": [],
+  "result_path": "docs/agent-results/DSH-VISION-FINAL-RC-CLOSURE-016-result.json",
+  "notes": [
+    "No dsh-vision defect was reproduced in the corrected official web profile; the earlier no-listener observation came from booting a custom base-only smoke profile, not from the product route implementation.",
+    "All acceptance evidence uses task-owned deterministic stubs and safe identifiers only; no Harness-owned settings, credentials, cookies, node_modules, pnpm store, or real 3080 process were read or changed.",
+    "PR #58 is the only continuation target and remains Draft/open/unmerged for ChatGPT review.",
+    "Completion commit c67e128 deleted ACTIVE_TASK.json and carried the stamped contract; current head 002dad6 and CI run 32584181057 are green.",
+    "npm publication, post-publish registry install, hosted-provider quality requiring credentials, tag/release, and final real-Harness installation remain future human-authorized work outside this pre-publish Result scope."
+  ],
+  "result_validation": {
+    "status": "PASS",
+    "validator": "node .agent-workflow/validator/validate-contract.mjs result docs/agent-results/DSH-VISION-FINAL-RC-CLOSURE-016-result.json --stamp",
+    "validated_at": "2026-08-22T16:28:20Z",
+    "evidence": "Exit 0: VALID RESULT CONTRACT: docs/agent-results/DSH-VISION-FINAL-RC-CLOSURE-016-result.json"
+  }
+}
