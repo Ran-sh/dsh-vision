@@ -2,12 +2,12 @@
   "schema_version": 2,
   "task_id": "DSH-VISION-FINAL-RC-CLOSURE-016",
   "source_commit": "030237755c225e05debc026e9f0e44d22b1d0acb",
-  "result_commit": "75efa21d4a97d5cd14a4c76710a8ae40b8c036f5",
+  "result_commit": "c67e128c6227ea3c65636a1b9fb854f8b53f76b4",
   "status": "PARTIAL",
   "summary": "继续现有 Draft PR #58 并合并 main 最新提交后，使用 task-owned 隔离 home、web profile 和备用端口 43116 完成 exact @deepseek-ai/dsh@0.1.1-rc.1 的 fresh source-built/local-packed 0.2.0 验收。正式 DSH add/boot/composition、/image-mind 路由、真实浏览器设置/插件面、deterministic local main/vision stub 的 model-only understand_image tool-call、重启后的批次恢复、隐私边界、focused guard tests 与官方 remove 均通过；0.2.0 尚未发布及未授权 hosted provider 质量仍按协议列为范围外 SKIP。",
   "timeline": {
     "started_at": "2026-08-22T23:25:29+08:00",
-    "completed_at": "2026-08-23T00:11:35+08:00"
+    "completed_at": "2026-08-23T00:13:00+08:00"
   },
   "changed_files": [
     "docs/agent-results/DSH-VISION-FINAL-RC-CLOSURE-016-result.json",
@@ -87,7 +87,7 @@
     {
       "name": "final PR #58 CI",
       "status": "PASS",
-      "evidence": "GitHub Actions CI run 32583757017 for pushed head 75efa21d4a97d5cd14a4c76710a8ae40b8c036f5 completed success. Required jobs install-roundtrip, windows, test (22), test (24), and secret-scan each completed success; PR #58 remained open, Draft, and unmerged."
+      "evidence": "GitHub Actions CI run 32583996986 for final completion head c67e128c6227ea3c65636a1b9fb854f8b53f76b4 completed success. Required jobs install-roundtrip, windows, test (22), test (24), and secret-scan each completed success; PR #58 remained open, Draft, and unmerged."
     }
   ],
   "blockers": [
@@ -98,12 +98,12 @@
     "No dsh-vision defect was reproduced in the corrected official web profile; the earlier no-listener observation came from booting a custom base-only smoke profile, not from the product route implementation.",
     "All acceptance evidence uses task-owned deterministic stubs and safe identifiers only; no Harness-owned settings, credentials, cookies, node_modules, pnpm store, or real 3080 process were read or changed.",
     "PR #58 is the only continuation target. It must remain Draft/open/unmerged until final review and CI verification.",
-    "The pushed evidence head passed the complete PR #58 CI matrix; ACTIVE_TASK deletion and final result stamping now follow in the completion commit, with the PR remaining Draft/open/unmerged."
+    "Completion commit c67e128 deleted ACTIVE_TASK.json and carried the stamped contract; its final PR #58 CI matrix is green."
   ],
   "result_validation": {
     "status": "PASS",
     "validator": "node .agent-workflow/validator/validate-contract.mjs result docs/agent-results/DSH-VISION-FINAL-RC-CLOSURE-016-result.json --stamp",
-    "validated_at": "2026-08-22T16:11:45Z",
+    "validated_at": "2026-08-22T16:15:39Z",
     "evidence": "Exit 0: VALID RESULT CONTRACT: docs/agent-results/DSH-VISION-FINAL-RC-CLOSURE-016-result.json"
   }
 }
