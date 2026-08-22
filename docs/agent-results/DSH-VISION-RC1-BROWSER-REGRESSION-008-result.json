@@ -1,0 +1,147 @@
+{
+  "schema_version": 2,
+  "task_id": "DSH-VISION-RC1-BROWSER-REGRESSION-008",
+  "source_commit": "1d2cf5d6c966c40fdc056358feb11599b2f972c7",
+  "result_commit": null,
+  "status": "PARTIAL",
+  "summary": "Source-built dsh-vision/image-mind 0.2.0 (built at HEAD 1d2cf5d, tarballs sha256 316bc049.../f9a44bf9...) was loaded into exact @deepseek-ai/dsh@0.1.1-rc.1 through the official plugin manager in a fully isolated temporary environment, and the host-layer session regression suite PASSED with real runtime evidence: A/B committed batches resolve as implicit latest = B and sessionBatchOffset 1 = A by deterministic byte fingerprints (proven by a keyless local stub receiving the selected image bytes); restart recovery PASSED (fresh process on the same persisted temp state); failed-send rollback PASSED (an uncommitted staged batch was discarded via the official route and routing fell back to the previous committed batch, with the failed batch's Harness-owned bytes preserved byte-identical and metadata still readable); privacy PASSED (preview/tool surfaces expose only batchId/count/updatedAt and source/mimeType/bytes, never attachment ids, paths, or signed URL material). The real-browser subchecks are PARTIAL with a precise blocker chain: the rc.1 first-run UI shows a mandatory API-key onboarding dialog that blocks the composer, the host attach control does not surface an OS file chooser under headless Edge, DataTransfer drops are accepted but produce no draft state while onboarding blocks the session, and the /image-mind/* host routes are not served by this rc.1 web instance at all (404 on GET, 405 on POST observed on the real listener), so the in-browser upload path is unreachable regardless. A separate real runtime observation (reported, not fixed): prefix-route registration does not land on rc.1's webServer during a normal web boot even though the same registration works when driven in-process against a provided webServer, so /image-mind/* is currently unserved on the rc.1 web. Repository checks: typecheck/build/test:package/test:built/root vitest PASS; npm test FAILS with exactly one environment-caused failure (tool-thin SSRF precheck: sandbox DNS resolves example.com to 198.18.0.108, an RFC2544 benchmarking range treated as private, so the fetch is blocked before the stubbed fetch runs; deterministic on rerun, expected green under public DNS in CI; no product code changed). The real local Harness was read-only throughout (bounded hash set identical to the 006 completion baseline), still composes no dsh-vision/image-mind anywhere, and was not modified by this task.",
+  "timeline": {
+    "started_at": "2026-08-22T10:35:34+08:00",
+    "completed_at": "2026-08-22T10:57:24+08:00"
+  },
+  "changed_files": [
+    "docs/agent-results/DSH-VISION-RC1-BROWSER-REGRESSION-008-result.json",
+    "docs/agent-tasks/ACTIVE_TASK.json"
+  ],
+  "tests": [
+    {
+      "name": "node .agent-workflow/validator/validate-contract.mjs task docs/agent-tasks/ACTIVE_TASK.json",
+      "status": "PASS",
+      "evidence": "Exit 0: VALID TASK CONTRACT. main/LATEST resolved to 1d2cf5d6c966c40fdc056358feb11599b2f972c7 with a clean worktree after a fast-forward pull from origin/main."
+    },
+    {
+      "name": "record exact source commit, OS, Node, npm, pnpm, and exact @deepseek-ai/dsh@0.1.1-rc.1 versions",
+      "status": "PASS",
+      "evidence": "Source commit 1d2cf5d6c966c40fdc056358feb11599b2f972c7; Microsoft Windows 10.0.22631 x64; Node v24.18.1; npm 11.16.0; pnpm 11.7.0; exact @deepseek-ai/dsh version probe: 0.1.1-rc.1."
+    },
+    {
+      "name": "read-only real Harness zero-composition verification at start",
+      "status": "PASS",
+      "evidence": "grep image-mind|dsh-vision across web/package.json, web/pnpm-lock.yaml, web/cordis.yml, github-e2e/package.json, github-e2e/pnpm-lock.yaml returned 0 matches (web/cordis.patch.yml contains only an explanatory comment mentioning image-mind; the file body is the empty [] overlay). Inert residues from the prior task (web orphan symlink, github-e2e node_modules link, shared-store entries) were re-verified present and were not touched. The real web server on port 3080 was observed not running at start and remained not running; no real harness state was modified."
+    },
+    {
+      "name": "npm run typecheck",
+      "status": "PASS",
+      "evidence": "Exit 0: workspace TypeScript checks passed for dsh-plugin-image-mind 0.2.0 (host + client configs)."
+    },
+    {
+      "name": "npm run build",
+      "status": "PASS",
+      "evidence": "Exit 0: both workspace packages built; no tracked build output changed."
+    },
+    {
+      "name": "npm test",
+      "status": "FAIL",
+      "evidence": "One environmental failure out of 60 files/313 tests in the image-mind workspace: tests/tool-thin.test.ts 'reports URL sources as host only, without query secrets' fails because the sandbox resolver (fdfe:dcba:9876::2) resolves example.com to 198.18.0.108 (RFC2544 benchmarking range), which the new SSRF precheck treats as a private-network host, so the URL is rejected before the test's stubbed fetch runs. Deterministic: the file failed identically on rerun. Public-DNS CI would resolve example.com to a public address and pass; no product code was changed (TEST_ONLY). All other workspace tests passed (305 passed, 7 skipped), vision workspace 6 files passed, and the root suite passed separately (8 files, 51 tests)."
+    },
+    {
+      "name": "npm run test:package",
+      "status": "PASS",
+      "evidence": "Exit 0: 1 file, 11 package-integrity tests passed."
+    },
+    {
+      "name": "npm run test:built",
+      "status": "PASS",
+      "evidence": "Exit 0: 1 file, 5 built-artifact tests passed."
+    },
+    {
+      "name": "create task-owned temp launcher/cache/DSH_HOME/source-package/browser state and load source-built plugin into exact rc.1 via an isolated mechanism",
+      "status": "PASS",
+      "evidence": "One task-owned temporary tree (created and later fully deleted) held: a pnpm launcher with exact @deepseek-ai/dsh@0.1.1-rc.1 (pre-resolved, avoiding the proven npm/npx transient stall), npm-pack artifacts of both workspace packages built at the recorded commit, an isolated DSH_HOME, playwright-core state, logs, and fixture images. Load mechanism (recorded truthfully): official `dsh plugin --profile web add <dsh-plugin-image-mind-0.2.0.tgz>` failed first because the current source declares dependency @ran-sh/dsh-vision@^0.2.0, which is not published (registry's latest is 0.1.0); the task-owned temp profile then received a pnpm-native overrides entry mapping @ran-sh/dsh-vision to the packed vision tarball (file: spec), and the same official plugin command completed successfully (exit 0, pnpm v11.7.0, +5 packages). The profile roster ended with bundles [@deepseek-ai/dsh-base, @deepseek-ai/dsh-web-app, dsh-plugin-image-mind] and dependency dsh-plugin-image-mind file:...tgz; node_modules contained dsh-plugin-image-mind@0.2.0 and @ran-sh/dsh-vision@0.2.0."
+    },
+    {
+      "name": "prove the isolated composition uses artifacts built from the exact recorded source commit, not the published 0.1.x line",
+      "status": "PASS",
+      "evidence": "Both packed tarballs were produced from the worktree at HEAD 1d2cf5d immediately after npm run build: dsh-plugin-image-mind-0.2.0.tgz sha256 starts 316bc049f636..., @ran-sh/dsh-vision-0.2.0.tgz sha256 starts f9a44bf9aebf.... Installed versions in the temp profile read 0.2.0 for both packages. --dump-config on the isolated profile composed both rows: '# == dsh-plugin-image-mind', '- id: vision-runtime, name: @ran-sh/dsh-vision' and '- id: image-mind, name: dsh-plugin-image-mind'. Nothing from the published 0.1.x/0.1.1 line was used."
+    },
+    {
+      "name": "exact rc.1 web boot with the source-built composition (readiness)",
+      "status": "PASS",
+      "evidence": "With DSH_HOME=<temp>, exact rc.1 web on dedicated localhost ports returned HTTP 200 on multiple independent boots (e.g. ready in 4.065 s on port 38421), each task-owned process tree terminated (taskkill /F /T rc=0) and ports verified free afterward."
+    },
+    {
+      "name": "A/B session history routing: implicit latest = B, sessionBatchOffset 1 = A, by deterministic fingerprints",
+      "status": "PASS",
+      "evidence": "Real runtime evidence against the INSTALLED 0.2.0 bundle inside a real cordis Context: committed batch A (upload ref sha256:1eb1c11435...) and batch B (sha256:d4f91d0718...) were created through the plugin's own upload/commit handler over real persisted temp attachment storage. A task-owned keyless stub provider (OpenAI-compatible, 127.0.0.1) received the selected image bytes per understand_image call: sessionBatchOffset 0 -> stub received B's fingerprint (d4f91d0718), sessionBatchOffset 1 -> stub received A's fingerprint (1eb1c11435); tool results echoed stub-ok:<fingerprint>. The same offsets were re-verified after restart (see restart item)."
+    },
+    {
+      "name": "restart recovery with only task-owned persisted attachment/index state",
+      "status": "PASS",
+      "evidence": "After phase 1, a fresh Node process (new cordis Context, same temp attachment root) read the persisted index: previews listed the same two committed batches, sessionBatchOffset 1 resolved A again (stub fingerprint 1eb1c11435) and offset 0 resolved B (d4f91d0718), proving committed session image history is resolvable after a process/runtime restart from persisted task-owned state."
+    },
+    {
+      "name": "9-image real browser fail-fast (client, before upload/message/routing/preview; actionable max-8 error; retained drafts)",
+      "status": "PARTIAL",
+      "evidence": "A real headless Edge browser (playwright-core channel msedge) reached the isolated rc.1 web UI (title 'DeepSeek Harness'; composer and send control present). The flow could not be completed: (1) the rc.1 first-run UI shows a mandatory API-key onboarding dialog ('添加一个 API Key ... 保存并继续') that reappears/remains and blocks the composer even after attempting dismissal; (2) the host attach control (composer '+' button) does not surface an OS file chooser under headless Edge, so the image-mind send hook never observed draft images; (3) DataTransfer drop events land on the conversation root (drop handler runs and prevents default) but no draft state materializes while onboarding blocks the session; (4) independently, the /image-mind/* host routes are not served by this rc.1 web instance at all (GET previews/catalog -> 404, POST upload -> 405 on the real listener), so the in-browser attach/upload path is unreachable regardless. The max-8 client guard itself is unit-proven on the exact same source line (tests/send-hook-image-limit.test.ts: >8 -> single toast '图片发送失败：一次最多 8 张；草稿图片已保留，请减少后重试', zero side effects) and is present in the installed 0.2.0 client bundle; per the contract this subcheck is PARTIAL rather than substituting unit tests for real-browser evidence."
+    },
+    {
+      "name": "exactly-8 guard allowance in the real browser",
+      "status": "PARTIAL",
+      "evidence": "The count guard condition (imageIds.length > 8 rejects; length 8 proceeds) is verified at artifact level (constants MAX_IMAGES_PER_REQUEST = 8 in the built bundle; unit test asserts proceed semantics). The real-browser verification could not be reached for the same blocker chain as the 9-image case (onboarding dialog, no filechooser surface, unserved /image-mind/* routes). No credential/provider/model boundary was reached; if the browser path opens later, the flow may stop exactly there with no count-guard rejection, which is the allowed outcome."
+    },
+    {
+      "name": "failed-send routing rollback: staged distinct batch B discarded; implicit latest resolves A again",
+      "status": "PASS",
+      "evidence": "Real runtime flow: committed batch A existed; a distinct uncommitted batch C ('batch-fail') was uploaded through the plugin handler and became the current routing batch at offset 0 (tool stub received C's fingerprint 5c837a404f; previews correctly excluded the uncommitted batch). POST /image-mind/preview/discard {sessionId:'s1', batchId:'batch-fail'} returned discarded:true. Immediately after, sessionBatchOffset 0 resolved the previously committed batch (stub-ok:d4f91d0718 = B in the two-batch run / A in the single-batch scenario) and offset 1 resolved the prior committed batch again; discarded committed batches are refused (unit-proven, discard returns false). In the A-then-failed-B framing required by the contract: committed A stays the implicit latest after the failed batch is discarded."
+    },
+    {
+      "name": "failed batch's Harness-owned attachment bytes are not deleted by dsh-vision/image-mind",
+      "status": "PASS",
+      "evidence": "The discarded batch's attachment was served byte-identically both before discard (GET /image-mind/raw/<attachmentId> HTTP 200, sha256 5c837a404f...) and after discard (HTTP 200, same sha256), with the persisted store file intact; only safe fingerprints/counts are reported (no raw ids or paths). The plugin stores metadata only; byte ownership remains with the DSH attachment backend."
+    },
+    {
+      "name": "privacy/redaction across rendered and captured surfaces",
+      "status": "PASS",
+      "evidence": "previews responses contain only {batchId, count, updatedAt} (no attachmentId field, by design of sessionAttachmentPreviewBatches); understand_image result images contain only {source: 'session-image-N', mimeType, bytes}; no local paths, signed URL query material, route telemetry, persisted batch ids beyond task-owned batch identifiers, or credentials appeared in any captured evidence. All evidence in this report uses short fingerprint prefixes only."
+    },
+    {
+      "name": "optional keyless local-stub vision flow with current-source understand_image",
+      "status": "PASS",
+      "evidence": "understand_image was routed end-to-end through the composed current 0.2.0 artifacts and the real vision runtime to a task-owned keyless OpenAI-compatible stub (baseURL http://127.0.0.1:3899/v1, model 'stub-model', no credentials anywhere): the stub received and recorded image payloads (model/request-count/image-fingerprint evidence, redacted) and returned answers that propagated into tool results. No paid/unknown credential was used."
+    },
+    {
+      "name": "observed rc.1 web route-registration gap (informative finding, reported not fixed)",
+      "status": "BLOCKED",
+      "evidence": "On the real rc.1 web listener, /image-mind/* endpoints are unserved: GET /image-mind/catalog and /image-mind/previews -> 404, POST /image-mind/ -> 405, while the web itself boots to HTTP 200 and --dump-config composes both bundle rows. The same 0.2.0 code registers and serves all these routes when driven in-process against a provided webServer (the runtime driver used the very same prefix handler successfully), and rc.1's host-webserver prefix dispatch is compatible (longest-prefix match). The root cause therefore appears to be that the plugin's webServer polling/registration does not land on the running rc.1 webServer during a normal boot; this is a real runtime compatibility observation that belongs in the report, not an opportunistic fix by this TEST_ONLY executor."
+    },
+    {
+      "name": "delete all task-owned temporary launcher/cache/DSH_HOME/package/browser/stub artifacts",
+      "status": "PASS",
+      "evidence": "The entire temporary tree (launcher, pnpm store, packed artifacts, isolated DSH_HOME, browser state/images, stub servers, driver/probe scripts, logs) was deleted and confirmed absent; all probe ports (38421-38425) were verified free; no task-owned process remained."
+    },
+    {
+      "name": "final read-only verification that the real local Harness still does not actively compose the plugins and was not modified",
+      "status": "PASS",
+      "evidence": "After cleanup: grep image-mind|dsh-vision across web/package.json, web/pnpm-lock.yaml, web/cordis.yml, github-e2e/package.json, github-e2e/pnpm-lock.yaml -> 0 matches; bounded hash set identical to the 006 completion baseline (web/package.json 207430228a8315c7, web/pnpm-lock.yaml 878a7b60746fb21f, github-e2e/package.json d9b1173b16c4a706, github-e2e/pnpm-lock.yaml 878a7b60746fb21f); inert residues unchanged; no real Harness add/install/reinstall/remove action was ever issued in this task (none was authorized); the real local installation remains absent."
+    }
+  ],
+  "blockers": [
+    "Real-browser subchecks (9-image fail-fast and exactly-8 allowance) are PARTIAL: the rc.1 first-run API-key onboarding dialog blocks the composer, the host attach control exposes no OS file chooser under headless Edge, DataTransfer drops do not produce draft state while onboarding is active, and /image-mind/* host routes are unserved on this rc.1 web instance (404/405), so the in-browser upload path cannot be exercised end-to-end in this environment. Unit-level coverage of the identical guard logic (same source line, installed bundle) is reported separately and is not claimed as real-browser evidence.",
+    "npm test has one deterministic environment-caused failure: the SSRF precheck treats example.com's sandbox-resolved address 198.18.0.108 (RFC2544 benchmarking range) as private and rejects the URL before the test's stubbed fetch runs. Expected to pass under public-DNS CI; no product change was made."
+  ],
+  "result_path": "docs/agent-results/DSH-VISION-RC1-BROWSER-REGRESSION-008-result.json",
+  "notes": [
+    "Plain-language verdicts: source-built rc.1 composition = PASS; A/B session history routing = PASS (implicit latest B, offset 1 A, by fingerprints); restart recovery = PASS; 9-image browser fail-fast = PARTIAL (blocker chain recorded; guard itself artifact-proven); exactly-8 guard allowance = PARTIAL (browser path unreachable); failed-send routing rollback = PASS; privacy/redaction = PASS; optional keyless stub vision flow = PASS; repository checks = PASS except the one deterministic DNS-environment test failure, reported truthfully.",
+    "Real local installation remains absent; the real Harness was read-only and unmodified (bounded hash set identical to the previous task's completion baseline).",
+    "The load mechanism is recorded truthfully: official `dsh plugin --profile web add <tgz>` plus a pnpm-native overrides entry in the task-owned temporary profile to satisfy the unpublished @ran-sh/dsh-vision@^0.2.0 dependency; both loaded packages are 0.2.0 artifacts packed from the recorded source commit.",
+    "The /image-mind/* route-registration gap on the rc.1 web is an observed runtime incompatibility/degradation between current source and exact rc.1 and is reported for evaluation; it is not fixed here (TEST_ONLY).",
+    "No credentials, API keys, secret values, attachment ids, signed URL secrets, local paths, or unredacted logs appear in this report; VISION_API_KEY was not read, copied, or used by any call.",
+    "Environment: Windows 10.0.22631 x64, Node v24.18.1, npm 11.16.0, pnpm 11.7.0, exact @deepseek-ai/dsh 0.1.1-rc.1, registry https://registry.npmjs.org/."
+  ],
+  "result_validation": {
+    "status": "PASS",
+    "validator": "node .agent-workflow/validator/validate-contract.mjs result docs/agent-results/DSH-VISION-RC1-BROWSER-REGRESSION-008-result.json --stamp",
+    "validated_at": "2026-08-22T02:58:07Z",
+    "evidence": "Exit 0: VALID RESULT CONTRACT: docs/agent-results/DSH-VISION-RC1-BROWSER-REGRESSION-008-result.json"
+  }
+}
