@@ -60,6 +60,12 @@ describe('built artifact (packages/image-mind/lib/index.js)', () => {
     expect(source).toContain('const require = __imageMindCreateRequire(import.meta.url)')
   })
 
+  it('does not leave a dynamic node:crypto require in the ESM bundle', () => {
+    const source = readFileSync(LIB_PATH, 'utf8')
+    expect(source).not.toContain('__require("node:crypto")')
+    expect(source).not.toContain('Dynamic require of "node:crypto"')
+  })
+
   it('ships the embedded visual-challenge fixtures as valid 32x32 PNGs', () => {
     const fixtures = lib?.VISUAL_FIXTURES
     expect(Array.isArray(fixtures)).toBe(true)

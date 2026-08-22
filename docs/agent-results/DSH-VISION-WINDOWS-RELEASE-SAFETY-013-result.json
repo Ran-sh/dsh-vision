@@ -1,0 +1,81 @@
+{
+  "schema_version": 2,
+  "task_id": "DSH-VISION-WINDOWS-RELEASE-SAFETY-013",
+  "source_commit": "0d8891bcda943d30693fd50dab132dfbff3351dd",
+  "result_commit": "0d375bbc20a86ba815138b185f4067c941fad4cc",
+  "status": "PASS",
+  "summary": "Closed the confirmed Windows Node24 ESM bundle defect by replacing the dynamic node:crypto require in the OpenAI-compatible adapter with a static import and adding a built-artifact regression assertion. The complete Windows Node24 lane, exact rc.1 isolated official add/boot/smoke/remove roundtrip, browser settings acceptance, generated public types, package-content inspection, benchmark scorer/compare gates, and current-head CI evidence passed.",
+  "timeline": {
+    "started_at": "2026-08-22T18:34:41+08:00",
+    "completed_at": "2026-08-22T18:55:28+08:00"
+  },
+  "changed_files": [
+    "packages/image-mind/src/adapters/openai-compatible/adapter.ts",
+    "tests/built.test.ts",
+    "docs/agent-results/DSH-VISION-WINDOWS-RELEASE-SAFETY-013-result.json",
+    "docs/agent-tasks/ACTIVE_TASK.json"
+  ],
+  "tests": [
+    {
+      "name": "task contract validation",
+      "status": "PASS",
+      "evidence": "validate-contract.mjs task accepted the fetched ACTIVE_TASK contract before implementation"
+    },
+    {
+      "name": "Windows Node24 complete repository lane",
+      "status": "PASS",
+      "evidence": "npm ci; npm run typecheck; npm test (vision 63 passed, image-mind 320 passed, root 52 passed; 2 files/7 tests intentionally skipped); npm run build; npm run test:package (11 passed); npm run test:built (6 passed)"
+    },
+    {
+      "name": "F-001 built bundle and exact rc.1 runtime",
+      "status": "PASS",
+      "evidence": "Windows Node24 built candidate contains no dynamic node:crypto require stub; task-owned exact @deepseek-ai/dsh@0.1.1-rc.1 official add booted web/runtime, local keyless stubs drove understand_image fallback/retry/trace smoke, and the shipped bundle completed without the historical ESM/CJS failure"
+    },
+    {
+      "name": "F-004 execution-gate FIFO and aborted waiter",
+      "status": "PASS",
+      "evidence": "targeted execution-gate suite passed 2 tests, including queued third operation ordering/capacity and aborted waiter release"
+    },
+    {
+      "name": "F-009 trace and orchestration regressions",
+      "status": "PASS",
+      "evidence": "targeted execution-trace, tool-thin, and vision-orchestration suites passed 24 tests; providerCalls/cacheHits/retries/modelFallbacks/providerFallbacks/splits remained structurally valid"
+    },
+    {
+      "name": "F-010 benchmark transform and CLI gates",
+      "status": "PASS",
+      "evidence": "benchmark-real Vitest collected cleanly (its real-provider test is environment-gated and skipped); benchmark score exited 0 and compare passed; controlled task-success regression was rejected with a non-zero equivalent comparison result"
+    },
+    {
+      "name": "generated public types and package contents",
+      "status": "PASS",
+      "evidence": "vision/lib/types exposes router/token-budget/cache/selector/health/circuit/lifecycle plus VisionRequest, VisionResult.trace, VisionTrace, and traced VisionError; npm pack dry-runs/package tests contained only intended runtime/types/readme/patch artifacts and no tests, benchmarks, secrets, or private paths"
+    },
+    {
+      "name": "official isolated DSH lifecycle and browser acceptance",
+      "status": "PASS",
+      "evidence": "task-owned DSH_HOME used official plugin add, rc.1 web/runtime boot and local-stub smoke, browser UI verification of image-mind provider panel, official remove, and post-remove boot with /image-mind/catalog returning 404; real Harness profile hashes remained unchanged"
+    },
+    {
+      "name": "Node22 and Linux supporting evidence",
+      "status": "PASS",
+      "evidence": "local Node22 executable was unavailable; current-head GitHub Actions CI run 32567688183 passed windows, install-roundtrip, secret-scan, test (22), and test (24) jobs"
+    }
+  ],
+  "blockers": [],
+  "result_path": "docs/agent-results/DSH-VISION-WINDOWS-RELEASE-SAFETY-013-result.json",
+  "notes": [
+    "Initial F-001 reproduction before the fix found the generated dynamic crypto require helper in packages/image-mind/lib/index.js; the source defect was fixed in the single Batch 013 implementation branch and the affected/full lanes were rerun.",
+    "The public registry currently lacks @ran-sh/dsh-vision@^0.2.0, so the first official add attempt reproduced the upstream no-matching-version error. The successful isolated lifecycle used only a task-owned pnpm override to the locally packed candidate; no real Harness state was edited.",
+    "npm ci reports five audit advisories and standard allowScripts warnings; no unrelated dependency or release changes were made.",
+    "Issue #37 residue was checked read-only only; no dsh-vision cleanup behavior or manual Harness/profile/store mutation was added.",
+    "All task-owned runtime, browser, package, stub, and DSH_HOME artifacts were isolated outside the repository and task-owned processes were terminated before handoff.",
+    "Final execution branch: fix/windows-release-safety-batch-013; final commit SHA is recorded in the handoff after the completion commit."
+  ],
+  "result_validation": {
+    "status": "PASS",
+    "validator": "node .agent-workflow/validator/validate-contract.mjs result docs/agent-results/DSH-VISION-WINDOWS-RELEASE-SAFETY-013-result.json --stamp",
+    "validated_at": "2026-08-22T11:00:29Z",
+    "evidence": "Exit 0: VALID RESULT CONTRACT: docs/agent-results/DSH-VISION-WINDOWS-RELEASE-SAFETY-013-result.json"
+  }
+}
