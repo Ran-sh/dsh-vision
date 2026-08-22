@@ -6,7 +6,11 @@
  */
 
 export { OpenAICompatibleVisionAdapter } from './credential-scoped-adapter.ts'
-export type { OpenAICompatibleAdapterOptions } from './adapter.ts'
+export type {
+  OpenAICompatibleAdapterOptions,
+  ProviderAttemptEvent,
+  ProviderFallbackCandidate,
+} from './adapter.ts'
 export { semanticRequestKey } from './adapter.ts'
 export { credentialCacheFingerprint } from './credential-scoped-adapter.ts'
 export { buildVisionRequest, extractChatCompletionsContent, extractResponsesContent } from './parse.ts'

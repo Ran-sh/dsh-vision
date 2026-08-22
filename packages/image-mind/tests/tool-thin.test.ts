@@ -12,6 +12,13 @@ import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { MAX_IMAGES_PER_REQUEST, understandImageTool } from '../src/tools/understand-image.ts'
 
+// Keep the URL-redaction test offline and deterministic. The production SSRF
+// guard must still reject RFC2544/private DNS answers; this fixture only keeps
+// this behavioral test from depending on the executor's public DNS response.
+vi.mock('node:dns/promises', () => ({
+  lookup: vi.fn(async () => [{ address: '93.184.216.34', family: 4 }]),
+}))
+
 const PNG = Buffer.from([
   0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d,
   0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,

@@ -1,11 +1,9 @@
 /**
  * Runtime reliability state for configured image-mind providers.
  *
- * The OpenAI-compatible adapter tells this tracker only about provider-level
- * outcomes after its internal retry/model-fallback path has finished. The
- * tracker owns no endpoint/credential facts; it keeps bounded in-memory
- * health/circuit state and uses the provider-neutral selector to rank backup
- * routes.
+ * The runtime records provider-level outcomes after retry/model-fallback work
+ * has finished. This tracker owns only bounded in-memory health/circuit state
+ * plus fallback ranking; it never owns endpoint or credential facts.
  */
 
 import {
@@ -31,10 +29,20 @@ export interface ProviderReliabilitySnapshot {
   circuit: ReturnType<VisionCircuitBreaker['snapshot']>
 }
 
+/** One automatic fallback route. Recovery probes must bypass semantic cache. */
+export interface ProviderFallbackPlan {
+  provider: string
+  cache?: 'no-store'
+}
+
 export interface ProviderReliabilityTracker {
   recordSuccess(provider: string, latencyMs: number): void
   recordFailure(provider: string, latencyMs: number): void
-  fallbacks(config: ResolvedConfig, primaryProvider: string, request: Pick<VisionRequest, 'provider' | 'model'>): string[]
+  /** Close a half-open circuit after a fresh, non-outage provider response. */
+  recordReachable(provider: string): void
+  /** Release a reserved half-open probe that never reached the provider. */
+  releaseProbe(provider: string): void
+  fallbacks(config: ResolvedConfig, primaryProvider: string, request: Pick<VisionRequest, 'provider' | 'model'>): ProviderFallbackPlan[]
   snapshot(provider: string): ProviderReliabilitySnapshot
 }
 
@@ -86,11 +94,38 @@ export function createProviderReliabilityTracker(): ProviderReliabilityTracker {
     }
   }
 
+  const recordReachable = (provider: string): void => {
+    const state = stateFor(provider)
+    if (state.circuit.snapshot().state !== 'half-open') return
+    // A fresh response that is not an outage (for example HTTP 400) proves the
+    // endpoint is reachable. Close only the circuit gate; do not inflate
+    // successful-request health counters for an application-level failure.
+    state.circuit.recordSuccess()
+    state.health = { ...state.health, openedUntil: undefined }
+  }
+
+  const releaseProbe = (provider: string): void => {
+    const state = stateFor(provider)
+    if (state.circuit.snapshot().state !== 'half-open') return
+    // The reserved probe failed before a provider call (for example credential
+    // resolution or caller cancellation). Re-open the gate without counting a
+    // provider health failure, so the circuit cannot remain half-open forever.
+    const now = Date.now()
+    state.circuit.recordFailure(now)
+    const circuit = state.circuit.snapshot()
+    state.health = {
+      ...state.health,
+      openedUntil: circuit.state === 'open' && circuit.nextProbeAt !== null
+        ? circuit.nextProbeAt
+        : state.health.openedUntil,
+    }
+  }
+
   const fallbacks = (
     config: ResolvedConfig,
     primaryProvider: string,
     request: Pick<VisionRequest, 'provider' | 'model'>,
-  ): string[] => {
+  ): ProviderFallbackPlan[] => {
     // Explicit route/model is sticky user intent; never silently substitute.
     if (request.provider !== undefined && request.provider.trim().length > 0) return []
     if (request.model !== undefined && request.model.trim().length > 0) return []
@@ -113,8 +148,7 @@ export function createProviderReliabilityTracker(): ProviderReliabilityTracker {
 
       // `allow()` is the concurrency gate for open/half-open circuits. An
       // expired open circuit admits exactly one caller and becomes half-open;
-      // concurrent callers see `half-open` + false and must not route another
-      // probe to the same provider.
+      // concurrent callers must not route another probe to the same provider.
       if (!admitted && circuit.state !== 'closed') {
         fallbackIndex += 1
         continue
@@ -124,7 +158,7 @@ export function createProviderReliabilityTracker(): ProviderReliabilityTracker {
       if (recoveryProbe) {
         recoveryProbes.push(provider)
         // The health cooldown duplicates circuit state. Once a real half-open
-        // probe has been admitted, clear the stale health-only cooldown so the
+        // probe has been reserved, clear the stale health-only cooldown so the
         // selector does not describe an internally contradictory snapshot.
         state.health = { ...state.health, openedUntil: undefined }
       }
@@ -144,16 +178,17 @@ export function createProviderReliabilityTracker(): ProviderReliabilityTracker {
     const ranked = selected.ranked.map(item => item.provider)
 
     // A provider that has just crossed open -> half-open must actually receive
-    // its one recovery probe. If ordinary health ranking can always fill the
-    // bounded fallback list first, the route can remain half-open forever and
-    // never demonstrate recovery. Recovery probes therefore occupy the front
-    // of this one fallback attempt, preserving config order; healthy ranked
-    // routes fill the remaining bounded slots.
+    // its one recovery probe. It is placed first and marked no-store so a stale
+    // semantic-cache hit cannot consume the exclusive probe without producing
+    // the fresh success/failure needed to settle the circuit.
     const ordered = [
       ...recoveryProbes,
       ...ranked.filter(provider => !recoveryProbes.includes(provider)),
     ]
-    return ordered.slice(0, MAX_RELIABILITY_PROVIDER_FALLBACKS)
+    return ordered.slice(0, MAX_RELIABILITY_PROVIDER_FALLBACKS).map(provider => ({
+      provider,
+      ...(recoveryProbes.includes(provider) ? { cache: 'no-store' as const } : {}),
+    }))
   }
 
   const snapshot = (provider: string): ProviderReliabilitySnapshot => {
@@ -161,5 +196,5 @@ export function createProviderReliabilityTracker(): ProviderReliabilityTracker {
     return { provider, health: { ...state.health }, circuit: state.circuit.snapshot() }
   }
 
-  return { recordSuccess, recordFailure, fallbacks, snapshot }
+  return { recordSuccess, recordFailure, recordReachable, releaseProbe, fallbacks, snapshot }
 }

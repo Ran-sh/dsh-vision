@@ -1,13 +1,14 @@
 /**
- * Reliability decorator for a vision adapter.
+ * Reliability observation helpers and a generic final-outcome decorator.
  *
- * It deliberately does not own retries, fallback, endpoints, credentials, or
- * selection. It observes the final outcome of the wrapped adapter and records
- * only provider-level reliability signals in the tracker.
+ * The production OpenAI-compatible path reports each provider-route attempt
+ * directly, which preserves intermediate fallback outcomes. The decorator is
+ * retained for adapters that expose only a final result/error.
  */
 
 import { VisionAdapter } from '@ran-sh/dsh-vision'
 import type { VisionModel, VisionModelDiscoveryRequest, VisionRequest, VisionResult } from '@ran-sh/dsh-vision'
+import type { ProviderAttemptEvent } from '../adapters/openai-compatible/adapter.ts'
 import type { ProviderReliabilityTracker } from './provider-reliability.ts'
 
 interface WireLikeError {
@@ -57,6 +58,42 @@ export function isFreshProviderSuccess(result: VisionResult): boolean {
   const trace = result.trace
   if (trace === undefined) return true
   return trace.providerCalls > 0 && trace.cacheHits === 0
+}
+
+/** Settle one provider-route attempt without inventing health from cache work. */
+export function recordProviderAttempt(
+  reliability: ProviderReliabilityTracker,
+  event: ProviderAttemptEvent,
+): void {
+  if (event.error === undefined) {
+    if (event.providerCalls > 0 && event.cacheHits === 0) {
+      reliability.recordSuccess(event.provider, event.elapsedMs)
+      return
+    }
+    // Ordinary cache hits are neutral. If a future regression lets a reserved
+    // half-open probe hit cache anyway, release it instead of deadlocking the
+    // circuit in half-open forever.
+    reliability.releaseProbe(event.provider)
+    return
+  }
+
+  // Caller cancellation or a failure before any wire call (credential lookup,
+  // local setup, etc.) is not provider health evidence. A half-open reservation
+  // still has to be released or it would remain exclusive forever.
+  if (event.aborted || event.providerCalls === 0) {
+    reliability.releaseProbe(event.provider)
+    return
+  }
+
+  if (isProviderReliabilityFailure(event.error)) {
+    reliability.recordFailure(event.provider, event.elapsedMs)
+    return
+  }
+
+  // A fresh non-outage response (for example HTTP 400/401) proves reachability
+  // and can close a half-open circuit without being counted as a successful
+  // vision request. Closed circuits ignore this operation.
+  reliability.recordReachable(event.provider)
 }
 
 export class ReliabilityVisionAdapter extends VisionAdapter {

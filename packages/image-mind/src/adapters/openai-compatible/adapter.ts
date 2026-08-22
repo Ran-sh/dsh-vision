@@ -25,10 +25,30 @@ import type { OpenAICompatibleVisionOptions } from './types.ts'
 const DEFAULT_MAX_RETRIES = 2
 const MAX_PROVIDER_FALLBACKS = 2
 
+export interface ProviderFallbackCandidate {
+  provider: string
+  /** `no-store` is reserved for fresh recovery probes that must hit the wire. */
+  cache?: 'no-store'
+}
+
+/** Provider-route outcome after retry/model-fallback work for that route. */
+export interface ProviderAttemptEvent {
+  provider: string
+  providerCalls: number
+  cacheHits: number
+  elapsedMs: number
+  aborted: boolean
+  error?: unknown
+}
+
 export interface OpenAICompatibleAdapterOptions {
   resolveProviderOptions: (provider: string, request: VisionRequest) => OpenAICompatibleVisionOptions
   resolveApiKey: (options: Readonly<OpenAICompatibleVisionOptions>) => Promise<string>
-  resolveProviderFallbacks?: (provider: string, request: VisionRequest) => readonly string[]
+  resolveProviderFallbacks?: (
+    provider: string,
+    request: VisionRequest,
+  ) => readonly (string | ProviderFallbackCandidate)[]
+  onProviderAttempt?: (event: ProviderAttemptEvent) => void
   cache?: VisionCache
   retry?: { maxRetries?: number; backoff?: BackoffConfig }
 }
@@ -428,10 +448,37 @@ export class OpenAICompatibleVisionAdapter extends VisionAdapter {
     }
   }
 
+  private async callProviderObserved(provider: string, request: VisionRequest, trace: VisionTrace): Promise<VisionResult> {
+    const started = Date.now()
+    const providerCallsBefore = trace.providerCalls
+    const cacheHitsBefore = trace.cacheHits
+    try {
+      const result = await this.callProvider(provider, request, trace)
+      this.options.onProviderAttempt?.({
+        provider,
+        providerCalls: trace.providerCalls - providerCallsBefore,
+        cacheHits: trace.cacheHits - cacheHitsBefore,
+        elapsedMs: Date.now() - started,
+        aborted: request.signal?.aborted === true,
+      })
+      return result
+    } catch (error) {
+      this.options.onProviderAttempt?.({
+        provider,
+        providerCalls: trace.providerCalls - providerCallsBefore,
+        cacheHits: trace.cacheHits - cacheHitsBefore,
+        elapsedMs: Date.now() - started,
+        aborted: request.signal?.aborted === true,
+        error,
+      })
+      throw error
+    }
+  }
+
   override async call(provider: string, request: VisionRequest): Promise<VisionResult> {
     const trace = createTrace()
     try {
-      return withTrace(await this.callProvider(provider, request, trace), trace)
+      return withTrace(await this.callProviderObserved(provider, request, trace), trace)
     } catch (primaryError) {
       if (request.provider !== undefined && request.provider.trim().length > 0) throw primaryError
       if (request.model !== undefined && request.model.trim().length > 0) throw primaryError
@@ -439,20 +486,24 @@ export class OpenAICompatibleVisionAdapter extends VisionAdapter {
 
       const planned = this.options.resolveProviderFallbacks?.(provider, request) ?? []
       const seen = new Set([provider])
-      const candidates: string[] = []
+      const candidates: ProviderFallbackCandidate[] = []
       for (const raw of planned) {
-        const candidate = raw.trim()
+        const plan: ProviderFallbackCandidate = typeof raw === 'string' ? { provider: raw } : raw
+        const candidate = plan.provider.trim()
         if (candidate.length === 0 || seen.has(candidate)) continue
         seen.add(candidate)
-        candidates.push(candidate)
+        candidates.push({ provider: candidate, ...(plan.cache === 'no-store' ? { cache: 'no-store' } : {}) })
         if (candidates.length >= MAX_PROVIDER_FALLBACKS) break
       }
 
       let lastError: unknown = primaryError
       for (const candidate of candidates) {
         trace.providerFallbacks += 1
+        const fallbackRequest = candidate.cache === 'no-store'
+          ? { ...request, cache: 'no-store' as const }
+          : request
         try {
-          return withTrace(await this.callProvider(candidate, request, trace), trace)
+          return withTrace(await this.callProviderObserved(candidate.provider, fallbackRequest, trace), trace)
         } catch (error) {
           lastError = error
           if (!providerFallbackEligible(error)) throw error
