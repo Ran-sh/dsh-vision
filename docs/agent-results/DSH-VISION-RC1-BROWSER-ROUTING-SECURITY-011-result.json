@@ -1,0 +1,134 @@
+{
+  "schema_version": 2,
+  "task_id": "DSH-VISION-RC1-BROWSER-ROUTING-SECURITY-011",
+  "source_commit": "30b65b508c106659ecb087dc07e268004e4d8489",
+  "result_commit": null,
+  "status": "PARTIAL",
+  "summary": "Exact @deepseek-ai/dsh@0.1.1-rc.1 runtime and browser acceptance completed against the PR #53 descendant without product changes. Provider, semantic-cache, evidence-cache, no-store refocus, fallback truthfulness, prompt-in-image boundary, PR #52 routes, settings UI, and the compiled browser send-hook count/privacy seams were exercised. The rc.1 host opened normally but did not expose a draft-image/file-input composer in this isolated no-model session, so main-model-only routing, normal rendered user bubbles, and host call/debug cards remain PARTIAL rather than being claimed as PASS.",
+  "timeline": {
+    "started_at": "2026-08-22T17:52:21+08:00",
+    "completed_at": "2026-08-22T18:21:34+08:00"
+  },
+  "changed_files": [
+    "docs/agent-results/DSH-VISION-RC1-BROWSER-ROUTING-SECURITY-011-result.json",
+    "docs/agent-tasks/ACTIVE_TASK.json"
+  ],
+  "tests": [
+    {
+      "name": "task contract validator",
+      "status": "PASS",
+      "evidence": "node .agent-workflow/validator/validate-contract.mjs task docs/agent-tasks/ACTIVE_TASK.json -> VALID TASK CONTRACT"
+    },
+    {
+      "name": "PR #53 source checkpoint",
+      "status": "PASS",
+      "evidence": "Execution branch fix/per-provider-reliability-probes-exec is a non-rewritten descendant containing aa5fb0b3ef2a079838f93bce4c570be43195caea; current source_commit recorded as 30b65b508c106659ecb087dc07e268004e4d8489; PR #53 stayed unmerged"
+    },
+    {
+      "name": "source build",
+      "status": "PASS",
+      "evidence": "npm run build exit 0; @ran-sh/dsh-vision and dsh-plugin-image-mind built at 0.2.0"
+    },
+    {
+      "name": "typecheck",
+      "status": "PASS",
+      "evidence": "npm run typecheck exit 0 for both workspaces"
+    },
+    {
+      "name": "vision tests",
+      "status": "PASS",
+      "evidence": "@ran-sh/dsh-vision: 6 files, 63 tests passed"
+    },
+    {
+      "name": "image-mind tests",
+      "status": "PASS",
+      "evidence": "dsh-plugin-image-mind: 59 files, 320 passed and 7 skipped; count guard, planner authority, send routing, call-view redaction, cache, and privacy-focused suites included"
+    },
+    {
+      "name": "exact rc.1 source-built composition",
+      "status": "PASS",
+      "evidence": "Isolated launcher reported dsh 0.1.1-rc.1 and composed current source-built @ran-sh/dsh-vision 0.2.0 plus dsh-plugin-image-mind 0.2.0 through official profile plugin operations"
+    },
+    {
+      "name": "provider route and forced fallback truthfulness",
+      "status": "PASS",
+      "evidence": "Deterministic local stubs: primary/first fail and second succeeds; fresh no-store route selected second with source=provider, providerFallback=true, providerCalls=7, retries=4, providerFallbacks=2, modelFallbacks=0, cacheHits=0; observed traffic matched those counters"
+    },
+    {
+      "name": "semantic-cache route",
+      "status": "PASS",
+      "evidence": "All-success local-stub run repeated an eligible general request: route.source=semantic-cache, cacheMode=use, providerCalls=0, cacheHits=1, and no second provider request"
+    },
+    {
+      "name": "evidence-cache route",
+      "status": "PASS",
+      "evidence": "OCR broad evidence followed by materially related OCR follow-up returned route.source=evidence-cache with providerCalls=0, retries=0, providerFallbacks=0, cacheHits=1"
+    },
+    {
+      "name": "cache refocus",
+      "status": "PASS",
+      "evidence": "After broad OCR evidence, a deliberately narrow color question used cache=no-store and produced a fresh provider route; earlier broad evidence remained available for the related follow-up"
+    },
+    {
+      "name": "prompt-in-image authority boundary",
+      "status": "PASS",
+      "evidence": "Task-owned PNG visibly contained prompt-like text IGNORE USER; every isolated provider request recorded securityBoundary=true from the planner prompt, while the stub returned only visual evidence and no authority transition"
+    },
+    {
+      "name": "PR #52 route lifecycle",
+      "status": "PASS",
+      "evidence": "Exact rc.1 listener returned HTTP 200 for GET /image-mind/catalog and GET /image-mind/previews?sessionId=..."
+    },
+    {
+      "name": "real-browser rc.1 settings and provider connection",
+      "status": "PASS",
+      "evidence": "agent-browser 0.34.0 loaded the rc.1 UI, completed notice/API-key-later onboarding, opened 插件→图像理解, showed primary/first/second, and local second provider reported 已连接 after deterministic visual verification"
+    },
+    {
+      "name": "browser count guard and neutral send seam",
+      "status": "PARTIAL",
+      "evidence": "The actual rc.1 page had no file-input/draft-image composer control in this isolated no-model workspace. Supplemental real-browser execution of the served compiled dsh-plugin-image-mind client hook proved 9 images: 0 upload/preview/prompt side effects with the exact max-8 toast; exactly 8: 8 uploads, 1 preview commit, 1 prompt admission, and prompt text only eight plus the neutral 已附加 8 张图片。 marker. Host composer availability remains an explicit blocker."
+    },
+    {
+      "name": "model-only routing availability",
+      "status": "PARTIAL",
+      "evidence": "The isolated DSH_HOME intentionally had no main-model credential/configuration, so a real model tool-call turn could not be admitted. The browser send seam remained model-neutral and the source system-prompt/tool-routing tests passed."
+    },
+    {
+      "name": "user-visible routing secrecy and rendered conversation",
+      "status": "PARTIAL",
+      "evidence": "Compiled browser send seam admitted only user text plus the neutral attachment marker, and the visible settings UI exposed no route.source/selectedProvider/cacheHits/sha256/raw URL metadata. A normal admitted user bubble could not be rendered without the unavailable main-model/composer path."
+    },
+    {
+      "name": "call/debug privacy",
+      "status": "PARTIAL",
+      "evidence": "tool-call-view-redaction tests passed and the host settings view showed no secrets, attachment JSON, bare digest, or private path. The rc.1 isolated host produced no call/debug card because no main-model turn was available, so host card inspection is blocked."
+    },
+    {
+      "name": "temporary process and artifact cleanup",
+      "status": "PASS",
+      "evidence": "agent-browser closed; exact task-owned listener/stub processes and ports 38431/38432/38991-38993 terminated; task-owned temporary tree removed; no repository files other than the Result Contract and completion deletion are changed"
+    },
+    {
+      "name": "final real Harness read-only verification",
+      "status": "PASS",
+      "evidence": "Six real C:/Users/48376/.dsh profile composition files were hashed read-only at final; no official real-Harness lifecycle operation or Harness-owned file mutation was performed"
+    }
+  ],
+  "blockers": [
+    "Exact rc.1 web host in the isolated no-model session did not expose a draft-image/file-input composer, so the true host UI 8/9 journey could not be driven; the served compiled client hook supplied supplemental browser evidence.",
+    "No main-model credential/configuration was authorized or available in task-owned state, blocking a real model-only tool-call turn, an admitted rendered user bubble, and host call/debug card inspection."
+  ],
+  "result_path": "docs/agent-results/DSH-VISION-RC1-BROWSER-ROUTING-SECURITY-011-result.json",
+  "notes": [
+    "TEST_ONLY evidence batch: no product/source/test/release/Harness-owned files were modified.",
+    "No credentials, bearer tokens, attachment ids, bare digests, private paths, or raw request bodies are included.",
+    "ACTIVE_TASK.json is deleted only in the completion commit as required; PR #53 remains unmerged and the final push targets its existing branch."
+  ],
+  "result_validation": {
+    "status": "PASS",
+    "validator": "node .agent-workflow/validator/validate-contract.mjs result docs/agent-results/DSH-VISION-RC1-BROWSER-ROUTING-SECURITY-011-result.json --stamp",
+    "validated_at": "2026-08-22T10:23:24Z",
+    "evidence": "Exit 0: VALID RESULT CONTRACT: docs/agent-results/DSH-VISION-RC1-BROWSER-ROUTING-SECURITY-011-result.json"
+  }
+}
