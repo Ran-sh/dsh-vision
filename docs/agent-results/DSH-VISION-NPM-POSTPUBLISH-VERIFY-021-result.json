@@ -3,13 +3,70 @@
   "task_id": "DSH-VISION-NPM-POSTPUBLISH-VERIFY-021",
   "source_commit": "48aebc6966c342bd59dc129ad9428738ec592cdf",
   "result_commit": null,
-  "status": "PARTIAL",
+  "status": "FAIL",
+  "summary": "Final state: NOT PUBLISHED_AND_PUBLICLY_VERIFIED — DEFECTIVE_PUBLICATION. Independent public-registry verification of the maintainer's manual npm publication proves both @ran-sh/dsh-vision@0.2.0 and dsh-plugin-image-mind@0.2.0 were published as EMPTY SHELLS with no built code. Registry metadata shows dist.fileCount 2 / unpackedSize 2042 bytes (vision) and 3 files / 6753 bytes (image-mind) instead of the accepted candidate's 15 files (~61 kB) and 9 files (~820 kB incl. lib/cli.js); published shasums d43b11093201bf2004215bf914cf7e98363d48d0 and 550b696f0ac91f6d669b5dde1796dc5df4f3f87c match neither the Batch 018 dry-run artifacts (328f7235bf449be7670f7fea8842ad749fb22276, 7f59073ddfadbffdf0409fcead34deabd7e943cb) nor any built tree. A clean-room exact-version install from https://registry.npmjs.org/ confirms the installed trees contain ONLY package.json/README.md (vision) and package.json/README.md/cordis.patch.yml (image-mind): lib/index.js is absent so @ran-sh/dsh-vision cannot be imported (ERR_MODULE_NOT_FOUND), and lib/cli.js is absent so npm skipped creating the dsh-plugin-image-mind bin shim entirely and `npx --yes dsh-plugin-image-mind@0.2.0 --version` fails ('dsh-plugin-image-mind' is not recognized). The public npx lifecycle roundtrip is therefore impossible and was recorded NOT RUN rather than faked; composition/boot smoke could not meaningfully run against a service that cannot load. Metadata that DID come through correctly: both dist-tags moved latest to 0.2.0 via npm's normal publish default (recorded truthfully, not mutated), engines node ^22.19.0 || >=24.0.0 on image-mind, bin mapping string and dependencies {@ran-sh/dsh-vision: ^0.2.0, schemastery: ^3.18.0} with zero file:/link:/workspace:/git seams in installed metadata. Zero registry writes, no Git tag, no GitHub Release, no real-Harness touch, no repository mutation outside this Result and the ACTIVE_TASK deletion (git diff --check clean). URGENT maintainer remediation required before any v0.2.0 tag/release authorization: the broken 0.2.0 tarballs must be unpublished per npm policy and republished from a built tree (npm run build first), or superseded by corrected versions, because latest currently serves non-functional packages.",
   "timeline": {
     "started_at": "2026-08-23T17:33:42+08:00",
-    "completed_at": null
+    "completed_at": "2026-08-23T17:37:38+08:00"
   },
-  "changed_files": [],
-  "tests": [],
-  "blockers": [],
-  "result_path": "docs/agent-results/DSH-VISION-NPM-POSTPUBLISH-VERIFY-021-result.json"
+  "changed_files": [
+    "docs/agent-results/DSH-VISION-NPM-POSTPUBLISH-VERIFY-021-result.json",
+    "docs/agent-tasks/ACTIVE_TASK.json"
+  ],
+  "tests": [
+    {
+      "name": "task-contract-validation-and-source-revision",
+      "status": "PASS",
+      "evidence": "node .agent-workflow/validator/validate-contract.mjs task docs/agent-tasks/ACTIVE_TASK.json -> VALID TASK CONTRACT; git pull --ff-only fast-forwarded main aa50bb7..48aebc6 (PR #62 merge 0ddeea04 + task commit 48aebc69); exact source SHA 48aebc6966c342bd59dc129ad9428738ec592cdf recorded; task branch chore/npm-postpublish-verify-021 created from that tip; Draft PR #63 opened early after the first commit and left unmerged (https://github.com/Ran-sh/dsh-vision/pull/63)."
+    },
+    {
+      "name": "public-metadata-read-only-view",
+      "status": "PASS",
+      "evidence": "npm view --json against https://registry.npmjs.org/: @ran-sh/dsh-vision@0.2.0 exists with dist-tags {latest: 0.2.0}, dist.integrity sha512-C15CmASVoy4SRuPBeYd9VI68wHufKSSE3WLhbxouZoOSsCrf+fh+WH0v6k+IrQKUhVooDRRMqgX4xMjGkIlejw==, shasum d43b11093201bf2004215bf914cf7e98363d48d0, tarball https://registry.npmjs.org/@ran-sh/dsh-vision/-/dsh-vision-0.2.0.tgz, dist.fileCount 2, unpackedSize 2042, peerDependencies @deepseek-ai/cordis + @deepseek-ai/dsh-llm. dsh-plugin-image-mind@0.2.0 exists with dist-tags {latest: 0.2.0}, integrity sha512-/4fjUxHJj49+FAcQpOKkKbW4oVgX9DIljWWl+aOpx+GpGXyHEu5xA7kmMcst+irR0vaFroCRIyJjSeUoGMANRA==, shasum 550b696f0ac91f6d669b5dde1796dc5df4f3f87c, engines node ^22.19.0 || >=24.0.0, bin {dsh-plugin-image-mind: lib/cli.js}, dependencies {@ran-sh/dsh-vision: ^0.2.0, schemastery: ^3.18.0}, 12 peers, dist.fileCount 3, unpackedSize 6753. npm's normal publish default moved latest to 0.2.0 for BOTH packages; no dist-tag mutation was performed (none authorized). No secrets recorded."
+    },
+    {
+      "name": "artifact-content-integrity-vs-accepted-candidate",
+      "status": "FAIL",
+      "evidence": "Published artifact sizes/shasums do not match the accepted 0.2.0 candidate. Expected from Batch 018 dry-runs: vision 15 files / 60.8 kB unpacked / shasum 328f7235bf449be7670f7fea8842ad749fb22276; image-mind 9 files / ~820 kB incl. lib/index.js+lib/client.js+lib/cli.js / shasum 7f59073ddfadbffdf0409fcead34deabd7e943cb (post-Batch-019 pack showed 9 files incl. lib/cli.js 24 kB). Published: vision 2 files / 2042 B / d43b11093201bf2004215bf914cf7e98363d48d0; image-mind 3 files / 6753 B / 550b696f0ac91f6d669b5dde1796dc5df4f3f87c. Conclusion: the manual publishes ran from a tree WITHOUT npm run build output (no lib/), shipping metadata-only tarballs."
+    },
+    {
+      "name": "clean-room-exact-version-install",
+      "status": "PASS",
+      "evidence": "Fresh mkdtemp prefix with no workspace links/tarballs/seams: `npm install --prefix <tmp> @ran-sh/dsh-vision@0.2.0 dsh-plugin-image-mind@0.2.0` exit 0 (90 packages added, ~50 s, public registry only). Installed manifests report exactly @ran-sh/dsh-vision 0.2.0 (main lib/index.js) and dsh-plugin-image-mind 0.2.0 (main lib/index.js, bin lib/cli.js); installed dependency specs show zero file:/link:/workspace:/git seams."
+    },
+    {
+      "name": "installed-package-closure-and-import",
+      "status": "FAIL",
+      "evidence": "Installed trees contain NO built artifacts: @ran-sh/dsh-vision ships only package.json + README.md (expected lib/index.js + lib/types/*.d.ts); dsh-plugin-image-mind ships only cordis.patch.yml + package.json + README.md (expected lib/index.js, lib/client.js, lib/cli.js + maps). Import smoke via proper file:// URL fails: ERR_MODULE_NOT_FOUND '.../@ran-sh/dsh-vision/lib/index.js'. Bin target check: node_modules/dsh-plugin-image-mind/lib/cli.js -> False, and node_modules/.bin contains NO dsh-plugin-image-mind shim at all (npm skips shims whose target file does not exist); only unrelated transitive bins (cordis, js-yaml, loose-envify) appear."
+    },
+    {
+      "name": "public-npx-lifecycle-roundtrip-exact-rc2",
+      "status": "NOT RUN",
+      "evidence": "The full public lifecycle matrix (install/status/status --json/update/composition smoke/HTTP boot smoke/uninstall/absent status/idempotent uninstall against disposable exact rc.2 DSH_HOME) could not be executed: the very first UX step `npx --yes dsh-plugin-image-mind@0.2.0 --version` already fails ('dsh-plugin-image-mind' is not recognized as an internal or external command — no bin shim exists), and the vision service cannot even be imported, so install would compose nothing functional. Recorded NOT RUN honestly rather than simulating results; at-least-one-roundtrip requirement is unmet solely due to the defective publication."
+    },
+    {
+      "name": "no-side-effects-and-repository-cleanliness",
+      "status": "PASS",
+      "evidence": "Zero npm registry writes (view/install reads only; no publish/unpublish/deprecate/dist-tag/provenance/token actions); no Git tag or GitHub Release created/deleted; no real-Harness state read or modified (all verification inside mkdtemp directories); git diff --check exit 0; the only repository changes on this branch are this Result Contract and the ACTIVE_TASK deletion."
+    }
+  ],
+  "blockers": [
+    "Published @ran-sh/dsh-vision@0.2.0 (shasum d43b11093201bf2004215bf914cf7e98363d48d0) contains only package.json + README.md: lib/index.js and lib/types are missing, so the service cannot be imported at all.",
+    "Published dsh-plugin-image-mind@0.2.0 (shasum 550b696f0ac91f6d669b5dde1796dc5df4f3f87c) contains only cordis.patch.yml + package.json + README.md: lib/cli.js, lib/index.js and lib/client.js are missing, so the advertised bin does not exist, npm creates no .bin shim, and `npx dsh-plugin-image-mind@0.2.0` fails immediately.",
+    "Both registries' latest dist-tags point at these defective 0.2.0 tarballs, so default public installs are non-functional right now. Maintainer remediation required before v0.2.0 tag/release: build locally (`npm ci && npm run build` in the repo root), then either unpublish both defective 0.2.0 tarballs within npm policy and republish the built artifacts (verify shasums against a fresh `npm pack` — expected ~15-file/~61 kB vision and 9-file/~820 kB image-mind tarballs matching the accepted candidate content), or cut corrected versions (e.g. 0.2.1) from the same main candidate; afterwards re-run this verification batch to earn PUBLISHED_AND_PUBLICLY_VERIFIED."
+  ],
+  "result_path": "docs/agent-results/DSH-VISION-NPM-POSTPUBLISH-VERIFY-021-result.json",
+  "notes": [
+    "Final state declared per contract semantics: PUBLISHED_AND_PUBLICLY_VERIFIED was NOT earned; the truthful outcome is DEFECTIVE_PUBLICATION with status FAIL. Per acceptance criteria, PASS status requires that final state and empty blockers — neither holds.",
+    "What survived publication correctly: version fields, dist-tags movement to 0.2.0 (npm default), engines, the bin mapping STRING, dependency specs including @ran-sh/dsh-vision@^0.2.0, peer family, and README/cordis.patch.yml payloads. Only the built lib/** artifacts are missing everywhere.",
+    "Likely root cause consistent with all evidence: the manual publishes ran from a checkout without `npm run build` output (or after removing lib/), so npm packed the manifests' non-lib files only. The Batch 020 EOTP block is unrelated to this defect.",
+    "No secrets encountered or recorded; all npm output used public unauthenticated-capable views plus one read-only authenticated session for whoami-free flows (whoami was not needed here and not run).",
+    "result_commit self-reference convention mirrors Batches 018-020: the field records the completion commit introducing the final Result Contract together with the ACTIVE_TASK deletion; one follow-up commit records that SHA."
+  ],
+  "result_validation": {
+    "status": "PASS",
+    "validator": "node .agent-workflow/validator/validate-contract.mjs result docs/agent-results/DSH-VISION-NPM-POSTPUBLISH-VERIFY-021-result.json --stamp",
+    "validated_at": "2026-08-23T09:38:51Z",
+    "evidence": "Exit 0: VALID RESULT CONTRACT: docs/agent-results/DSH-VISION-NPM-POSTPUBLISH-VERIFY-021-result.json"
+  }
 }
