@@ -1,0 +1,116 @@
+{
+  "schema_version": 2,
+  "task_id": "DSH-VISION-HARNESS-RC2-FULL-REGRESSION-017",
+  "source_commit": "ac638ccf1dcf4c33e0308d533619a55fdc80c87d",
+  "result_commit": "4b5e7b8665bff97ee4f3fe5395c6bf1f230e048e",
+  "status": "PASS",
+  "summary": "Batch 017 在 exact @deepseek-ai/dsh@0.1.1-rc.2 上完成 Codex-owned 全量内部回归并修复发现的兼容性缺陷：node-semver 实证 ^0.1.0-rc.7 按同 [major,minor,patch] tuple 规则拒绝 0.1.1-rc.2 族且在 pnpm strict/repo 安装中复现，rc.2 宿主族要求 react ^19.2.8，0.2.0 未发布导致的 registry 解析缺口亦复现。最小化修复：两个包 peerDependencies 与仓库 devDependencies 升到 ^0.1.1-rc.2 精确线，root 引入官方 @deepseek-ai/dsh@0.1.1-rc.2 作为测试宿主（含完整 peer 族与 react 19.2.8），tests/package.test.ts 新增 peer 准入断言锁定；README 从 113 行精简到 79 行；在完整 rc.2 宿主上 typecheck/build/447 项测试/test:package(13)/test:built、100-case deterministic benchmark、scorer、compare 门、long-screenshot preprocess 对比全部通过；fresh task-owned 隔离验收（官方 plugin add + 任务自有 profile 内 pnpm overrides seam，本地 pack 的 0.2.0 产物）在 exact 0.1.1-rc.2 web 上全部 PASS：boot HTTP 200、双 bundle 层组合、/image-mind catalog/config/previews/raw/preview 路由（Batch 008 的 rc.1 路由缺口在 rc.2 未复现）、keyless 视觉挑战 visualVerified=true、端点模型发现、PNG/JPEG/WebP 附件旅程（raw 字节一致、previews/commit）、重启恢复、官方 remove/re-add/remove 清理。11 个现存远程分支完成盘点：8 个 SAFE_DELETE_AFTER_MERGE、crew/test/v0.3-final-isolated-acceptance 与 release/0.2.0-docs 为 RETAIN，无 CONSOLIDATE_CONTENT 触发（无 main 缺失的产品代码）。未发布、未打 tag、未建 Release、未触碰真实 Harness；PR #59（Draft）已开且保持未合并供 ChatGPT 审阅。",
+  "timeline": {
+    "started_at": "2026-08-23T10:41:00+08:00",
+    "completed_at": "2026-08-23T11:57:00+08:00"
+  },
+  "changed_files": [
+    "README.md",
+    "package.json",
+    "package-lock.json",
+    "packages/vision/package.json",
+    "packages/image-mind/package.json",
+    "tests/package.test.ts",
+    "CHANGELOG.md",
+    "docs/compatibility.md",
+    "docs/verification-debt.md",
+    "docs/release-checklist.md",
+    "docs/agent-results/DSH-VISION-HARNESS-RC2-FULL-REGRESSION-017-result.json",
+    "docs/agent-tasks/ACTIVE_TASK.json"
+  ],
+  "tests": [
+    {
+      "status": "PASS",
+      "evidence": "node .agent-workflow/validator/validate-contract.mjs task docs/agent-tasks/ACTIVE_TASK.json -> VALID TASK CONTRACT; source main resolved to ac638ccf1dcf4c33e0308d533619a55fdc80c87d; branch chore/harness-rc2-full-regression-017 created from main; Draft PR #59 opened early (https://github.com/Ran-sh/dsh-vision/pull/59) after the first commit and remains unmerged.",
+      "name": "task-contract-validation"
+    },
+    {
+      "status": "PASS",
+      "evidence": "Official GitHub release deepseek-ai/deepseek-harness dsh-v0.1.1-rc.2 (prerelease, published 2026-08-21T12:35:08Z), tag dsh-v0.1.1-rc.2 -> commit b150a551b8d465e31e418e1b2eaf5e79bbb7d28e; npm @deepseek-ai/dsh dist-tags latest=next=0.1.1-rc.2 (not stale); version probe via official launcher `node node_modules/@deepseek-ai/dsh/lib/bin.js --version` -> 0.1.1-rc.2. No substituted harness version was used for any compatibility claim.",
+      "name": "official-rc.2-provenance"
+    },
+    {
+      "status": "PASS",
+      "evidence": "Reproduced before fixing: node-semver 7.8.5 satisfies('0.1.1-rc.2','^0.1.0-rc.7')=false (same-[M,m,p]-tuple prerelease rule) while satisfies('0.1.0-rc.8','^0.1.0-rc.7')=true; pnpm strict install of dsh@0.1.1-rc.2 + local 0.2.0 packages failed ERR_PNPM_PEER_DEP_ISSUES (react 18.3.1 vs react-dom@19.2.8 requiring react ^19.2.8); the unpublished @ran-sh/dsh-vision@^0.2.0 dependency failed registry resolution (ERR_PNPM_NO_MATCHING_VERSION, latest 0.1.0). Fix: peerDependencies and devDependencies raised to ^0.1.1-rc.2 / 0.1.1-rc.2 exactly, react/@types/react moved to ^19.2.8/~19.2.18, root devDependencies pin official @deepseek-ai/dsh 0.1.1-rc.2 and its full peer family installs (dsh-timeout etc. present in lockfile); package-lock regenerated; npm ci + allowScripts entries (esbuild/koffi/node-pty/protobufjs/dsh-subprocess-local/@google/genai) keep the rc.2 host bootable.",
+      "name": "peer-range-reproduction-and-fix"
+    },
+    {
+      "status": "PASS",
+      "evidence": "tests/package.test.ts adds a self-contained node-semver-compatible rangeAdmits helper and asserts every image-mind host peer and the vision dsh-llm peer admit 0.1.1-rc.2 and reject 0.1.1-rc.1 and 0.2.0 (13/13 package tests pass on the final head).",
+      "name": "peer-admission-regression-assertion"
+    },
+    {
+      "status": "PASS",
+      "evidence": "11 remote branches inventoried against main (ac638cc) by ancestry and patch/tree diffs: SAFE_DELETE_AFTER_MERGE = chore/agent-workflow-v1.7, chore/codex-full-regression, chore/codex-release-retest, chore/sync-orchestrator-workflow, chore/sync-result-v2-evidence, fix/new-r1-history-preview-runtime, fix/rc1-webserver-lifecycle (ahead=0), fix/release-readiness-r1-fr001, release/0.2.0 (unique 16-line docs/releases/v0.2.0.md covered by CHANGELOG); RETAIN = crew/test/v0.3-final-isolated-acceptance (separate @ran-sh/dsh-crew tree, no common ancestry, never touches packages/**), release/0.2.0-docs (superseded alternative long-form docs narration; confirm wording before deleting); nothing requires CONSOLIDATE_CONTENT (no main-missing product code). No remote branch was deleted (ChatGPT performs deletion after review).",
+      "name": "remote-branch-inventory"
+    },
+    {
+      "status": "PASS",
+      "evidence": "README.md rewritten from 113 lines to 79 lines (-30%), keeping the independent-community disclaimer, one-sentence purpose, minimal two-package architecture split, official install/remove commands with the not-published caveat, provider configuration entry, 8-image limit, concise cache/refocus/reliability/security summary, exact rc.2 compatibility pointer to docs/compatibility.md, minimal development commands and license. Stale rc.1-centric wording removed; no unpublished-availability claim.",
+      "name": "readme-simplification"
+    },
+    {
+      "status": "PASS",
+      "evidence": "From npm ci on the final head: npm run typecheck exit 0; npm run build exit 0; npm test exit 0 (workspace 63 + image-mind 325 passed/8 skipped + root 59 passed; 447 total); npm run test:package exit 0 (13); npm run test:built exit 0; git diff --check clean.",
+      "name": "clean-repository-lane"
+    },
+    {
+      "status": "PASS",
+      "evidence": "Full suite on the exact 0.1.1-rc.2 test host covers task classification/budgets; PNG/JPEG/WebP loading/preprocessing; local path/URL/attachment handling; one/multi-image ordering; exactly-8/ninth-rejected gates (send-hook-image-limit, tool-thin, image-limits artifact); OCR/document/UI/code/chart/screenshot/translation/photo/compare routing; semantic + reusable-evidence caches with refresh/no-store; automatic narrow refocus; provider/model stickiness and fallback; retries; execution-gate FIFO/abort; health/circuit/half-open; cancellation; 400/401/403/404; 413 recursive splitting preserving Image N labels; 429 Retry-After; Chat Completions and Responses parsing; model discovery; provider request-body boundaries; OpenAI-only detail non-leakage; trace/usage/lifecycle truthfulness; SSRF/magic-byte/size/timeout/security boundaries; user-visible routing secrecy; call/debug redaction — all green (325 image-mind tests + vision + root).",
+      "name": "internal-regression-matrix"
+    },
+    {
+      "status": "PASS",
+      "evidence": "npm run benchmark:deterministic exit 0 regenerated results.baseline.jsonl/results.candidate.jsonl (100 cases each); scorer on both files: cases=100, missing=0, routingSuccessRate=1, assertionPassRate=1, taskSuccessRate=1, forbiddenHitCount=0, trace/route/decision coverage=1, consistency rates=1; vision-benchmark-compare gate exit 0 with baselineTokenUsageCoverage=1, candidateTokenUsageCoverage=1, candidateZeroProviderReuseRate=0.2 vs baseline 0 (no quality/security threshold loosened); long-image-preprocess comparison exit 0 with currentRowOrderEvidence=true and historicalRowOrderEvidence=true; vision-corpus tests and benchmark-runner/score tests part of npm test.",
+      "name": "deterministic-benchmark-and-scorer"
+    },
+    {
+      "status": "PASS",
+      "evidence": "Task-owned DSH_HOME (Temp/dsh017home), free port 55272, exact @deepseek-ai/dsh@0.1.1-rc.2 launcher from the repo test host; official `plugin --profile web add <tgz>` of local-packed 0.2.0 tarballs with a pnpm-native overrides entry in the task-owned profile (recorded Batch 008 mechanism) for the unpublished @ran-sh/dsh-vision@^0.2.0 dependency. PASS: boot -> 'dsh web: http://127.0.0.1:55272', GET / HTTP 200; --dump-config composes vision-runtime (@ran-sh/dsh-vision) + image-mind (dsh-plugin-image-mind) layers; GET /image-mind/catalog HTTP 200 with real provider catalog JSON, /image-mind/config 200, /image-mind/previews 422-without-sessionId and 200-with, /image-mind/raw/<id> byte-identical, /image-mind/preview/<id>/<n> shape working (Batch 008 rc.1 route gap does not reproduce); POST /image-mind/config persisted provider via official settings wire (keyReady true, apiKey mask *******************, never plaintext); POST /image-mind/models discovered endpoint models (source endpoint, incl. vision-stub); POST /image-mind/test -> visualVerified:true against a task-owned keyless OpenAI-compatible stub that decodes the probe PNG pixel (deterministic local stub, no credentials); PNG/JPEG/WebP attachment journey: all three real formats accepted (200) through the host attachment backend with magic-byte+decode validation, raw served byte-identical (113/645/86 bytes), previews listed batch-a count 3, preview/commit -> committed:true, neutral preview payloads leak no attachment ids; restart recovery: web process killed and rebooted, committed batch still listed for the same sessionId; official remove -> 0 bundle references, official re-add -> 4 references restored, official remove (plugin then service) -> 0 references (full cleanup). Real Harness profiles/state/credentials were never read or written; the observed real 3080 listener was not present during this run and was never touched.",
+      "name": "isolated-exact-rc.2-harness-acceptance"
+    },
+    {
+      "status": "PASS",
+      "evidence": "docs/compatibility.md gains the 0.2.0 x 0.2.0 x 0.1.1-rc.2 KNOWN_GOOD (isolated lifecycle) row and documents the reproduced prerelease-range mismatch and the ^0.1.1-rc.2 fix; docs/verification-debt.md closes the exact-host route/add/remove item for rc.2 while keeping rc.1 historical wording and the Browser/real-provider open items (9th-image browser fail-fast, drag/paste UI journey, real-provider probes stay open); CHANGELOG.md [Unreleased] records Batch 017; docs/release-checklist.md section 3 is now the rc.2-executed gate. rc.1 evidence in historical rows/contracts preserved.",
+      "name": "docs-factual-updates"
+    },
+    {
+      "status": "PASS",
+      "evidence": "npm pack --dry-run for @ran-sh/dsh-vision: README + lib/index.js + 14 public lib/types/*.d.ts + package.json, no src/tests/credentials/.env; for dsh-plugin-image-mind: README + cordis.patch.yml + lib/index.js + lib/client.js(+maps) + package.json, no leaks; both manifests contain no file:/link:/workspace: or git dependency references (image-mind depends on registry-scope @ran-sh/dsh-vision ^0.2.0 and schemastery ^3.18.0 only).",
+      "name": "package-and-types-inspection"
+    },
+    {
+      "status": "PASS",
+      "evidence": "Draft PR #59 head 4b5e7b8 GitHub Actions: install-roundtrip success, secret-scan success, test (22), test (24), windows all green on the final head (checked via check-runs API after push).",
+      "name": "pr-head-ci"
+    },
+    {
+      "status": "PASS",
+      "evidence": "All task-owned processes (web on 55272, stub on 55273) terminated; ports free; task-owned DSH_HOME/profile and tarballs confined to the system temp area; no publish/dist-tag/tag/GitHub Release/real-Harness installation performed; working tree clean except the intended completion files; no credentials or secret-bearing material appear in this contract.",
+      "name": "cleanup-and-repository-audit"
+    }
+  ],
+  "blockers": [],
+  "result_path": "docs/agent-results/DSH-VISION-HARNESS-RC2-FULL-REGRESSION-017-result.json",
+  "notes": [
+    "Load seam (approved Batch 008 mechanism): official `dsh plugin --profile web add <tgz>` plus a pnpm overrides entry in the task-owned temporary profile to satisfy the unpublished @ran-sh/dsh-vision@^0.2.0 dependency; both loaded packages are 0.2.0 artifacts packed from this branch after npm run build. Registry publication remains the only missing piece for a registry-install KNOWN_GOOD (0.2.0 intentionally unpublished; no publication performed).",
+    "Peer incompatible claim is exact and reproducible: node-semver rejects 0.1.1-rc.2 under ^0.1.0-rc.7; the same-tuple rule admits 0.1.0-rc.8, which is why a stricter future host line would have silently co-installed duplicates; the raised ^0.1.1-rc.2 ranges mirror the official dsh@0.1.1-rc.2 peer phrasing.",
+    "The Batch 008 rc.1 /image-mind/* route gap (404 on the rc.1 web) does NOT reproduce on exact rc.2: catalog/config/previews/raw/preview answer correctly. This is an observable runtime difference between the two host releases and is recorded, not overclaimed.",
+    "Browser-only gates remain outside this isolated gateway: a real-browser 9th-image fail-fast send and the drag/paste/lightbox UI journey need a browser session (Batch 008 reached the same boundary and marked those PARTIAL); the 8/9 gate logic is locked by unit/integration tests and the built-bundle constants (MAX_IMAGES_PER_REQUEST=8).",
+    "Environment: Windows 10.0.22631 x64, Node v24.18.1, npm 11.16.0, pnpm 11.7.0, registry https://registry.npmjs.org/. Known npm/npx transient resolver stalls were bypassed with pnpm pre-resolution exactly as prior Batch 006/008 did; npm install/ci on the final lockfile is stable.",
+    "Observed external state: no listener was present on the real 3080 port during execution; the real Harness was not read or modified. task-owned probes used ports 55272/55273 only.",
+    "shipping/provenance record: vision tarball 17 kB, image-mind tarball 197 kB at pack time; built bundle contains the neutral attachment marker path and image-limits constants verified by tests.",
+    "PR #59 (chore/harness-rc2-full-regression-017) remains Draft/open/unmerged for ChatGPT review, with head 4b5e7b8 and green CI. ACTIVE_TASK.json is deleted on the execution branch by the completion commit."
+  ],
+  "result_validation": {
+    "status": "PASS",
+    "validator": "node .agent-workflow/validator/validate-contract.mjs result docs/agent-results/DSH-VISION-HARNESS-RC2-FULL-REGRESSION-017-result.json --stamp",
+    "validated_at": "2026-08-23T03:57:51Z",
+    "evidence": "Exit 0: VALID RESULT CONTRACT: docs/agent-results/DSH-VISION-HARNESS-RC2-FULL-REGRESSION-017-result.json"
+  }
+}
