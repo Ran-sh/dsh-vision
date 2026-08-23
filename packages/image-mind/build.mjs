@@ -1,12 +1,12 @@
-/**
+﻿/**
  * Standalone esbuild config for dsh-plugin-image-mind.
  *
  * The node half (tool registration + attach route + settings section + vision
  * provider registration) bundles to lib/index.js with every @deepseek-ai/*
- * peer and schemastery external — they resolve at runtime from the dsh
+ * peer and schemastery external 鈥?they resolve at runtime from the dsh
  * profile tree. The vision service (@ran-sh/dsh-vision) is external too: it
  * is loaded as its own Cordis entry (the vision-runtime composition row), so
- * image-mind shares the SAME service instance it injects — bundling a copy
+ * image-mind shares the SAME service instance it injects 鈥?bundling a copy
  * would create a second ctx.vision.
  *
  * The browser half bundles to lib/client.js as a closure-factory artifact: the
@@ -14,7 +14,9 @@
  * shell's own plugin client bundles.
  */
 import { rm } from 'node:fs/promises'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { build } from 'esbuild'
+import { computeInputsHash } from '../../scripts/pack-state.mjs'
 
 const PKG = 'dsh-plugin-image-mind'
 
@@ -61,7 +63,7 @@ await build({
 // The lifecycle CLI bundles standalone for the npm bin entry
 // (`npx dsh-plugin-image-mind install|update|status|uninstall`). Node
 // built-ins stay external via platform:'node'; no @deepseek-ai/* or
-// @ran-sh/* imports exist here on purpose — the CLI must run before/without
+// @ran-sh/* imports exist here on purpose 鈥?the CLI must run before/without
 // any profile tree and delegates everything to the official dsh launcher.
 await build({
   entryPoints: ['src/cli/bin.ts'],
@@ -74,3 +76,12 @@ await build({
   // esbuild preserves bin.ts's #!/usr/bin/env node line on its own.
   logLevel: 'info',
 })
+
+// Release fail-safe (Batch 022): record the content hash of declared pack
+// inputs so the prepack guard can prove freshness instead of trusting mtimes
+// or human memory. The state file never ships (not in the files allowlist).
+const manifest = JSON.parse(readFileSync('package.json', 'utf8'))
+await writeFileSync(
+  'lib/.pack-state.json',
+  `${JSON.stringify({ inputsHash: computeInputsHash(process.cwd(), manifest.packGuard.inputs) }, null, 2)}\n`,
+)

@@ -83,6 +83,30 @@ function packFiles(pkgDir: string): string[] {
 describe('dsh-plugin-image-mind package metadata', () => {
   const pkg = readJson(resolve(IMAGE_MIND_DIR, 'package.json'))
 
+  it('is exactly the 0.2.1 remediation candidate', () => {
+    expect(pkg['version']).toBe('0.2.1')
+    const visionPkg = readJson(resolve(VISION_DIR, 'package.json'))
+    expect(visionPkg['version']).toBe('0.2.1')
+  })
+
+  it('depends on the compatible service range @ran-sh/dsh-vision@^0.2.1', () => {
+    const dependencies = pkg['dependencies'] as Record<string, string>
+    expect(dependencies['@ran-sh/dsh-vision']).toBe('^0.2.1')
+  })
+
+  it('declares a prepack fail-safe guard covering every shipped lib entry', () => {
+    expect(pkg['scripts']?.['prepack']).toContain('pack-guard.mjs')
+    const guard = pkg['packGuard'] as { entries: string[]; inputs: string[] }
+    expect(guard.entries).toEqual(['lib/index.js', 'lib/client.js', 'lib/cli.js'])
+    expect(guard.inputs).toContain('src')
+    const visionPkg = readJson(resolve(VISION_DIR, 'package.json'))
+    expect(visionPkg['scripts']?.['prepack']).toContain('pack-guard.mjs')
+    const visionGuard = visionPkg['packGuard'] as { entries: string[] }
+    // The defective public 0.2.0 shipped ONLY metadata files (2/3 entries);
+    // these required-entry lists are the incident regression contract.
+    expect(visionGuard.entries).toEqual(['lib/index.js', 'lib/types/index.d.ts'])
+  })
+
   it('declares the bundle patch and the patch file exists', () => {
     const dsh = pkg['dsh'] as Record<string, unknown>
     const bundle = dsh['bundle'] as Record<string, unknown>
@@ -104,14 +128,14 @@ describe('dsh-plugin-image-mind package metadata', () => {
     expect(dependencies['@ran-sh/dsh-vision']).toBeDefined()
   })
 
-  it('exports the node entry and the client bundle, never ./src/*', () => {
+  it('exports the node entry, the client bundle and the lifecycle CLI bin', () => {
     const exportsMap = pkg['exports'] as Record<string, unknown>
     expect(exportsMap['.']).toBeDefined()
     expect(exportsMap['./client']).toBeDefined()
     expect(Object.keys(exportsMap).some(key => key.includes('/src/'))).toBe(false)
   })
 
-  it('ships lib, bundle patch, and README — never tests, credentials, or src', () => {
+  it('ships lib (index/client/cli), bundle patch, and README — never tests, credentials, or src', () => {
     const files = pkg['files'] as string[]
     expect(files).toContain('lib/**/*.js')
     expect(files).toContain('cordis.patch.yml')
@@ -173,14 +197,18 @@ describe('peer dependency ranges admit the exact 0.1.1-rc.2 harness line', () =>
   })
 })
 
-describe('npm pack output (both packages)', () => {
+describe('npm pack output (both packages) — the empty-shell 0.2.0 incident must never repeat', () => {
   it('dsh-plugin-image-mind tarball contains the runtime pieces and nothing private', () => {
     const files = packFiles(IMAGE_MIND_DIR)
     expect(files).toContain('package.json')
     expect(files).toContain('lib/index.js')
     expect(files).toContain('lib/client.js')
+    expect(files).toContain('lib/cli.js')
     expect(files).toContain('cordis.patch.yml')
     expect(files).toContain('README.md')
+    // The defective public 0.2.0 shipped exactly 3 metadata-only entries;
+    // a regression below this floor means lib/** was missing at pack time.
+    expect(files.length).toBeGreaterThan(6)
     expect(files.some(entry => /(^|\/)tests\//.test(entry))).toBe(false)
     expect(files.some(entry => /(^|\/)src\//.test(entry))).toBe(false)
     expect(files.some(entry => /\.credentials\.ya?ml$/.test(entry))).toBe(false)
@@ -194,6 +222,8 @@ describe('npm pack output (both packages)', () => {
     expect(files).toContain('lib/index.js')
     expect(files.some(entry => /^lib\/types\/.*\.d\.ts$/.test(entry))).toBe(true)
     expect(files).toContain('README.md')
+    // The defective public 0.2.0 shipped exactly 2 metadata-only entries.
+    expect(files.length).toBeGreaterThan(4)
     expect(files.some(entry => /(^|\/)tests\//.test(entry))).toBe(false)
     expect(files.some(entry => /(^|\/)src\//.test(entry))).toBe(false)
     expect(files.some(entry => /\.credentials\.ya?ml$/.test(entry))).toBe(false)

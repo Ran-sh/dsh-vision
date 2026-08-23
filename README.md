@@ -32,6 +32,11 @@ See [docs/architecture.md](docs/architecture.md).
 
 ## Install and use
 
+> **Warning:** the published `0.2.0` tarballs on npm are **defective empty
+> shells** (metadata only, no code) and must not be installed. `0.2.1` is the
+> remediation candidate; the commands below are the post-remediation path and
+> become usable once `0.2.1` is actually published.
+
 After an authorized npm publication, one command manages the plugin. The
 `dsh-plugin-image-mind` CLI delegates every mutation to official DSH plugin
 lifecycle operations — it never hand-edits profiles, lockfiles or stores:
@@ -48,13 +53,15 @@ npx dsh-plugin-image-mind uninstall    # keeps a shared vision service
 fallback path:
 
 ```sh
-npx @deepseek-ai/dsh plugin --profile web add dsh-plugin-image-mind@0.2.0
+npx @deepseek-ai/dsh plugin --profile web add dsh-plugin-image-mind@<version>
 npx @deepseek-ai/dsh plugin --profile web remove dsh-plugin-image-mind
 ```
 
-The 0.2.0 packages are **not published yet**; these are the post-publication
-commands, not current availability. For local development, build/pack the workspace and use an
+For local development, build/pack the workspace and use an
 isolated DSH profile — never hand-edit `cordis.patch.yml` or install into a real profile.
+Every publishable package carries a prepack fail-safe: `npm pack`/`npm publish`
+rebuilds `lib/**` from current sources or fails closed, so metadata-only shells
+cannot be produced again.
 
 In the web UI, configure a provider under 设置 → 插件 → 图像理解; API keys go through the
 DSH credential seam. A green status means a recent visual challenge passed.
