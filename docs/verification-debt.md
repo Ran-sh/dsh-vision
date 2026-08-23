@@ -53,6 +53,23 @@ proves them. Do not mark them green from a local mock:
 - [ ] long 1440px screenshots and browser memory/OCR quality at the intended
   pixel budget.
 
+## Lifecycle CLI boundary (Batch 019)
+
+Closed with automated evidence: the packed `dsh-plugin-image-mind` CLI drives
+install → status → idempotent second install → same-version no-op update →
+older→current convergence → shared-service-retaining uninstall → absent status
+→ idempotent re-uninstall against exact `@deepseek-ai/dsh@0.1.1-rc.2` in
+disposable DSH_HOME state (Result Contract 019; dedicated Linux/Windows/macOS
+CI lanes). Still open:
+
+- [ ] registry-install CLI roundtrip: everything above runs on local-packed
+  artifacts; a published-registry install remains post-publication evidence.
+- [ ] HTTP boot smoke currently runs on one CI lane (Linux Node 22); Windows/
+  macOS lanes prove parsing/spawning plus the full lifecycle roundtrip but not
+  a live boot.
+- [ ] `npx dsh-plugin-image-mind@latest update` from a real older registry
+  version cannot be exercised before publication.
+
 The known exact-rc.1 registry add blocker is package availability, not a
 plugin runtime failure: 0.2.0 is intentionally unpublished. Use local-packed
 artifacts for this pre-publish gate and keep registry compatibility unverified.

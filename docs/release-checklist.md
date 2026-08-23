@@ -47,6 +47,15 @@ Browser evidence must distinguish route/UI reachability from provider
 quality. No real credentials are read; a missing provider is recorded as
 external debt rather than a fake PASS.
 
+The `dsh-plugin-image-mind` lifecycle CLI carries its own automated gate:
+`RUN_CLI_LIFECYCLE=1 npx vitest run tests/cli-packed-lifecycle.test.ts`
+packs both packages, installs the CLI from the packed tarball, and drives
+install → status → idempotent second install → same-version no-op update →
+composition dump → shared-service-retaining uninstall → absent status →
+idempotent re-uninstall plus an older→current convergence and an HTTP boot
+smoke (one lane) against exact rc.2 in disposable DSH_HOME state. Dedicated
+CI lanes must stay green on Linux (Node 22/24), Windows and macOS.
+
 ## 4. Registry preflight and publication boundary
 
 Read-only preflight:
@@ -66,8 +75,9 @@ the registry may a fresh registry install be called compatibility evidence.
 
 The final work must be one clean unmerged Draft PR based on the exact latest
 `main` commit. Required CI includes Node 22/24, Windows, package/install,
-built artifacts, benchmark and secret scan. Keep the PR unmerged until ChatGPT
-review is complete. If GitHub authentication prevents Draft PR creation, record
+built artifacts, benchmark, secret scan and the `cli-lifecycle` lanes
+(Linux/Windows/macOS roundtrip; boot smoke on one lane). Keep the PR unmerged
+until ChatGPT review is complete. If GitHub authentication prevents Draft PR creation, record
 that external blocker in the Result Contract; do not fabricate a PR number.
 
 ## 6. Security and ownership

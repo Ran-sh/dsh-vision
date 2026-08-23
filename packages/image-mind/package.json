@@ -7,6 +7,9 @@
     "node": "^22.19.0 || >=24.0.0"
   },
   "main": "lib/index.js",
+  "bin": {
+    "dsh-plugin-image-mind": "lib/cli.js"
+  },
   "exports": {
     ".": {
       "default": "./lib/index.js"

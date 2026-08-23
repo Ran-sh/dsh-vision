@@ -19,6 +19,20 @@ directory, the settings section, and the `understand_image` tool into
 
 ## Install
 
+After publication, the one-command path is this package's lifecycle CLI
+(a convenience wrapper that delegates every mutation to official DeepSeek
+Harness plugin lifecycle commands):
+
+```sh
+npx dsh-plugin-image-mind install      # default profile: web
+npx dsh-plugin-image-mind status       # add --json for scripts
+npx dsh-plugin-image-mind update
+npx dsh-plugin-image-mind uninstall
+```
+
+`--profile <name>` targets another profile. The raw official Harness command
+path below stays available as an advanced/fallback route.
+
 Use the DeepSeek Harness official plugin mechanism. The release-tested web
 profile command is:
 
