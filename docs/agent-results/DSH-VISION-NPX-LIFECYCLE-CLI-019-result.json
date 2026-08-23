@@ -2,7 +2,7 @@
   "schema_version": 2,
   "task_id": "DSH-VISION-NPX-LIFECYCLE-CLI-019",
   "source_commit": "d61b73a46bc7b4c40509ea7148830dcf3ceb52c3",
-  "result_commit": null,
+  "result_commit": "1b4cbfb0f33c2bcbc65903709f52755fb1ba9e22",
   "status": "PASS",
   "summary": "Implemented and fully validated the packaged npx lifecycle CLI for dsh-plugin-image-mind on main@d61b73a: a dependency-free ESM bundle (lib/cli.js, npm bin `dsh-plugin-image-mind`) exposing install/update/status/uninstall plus --profile (default web), --from, --dsh-bin, --json, help/version. Every mutation delegates to the OFFICIAL @deepseek-ai/dsh@0.1.1-rc.2 forwarder (`dsh plugin --profile <name> add|remove ...`, inspected from the exact rc.2 package before implementation; no verbs invented); status is strictly read-only with a stable --json shape; install/update/uninstall are idempotent; uninstall preserves a shared @ran-sh/dsh-vision service when another layer references it and never hand-deletes Harness state. Process execution is injection-resistant (spawn executable+argv, shell:false, secrets/home paths redacted). Acceptance ran the CLI FROM THE PACKED TARBALL against exact rc.2 in disposable DSH_HOME state: 9/9 integration tests locally on Windows including an HTTP boot smoke (web reached 200 on a task-owned port), and PR-head CI run 32623658259 is green on all nine checks — cli-lifecycle lanes on Linux Node 22 (with boot smoke), Linux Node 24, Windows and macOS each running 35 unit + full packed roundtrip tests. Full release gates rerun clean (ci/typecheck/build/test/test:package/test:built/diff-check/pack dry-runs/publish dry-runs); both exact 0.2.0 registry views remain EXPECTED_NOT_PUBLISHED; versions stay 0.2.0; no publish, tag, GitHub Release or real-Harness touch occurred. Draft PR #61 remains unmerged for ChatGPT review.",
   "timeline": {
@@ -116,7 +116,7 @@
   "result_validation": {
     "status": "PASS",
     "validator": "node .agent-workflow/validator/validate-contract.mjs result docs/agent-results/DSH-VISION-NPX-LIFECYCLE-CLI-019-result.json --stamp",
-    "validated_at": "2026-08-23T06:50:05Z",
+    "validated_at": "2026-08-23T06:50:55Z",
     "evidence": "Exit 0: VALID RESULT CONTRACT: docs/agent-results/DSH-VISION-NPX-LIFECYCLE-CLI-019-result.json"
   }
 }
