@@ -3,13 +3,103 @@
   "task_id": "DSH-VISION-0201-REMEDIATION-CANDIDATE-022",
   "source_commit": "fea712ab0a6c746265438ac58abdd641a3f02707",
   "result_commit": null,
-  "status": "PARTIAL",
+  "status": "PASS",
+  "summary": "Prepared the exact 0.2.1 remediation candidate on main@fea712a with a structural fix for the defective public 0.2.0 empty-shell incident. Both publishable packages are now exactly 0.2.1 (image-mind depends on @ran-sh/dsh-vision@^0.2.1; lockfile updated with zero unrelated churn). The release fail-safe is a content-hash prepack guard: each build records sha256 over its declared pack inputs into lib/.pack-state.json (scripts/pack-state.mjs, written by both build.mjs files), and scripts/pack-guard.mjs — wired as the npm `prepack` hook so BOTH `npm pack` and `npm publish` run it — rebuilds via the package's real build when outputs are missing or inputs changed, then verifies every required entry (vision: lib/index.js + lib/types/index.d.ts; image-mind: lib/index.js/lib/client.js/lib/cli.js) and fails closed before any tarball can be produced. Guard logs go to stderr so `npm pack --json` output stays machine-clean. Incident regression tests exercise the REAL npm packaging lifecycle on synthetic fixtures: auto-build ships working entries from a no-output state, hash-detected input changes repack fresh content, and a failing build aborts packaging with a clear error. Real 0.2.1 pack artifacts recorded: vision 15 files / 17.1 KB tgz; image-mind 9 files incl. lib/cli.js / 215.2 KB tgz — explicitly contrasting the defective public 0.2.0 (2 and 3 metadata-only files). Full gates green (ci/typecheck/build/test 360+65/test:package 13/test:built 6/git diff --check); publish dry-runs pass with complete file sets; read-only registry checks confirm both 0.2.1 versions absent and both broken 0.2.0 versions still present (shasums d43b1109/550b696f unchanged); local packed-artifact npx lifecycle acceptance vs exact rc.2 passes 9/9 including HTTP boot smoke, and PR-head CI run 32635184298 is green on all nine lanes with the guard executing in-lane. No registry write, tag, release or real-Harness touch occurred in this preparation stage.",
   "timeline": {
     "started_at": "2026-08-23T18:20:49+08:00",
-    "completed_at": null
+    "completed_at": "2026-08-23T19:02:11+08:00"
   },
-  "changed_files": [],
-  "tests": [],
+  "changed_files": [
+    "CHANGELOG.md",
+    "README.md",
+    "docs/compatibility.md",
+    "docs/release-checklist.md",
+    "docs/verification-debt.md",
+    "package-lock.json",
+    "package.json",
+    "packages/image-mind/README.md",
+    "packages/image-mind/build.mjs",
+    "packages/image-mind/package.json",
+    "packages/vision/build.mjs",
+    "packages/vision/package.json",
+    "tests/cli-packed-lifecycle.test.ts",
+    "tests/package.test.ts",
+    "scripts/pack-guard.mjs",
+    "scripts/pack-state.mjs",
+    "tests/pack-guard.test.ts",
+    "docs/agent-results/DSH-VISION-0201-REMEDIATION-CANDIDATE-022-result.json",
+    "docs/agent-tasks/ACTIVE_TASK.json"
+  ],
+  "tests": [
+    {
+      "name": "task-contract-validation-and-source-revision",
+      "status": "PASS",
+      "evidence": "node .agent-workflow/validator/validate-contract.mjs task docs/agent-tasks/ACTIVE_TASK.json -> VALID TASK CONTRACT; git pull --ff-only fast-forwarded main 48aebc6..fea712a (PR #63 merge c0be8323 + task commit fea712ab); exact source SHA fea712ab0a6c746265438ac58abdd641a3f02707 recorded; task branch chore/0201-remediation-candidate-022 created from that tip; Draft PR #64 opened early after the first commit and left unmerged (https://github.com/Ran-sh/dsh-vision/pull/64). No force-push."
+    },
+    {
+      "name": "version-and-dependency-bump-with-lock-consistency",
+      "status": "PASS",
+      "evidence": "packages/vision version 0.2.0 -> exactly 0.2.1; packages/image-mind version 0.2.0 -> exactly 0.2.1; image-mind runtime dependency @ran-sh/dsh-vision ^0.2.0 -> exactly ^0.2.1; root private workspace bumped to 0.2.1 for consistency; package-lock.json synced via npm install --package-lock-only with a 13-line diff containing ONLY the three version fields plus the dependency range — no unrelated dependency churn."
+    },
+    {
+      "name": "release-fail-safe-design-and-wiring",
+      "status": "PASS",
+      "evidence": "Smallest robust mechanism chosen: npm's standard `prepack` lifecycle hook (runs automatically for BOTH `npm pack` and `npm publish`). Each build.mjs now ends by writing lib/.pack-state.json containing a sha256 CONTENT hash of the manifest-declared packGuard.inputs (src/** + build.mjs; content-based so fresh clones/checkouts are deterministic, unlike mtimes) via shared scripts/pack-state.mjs. scripts/pack-guard.mjs (prepack for both packages) compares current inputs hash + required entries against the state: fresh -> no-op; missing/stale -> runs the package's REAL build (`node build.mjs`, never a shortcut); post-build it verifies every declared entry exists and re-records state, exiting non-zero BEFORE npm can emit an incomplete tarball. Guard logs go to stderr so `npm pack --json` stdout stays valid JSON for tooling. State files are excluded by every files allowlist and never ship."
+    },
+    {
+      "name": "incident-regression-through-real-packaging-lifecycle",
+      "status": "PASS",
+      "evidence": "tests/pack-guard.test.ts drives actual `npm pack` against synthetic fixture packages wired to the same guard script: (1) no-output state -> pack succeeds WITH dist/hello.js present in the tarball and correct built content (auto-build path; exactly the 0.2.0 incident shape now impossible); (2) source edit without manual rebuild -> hash mismatch detected -> tarball carries FRESH content (no silent stale output); (3) failing build.mjs -> npm pack exits nonzero with 'pack-guard ... build failed ... refusing to package' and NO tarball entry (fail-closed). Live manual verification on the real vision package additionally showed: lib renamed away -> prepack logs 'rebuilding (required entries missing)' -> pack completes with all 15 files and lib restored."
+    },
+    {
+      "name": "full-repo-gates-on-final-candidate",
+      "status": "PASS",
+      "evidence": "npm ci exit 0; npm run typecheck exit 0; npm run build exit 0 (state files written by both builds); npm test exit 0 (root 360 passed/8 skipped incl. 3 new pack-guard incident regressions and updated 0.2.1 expectations; workspace 65 passed/9 skipped); npm run test:package exit 0 (13); npm run test:built exit 0 (6); git diff --check clean."
+    },
+    {
+      "name": "real-021-pack-artifacts-inspected",
+      "status": "PASS",
+      "evidence": "Real (non-dry-run) npm pack artifacts created and inspected: ran-sh-dsh-vision-0.2.1.tgz = 17.1 KB, SHA256 F4D578D61669EF5E41D26D1C9CDC18FB82B10C4C3812641C4497A0CFCCB75CB7, file list = README.md + lib/index.js + 12 lib/types/*.d.ts + package.json (15 files; version field 0.2.1); dsh-plugin-image-mind-0.2.1.tgz = 215.2 KB, SHA256 54BCEC6911A07FE507FB18CD2B288CC7ECF68B44A44AAEB859ABFA7B2B87A769, file list = README.md + cordis.patch.yml + lib/cli.js(+map) + lib/client.js(+map) + lib/index.js(+map) + package.json (9 files), bin dsh-plugin-image-mind -> lib/cli.js, dependencies @ran-sh/dsh-vision ^0.2.1 + schemastery ^3.18.0. No src/tests/private credential material in either list."
+    },
+    {
+      "name": "publish-dry-runs-vs-defective-020-baseline",
+      "status": "PASS",
+      "evidence": "npm publish --dry-run --access public service-first then plugin, both exit 0 with explicit '(dry-run)' notices and NO registry write. Explicit contrast recorded: candidate vision dry-run reports total files 15 and image-mind 9 versus the DEFECTIVE public 0.2.0 state of exactly 2 (vision) and 3 (image-mind) metadata-only files — a metadata-only regression cannot pass these gates (enforced in tests/package.test.ts floors as well)."
+    },
+    {
+      "name": "read-only-registry-state-before-completion",
+      "status": "PASS",
+      "evidence": "npm view @ran-sh/dsh-vision@0.2.1 -> E404 and dsh-plugin-image-mind@0.2.1 -> E404: both remediation versions remain unpublished, as required before the merged-main publication stage. Both broken 0.2.0 versions still exist publicly with unchanged shasums (vision d43b11093201bf2004215bf914cf7e98363d48d0; image-mind 550b696f0ac91f6d669b5dde1796dc5df4f3f87c). Zero mutations performed in this stage; deprecation/publish stay authorized only for later stages per task metadata."
+    },
+    {
+      "name": "packed-artifact-npx-lifecycle-regression-exact-rc2",
+      "status": "PASS",
+      "evidence": "RUN_CLI_LIFECYCLE=1 suite rerun locally on Windows with freshly guarded 0.2.1 packs (version assertions now derive CANDIDATE_VERSION/VISION_VERSION dynamically from manifests): 9/9 passed — install -> status(0.2.1/same/layerActive/service 0.2.1) -> idempotent second install -> same-version update noop -> composition dump-config contains the plugin layer -> HTTP boot smoke reached http://127.0.0.1:60320 -> shared-service-retaining uninstall -> absent status -> idempotent second uninstall, plus older(0.1.0)->current convergence. All mutations flow through official `dsh plugin` operations in disposable DSH_HOME state."
+    },
+    {
+      "name": "final-pr-head-ci-green-all-lanes",
+      "status": "PASS",
+      "evidence": "GitHub Actions run 32635184298 on head de7373e (implementation commit): all nine checks PASS — test(22)/test(24)/windows/install-roundtrip/secret-scan plus cli-lifecycle ubuntu(22, boot-smoke)/ubuntu(24)/windows/macos. Job-log verification shows REAL execution: the pack-guard ran in-lane ('[pack-guard] ... 0.2.1: verified 2 required artifact(s)' / 'verified 3'), CLI unit tests 35 passed, packed roundtrip 9/9 passed on the boot-smoke lane, and boot smoke reached http://127.0.0.1:45191. Existing CI matrix preserved (no workflow changes were needed)."
+    },
+    {
+      "name": "documentation-updates",
+      "status": "PASS",
+      "evidence": "Root README gains a prominent warning that published npm 0.2.0 is defective (metadata-only shells) and must not be installed, marks 0.2.1 as the remediation candidate whose commands become usable after publication, and documents the new prepack fail-safe; CHANGELOG records Batch 022 under [Unreleased] and corrects the [0.2.0] heading to 'published DEFECTIVE on npm; do not use'; docs/compatibility.md marks the 0.2.0/rc.2 KNOWN_GOOD row as REPOSITORY CANDIDATE ONLY with the npm artifact defect noted; docs/release-checklist.md retargets to 0.2.1/^0.2.1/v0.2.1 and requires publication through the guard; docs/verification-debt.md updates the registry-install debt to name the defective 0.2.0 and the guarded 0.2.1 as the first healthy publication path; packages/image-mind README warns against 0.2.0 and de-versions the official add example. No claim states 0.2.1 is already published."
+    }
+  ],
   "blockers": [],
-  "result_path": "docs/agent-results/DSH-VISION-0201-REMEDIATION-CANDIDATE-022-result.json"
+  "result_path": "docs/agent-results/DSH-VISION-0201-REMEDIATION-CANDIDATE-022-result.json",
+  "notes": [
+    "Stage boundary honored: this batch performs ZERO npm registry writes. The user's existing authorizations (exact 0.2.1 publish + deprecation of both broken 0.2.0 versions) apply only AFTER this candidate is merged to main and a subsequent publication stage runs; Git tag/GitHub Release remain unauthorized entirely.",
+    "Guard semantics recap for reviewers: freshness is decided by CONTENT hash (not mtimes), rebuilds use the package's real build script, verification happens after building and before npm can create a tarball, failures are loud and non-zero, and the guard executes inside npm's own prepack hook so plain `npm publish` from a fresh clone is safe by default.",
+    "Recorded 0.2.1 local artifact fingerprints for the later publication stage's comparison baseline: vision tgz SHA256 F4D578D61669EF5E41D26D1C9CDC18FB82B10C4C3812641C4497A0CFCCB75CB7 (15 files, 17.1 KB); image-mind tgz SHA256 54BCEC6911A07FE507FB18CD2B288CC7ECF68B44A44AAEB859ABFA7B2B87A769 (9 files, 215.2 KB). Registry-side shasums will differ slightly from local tgz hashes because npm recompresses; compare against `npm view dist.shasum`/integrity at publish time instead.",
+    "No secrets encountered or recorded; no real-Harness state touched; no force-push or history rewrite (branch history is linear: draft result -> implementation -> result-final/sha commits).",
+    "result_commit self-reference convention mirrors Batches 018-021: the completion commit introducing the final Result Contract plus the ACTIVE_TASK deletion is recorded here; one follow-up commit records that SHA."
+  ],
+  "result_validation": {
+    "status": "PASS",
+    "validator": "node .agent-workflow/validator/validate-contract.mjs result docs/agent-results/DSH-VISION-0201-REMEDIATION-CANDIDATE-022-result.json --stamp",
+    "validated_at": "2026-08-23T11:03:31Z",
+    "evidence": "Exit 0: VALID RESULT CONTRACT: docs/agent-results/DSH-VISION-0201-REMEDIATION-CANDIDATE-022-result.json"
+  }
 }
