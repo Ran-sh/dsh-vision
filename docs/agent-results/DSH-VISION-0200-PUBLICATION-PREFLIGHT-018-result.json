@@ -2,7 +2,7 @@
   "schema_version": 2,
   "task_id": "DSH-VISION-0200-PUBLICATION-PREFLIGHT-018",
   "source_commit": "a13728d3c92bda98179dd290deb798a6c6efe255",
-  "result_commit": null,
+  "result_commit": "6fa36dc3c30a5a464e88b9cc22833b04058a9bf6",
   "status": "PASS",
   "summary": "Side-effect-free 0.2.0 publication preflight completed on main@a13728d3c92bda98179dd290deb798a6c6efe255. Both manifests are exactly @ran-sh/dsh-vision@0.2.0 and dsh-plugin-image-mind@0.2.0 with registry-safe dependencies (no file:/link:/workspace:/git specifiers); image-mind depends on @ran-sh/dsh-vision@^0.2.0, so the service-first/plugin-second order is unambiguous. Read-only npm view confirms neither exact 0.2.0 version exists on https://registry.npmjs.org/ (EXPECTED_NOT_PUBLISHED). Registry connectivity PASS (npm ping PONG); auth probe recorded truthfully: npm whoami returns E401 in this executor environment (no username), so real publication requires a maintainer-authenticated environment; no token/config/OTP material was read or logged. Clean lane on the final main candidate: npm ci OK, typecheck/build/test/test:package/test:built all exit 0 (59+13+6 checks) and git diff --check clean. npm pack --dry-run file lists contain only declared artifacts (vision: 15 files; image-mind: 7 files; no src/tests/private paths or credential material). npm publish --dry-run --access public for both packages exited 0 with explicit 'Publishing to ... (dry-run)' notices and no registry write. All nine SAFE_DELETE remote branches were independently reconfirmed as merged/subsumed (8 via MERGED PRs #1-#9, fix/rc1-webserver-lifecycle via tip-is-ancestor-of-main) and deleted; main and release/0.2.0-docs retained. Exactly one ACTIVE_TASK existed (this one), the only open PR is Draft PR #60, and no package version drift from 0.2.0 exists. No npm publish/dist-tag, Git tag, GitHub Release, registry write, or real-Harness installation occurred. Verdict: the candidate is READY_FOR_EXPLICIT_PUBLISH_AUTHORIZATION.",
   "timeline": {
@@ -79,7 +79,7 @@
   "result_validation": {
     "status": "PASS",
     "validator": "node .agent-workflow/validator/validate-contract.mjs result docs/agent-results/DSH-VISION-0200-PUBLICATION-PREFLIGHT-018-result.json --stamp",
-    "validated_at": "2026-08-23T05:42:03Z",
+    "validated_at": "2026-08-23T05:42:21Z",
     "evidence": "Exit 0: VALID RESULT CONTRACT: docs/agent-results/DSH-VISION-0200-PUBLICATION-PREFLIGHT-018-result.json"
   }
 }
