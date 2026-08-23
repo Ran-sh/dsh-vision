@@ -1,0 +1,16 @@
+{
+  "schema_version": 2,
+  "task_id": "DSH-VISION-NPX-LIFECYCLE-CLI-019",
+  "source_commit": "d61b73a46bc7b4c40509ea7148830dcf3ceb52c3",
+  "result_commit": null,
+  "status": "PARTIAL",
+  "summary": "",
+  "timeline": {
+    "started_at": "2026-08-23T13:55:57+08:00",
+    "completed_at": null
+  },
+  "changed_files": [],
+  "tests": [],
+  "blockers": [],
+  "result_path": "docs/agent-results/DSH-VISION-NPX-LIFECYCLE-CLI-019-result.json"
+}
