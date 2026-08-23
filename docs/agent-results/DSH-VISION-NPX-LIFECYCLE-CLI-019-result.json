@@ -3,14 +3,120 @@
   "task_id": "DSH-VISION-NPX-LIFECYCLE-CLI-019",
   "source_commit": "d61b73a46bc7b4c40509ea7148830dcf3ceb52c3",
   "result_commit": null,
-  "status": "PARTIAL",
-  "summary": "",
+  "status": "PASS",
+  "summary": "Implemented and fully validated the packaged npx lifecycle CLI for dsh-plugin-image-mind on main@d61b73a: a dependency-free ESM bundle (lib/cli.js, npm bin `dsh-plugin-image-mind`) exposing install/update/status/uninstall plus --profile (default web), --from, --dsh-bin, --json, help/version. Every mutation delegates to the OFFICIAL @deepseek-ai/dsh@0.1.1-rc.2 forwarder (`dsh plugin --profile <name> add|remove ...`, inspected from the exact rc.2 package before implementation; no verbs invented); status is strictly read-only with a stable --json shape; install/update/uninstall are idempotent; uninstall preserves a shared @ran-sh/dsh-vision service when another layer references it and never hand-deletes Harness state. Process execution is injection-resistant (spawn executable+argv, shell:false, secrets/home paths redacted). Acceptance ran the CLI FROM THE PACKED TARBALL against exact rc.2 in disposable DSH_HOME state: 9/9 integration tests locally on Windows including an HTTP boot smoke (web reached 200 on a task-owned port), and PR-head CI run 32623658259 is green on all nine checks — cli-lifecycle lanes on Linux Node 22 (with boot smoke), Linux Node 24, Windows and macOS each running 35 unit + full packed roundtrip tests. Full release gates rerun clean (ci/typecheck/build/test/test:package/test:built/diff-check/pack dry-runs/publish dry-runs); both exact 0.2.0 registry views remain EXPECTED_NOT_PUBLISHED; versions stay 0.2.0; no publish, tag, GitHub Release or real-Harness touch occurred. Draft PR #61 remains unmerged for ChatGPT review.",
   "timeline": {
     "started_at": "2026-08-23T13:55:57+08:00",
-    "completed_at": null
+    "completed_at": "2026-08-23T14:48:46+08:00"
   },
-  "changed_files": [],
-  "tests": [],
+  "changed_files": [
+    ".github/workflows/ci.yml",
+    "CHANGELOG.md",
+    "README.md",
+    "docs/compatibility.md",
+    "docs/release-checklist.md",
+    "docs/verification-debt.md",
+    "packages/image-mind/README.md",
+    "packages/image-mind/build.mjs",
+    "packages/image-mind/package.json",
+    "packages/image-mind/tsconfig.host.json",
+    "packages/image-mind/src/cli/bin.ts",
+    "packages/image-mind/src/cli/constants.ts",
+    "packages/image-mind/src/cli/dsh.ts",
+    "packages/image-mind/src/cli/execute.ts",
+    "packages/image-mind/src/cli/main.ts",
+    "packages/image-mind/src/cli/plan.ts",
+    "packages/image-mind/src/cli/profile.ts",
+    "packages/image-mind/src/cli/redact.ts",
+    "packages/image-mind/src/cli/runner.ts",
+    "packages/image-mind/src/cli/semver.ts",
+    "packages/image-mind/tests/cli.test.ts",
+    "tests/cli-packed-lifecycle.test.ts",
+    "docs/agent-results/DSH-VISION-NPX-LIFECYCLE-CLI-019-result.json",
+    "docs/agent-tasks/ACTIVE_TASK.json"
+  ],
+  "tests": [
+    {
+      "name": "task-contract-validation-and-source-revision",
+      "status": "PASS",
+      "evidence": "node .agent-workflow/validator/validate-contract.mjs task docs/agent-tasks/ACTIVE_TASK.json -> VALID TASK CONTRACT; git pull --ff-only fast-forwarded main a13728d..d61b73a; exact source SHA d61b73a46bc7b4c40509ea7148830dcf3ceb52c3 recorded (source_commit=LATEST); task branch feat/npx-lifecycle-cli-019 created from that tip; Draft PR #61 opened early after the first commit and left unmerged (https://github.com/Ran-sh/dsh-vision/pull/61)."
+    },
+    {
+      "name": "official-dsh-lifecycle-surface-inspection",
+      "status": "PASS",
+      "evidence": "Inspected the exact installed rc.2 before writing code: `node node_modules/@deepseek-ai/dsh/lib/bin.js --help` documents `plugin [options] [args...]` as 'manage a profile's plugins by forwarding the remaining arguments to pnpm in the profile directory' with example `dsh plugin --profile tui add <package>`; the rc.2 bundle (lib/plugin-9h8shc4d.js) shows runPlugin initializes the profile on first use, spawns pnpm in the profile dir, and reconciles dsh.profile.bundles against installed state (a dependency declaring dsh.bundle joins the layer stack). Command mapping implemented: install/update -> official `add <spec>`; uninstall -> official `remove dsh-plugin-image-mind`; status -> read-only profile-manifest/node_modules reads + official `--version` probe (never invokes the mutating surface). No unsupported verbs inferred."
+    },
+    {
+      "name": "packaged-bin-entry-and-file-set",
+      "status": "PASS",
+      "evidence": "packages/image-mind/package.json adds \"bin\": { \"dsh-plugin-image-mind\": \"lib/cli.js\" }; build.mjs gains a third esbuild target bundling src/cli/bin.ts to lib/cli.js (ESM, platform node, shebang preserved, zero non-builtin runtime deps so it runs before/without any profile tree); npm pack --dry-run lists lib/cli.js in the tarball (total files 9) while existing privacy assertions still pass (no src/tests/credentials); versions remain exactly 0.2.0 in both manifests and the lockfile is untouched."
+    },
+    {
+      "name": "cli-command-surface-and-input-safety",
+      "status": "PASS",
+      "evidence": "`npx dsh-plugin-image-mind install|update|status|uninstall` UX with concise --help/-V and loud unknown-command/unknown-option/missing-value errors (exit 1). --profile defaults to web; names are validated (/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/, no dot segments/separators mirroring the official resolveProfileDir guard) and always travel as argv data, never interpolated shell text — hostile-input unit tests pass. --from accepts an explicit package spec (used by acceptance to install packed tarballs without publishing); --dsh-bin / DSH_PLUGIN_IMAGE_MIND_DSH_BIN pin the official launcher path."
+    },
+    {
+      "name": "process-runner-boundary-and-redaction",
+      "status": "PASS",
+      "evidence": "src/cli/runner.ts spawns executable+argv with shell:false/windowsHide:true, captures exit code/stdout/stderr, kills on timeout, and redacts output through src/cli/redact.ts (sk-* keys, Bearer tokens, api_key/token/secret/password assignments, home-directory prefixes). Unit tests prove hostile argv ('a;b|rm&c', quotes, $HOME, newline) reaches the child verbatim via JSON argv echo, nonzero exits propagate with streams, missing binaries return redacted errors instead of throwing, and timeouts kill children."
+    },
+    {
+      "name": "idempotence-convergence-and-status-semantics",
+      "status": "PASS",
+      "evidence": "Pure planners in src/cli/plan.ts are unit-tested: second exact-version install with active layer -> noop; same-version update -> safe noop success; absent-plugin update -> error pointing at install; older/newer installs converge via official add of the exact CLI version; status builds a stable key-ordered report (ok/command/profile/profileDir/cliVersion/harness/plugin/service) where a missing plugin is a normal absent result and unparsable versions report unknown instead of guessing. Integration confirms outcome-level idempotence: re-adding the packed tarball leaves exactly one manifest dependency and one bundles entry."
+    },
+    {
+      "name": "packed-artifact-execution-npx-semantics",
+      "status": "PASS",
+      "evidence": "The test harness packs BOTH workspace packages, co-installs image-mind+vision tarballs into an isolated npm prefix (registry has no 0.2.0, so the local vision artifact satisfies ^0.2.0), asserts node_modules/.bin shims exist (including .cmd on Windows), and executes lib/cli.js from that prefix for every lifecycle step — exactly what npx execs. A genuine `npx --no-install dsh-plugin-image-mind --version` probe passed on Linux/macOS lanes directly and on Windows via cmd.exe /c with a fixed constant command string (npm .cmd shims require cmd there; no user data ever enters the string, so it is injection-safe by construction). Node 22 and Node 24 lanes both green."
+    },
+    {
+      "name": "isolated-exact-rc2-roundtrip-with-boot-smoke",
+      "status": "PASS",
+      "evidence": "RUN_CLI_LIFECYCLE=1 suite drives a disposable DSH_HOME through official operations only: seed (official add of vision tarball + task-owned pnpm-workspace.yaml overrides seam redirecting @ran-sh/dsh-vision to it) -> packed-CLI install -> status(installed 0.2.0/same/layerActive/service present 0.2.0) -> idempotent second install -> same-version update noop -> dump-config composition smoke containing the image-mind layer -> HTTP boot smoke -> shared-service-retaining uninstall -> absent status -> idempotent re-uninstall. Local Windows run: 9/9 passed incl. boot smoke reaching http://127.0.0.1:54618. CI ubuntu lane: 9/9 passed incl. boot smoke http://127.0.0.1:46169. Every mutation observed as official `dsh plugin` behavior; final active layers clean."
+    },
+    {
+      "name": "shared-service-retention-proof",
+      "status": "PASS",
+      "evidence": "Fixture profile 'shared': a fake sibling bundle (fake-vision-consumer@1.0.0 declaring dsh.bundle.patch and depending on @ran-sh/dsh-vision ^0.2.0, resolved via the overrides seam) is added officially alongside the plugin; packed-CLI uninstall removes image-mind but keeps the service, reporting 'kept in the profile ... referenced by: fake-vision-consumer'; status then shows plugin absent + service present; removing the last referencer with the official remove prunes the service (status service.present=false), proving pruning stays owned by official tooling with no manual deletion anywhere."
+    },
+    {
+      "name": "older-to-current-convergence",
+      "status": "PASS",
+      "evidence": "Real convergence test without changing repository versions: a fixture dsh-plugin-image-mind@0.1.0 bundle tarball is added officially into profile 'upgrade'; status reports version 0.1.0 relation older; packed-CLI update converges the profile to the packed 0.2.0 artifact; status then reports 0.2.0/same with the layer active. Unit planners cover the older->current decision independently of artifacts."
+    },
+    {
+      "name": "release-gates-rerun-on-final-candidate",
+      "status": "PASS",
+      "evidence": "npm ci exit 0 (lockfile unchanged); npm run typecheck exit 0 (cli sources added to tsconfig.host include); npm run build exit 0 (lib/cli.js emitted); npm test exit 0 (root 360 passed/9 skipped incl. gated lifecycle skip; workspace 59 passed incl. 35 new CLI units); npm run test:package exit 0 (13); npm run test:built exit 0 (6); git diff --check clean; npm pack --dry-run both packages OK (vision 15 files, image-mind 9 files incl. lib/cli.js, nothing private); npm publish --dry-run --access public service-first then plugin exit 0 with explicit '(dry-run)' notices and no registry write; npm view @ran-sh/dsh-vision@0.2.0 and dsh-plugin-image-mind@0.2.0 both E404 -> EXPECTED_NOT_PUBLISHED."
+    },
+    {
+      "name": "pr-head-ci-green-including-macos-cli-lane",
+      "status": "PASS",
+      "evidence": "GitHub Actions run 32623658259 on head 47cfd6db7e48c3849bdadcb5167b7cffe879c9bf: all nine checks PASS — test(22)/test(24)/windows/install-roundtrip/secret-scan plus cli-lifecycle (ubuntu,22, boot-smoke=1): 35 unit + 9/9 roundtrip incl. HTTP 200 boot smoke; cli-lifecycle (ubuntu,24): 35 + 8/1-skipped (boot smoke intentionally single-lane); cli-lifecycle (windows,22): 35 + 8/1-skipped; cli-lifecycle (macos,22): 35 + 8/1-skipped. Job logs confirm real execution (no vacuous skips of the gated suite). macOS lane stays focused per contract (CLI units + roundtrip only)."
+    },
+    {
+      "name": "documentation-updates",
+      "status": "PASS",
+      "evidence": "Root README makes the four npx commands the primary post-publication path while keeping the raw official add/remove as advanced/fallback and stating 0.2.0 is not published yet; CHANGELOG records Batch 019 under [Unreleased]; packages/image-mind README gains the lifecycle CLI section above the official command path; docs/release-checklist.md adds the automated CLI gate command and the required cli-lifecycle CI lanes; docs/compatibility.md extends the 0.2.0/rc.2 KNOWN_GOOD row with Batch 019 CLI evidence; docs/verification-debt.md opens an honest Lifecycle CLI boundary section (closed: packed-artifact roundtrip matrix; open: registry-install roundtrip, boot smoke beyond one lane, npx@latest real registry update)."
+    }
+  ],
   "blockers": [],
-  "result_path": "docs/agent-results/DSH-VISION-NPX-LIFECYCLE-CLI-019-result.json"
+  "result_path": "docs/agent-results/DSH-VISION-NPX-LIFECYCLE-CLI-019-result.json",
+  "notes": [
+    "Command UX shipped: `npx dsh-plugin-image-mind <install|update|status|uninstall> [--profile web] [--json] [--from <spec>] [--dsh-bin <path>] [-h|-V]`. Default compatibility target remains exact @deepseek-ai/dsh@0.1.1-rc.2; detected harness version is reported separately and no untested-version compatibility is claimed.",
+    "Official command mapping (documented in tests/Result): install/update -> `dsh plugin --profile <name> add <spec>`; uninstall -> `dsh plugin --profile <name> remove dsh-plugin-image-mind`; composition smoke -> official `--dump-config`; harness detection -> official `--version`. Status performs NO mutating invocation at all.",
+    "Windows npx probe rationale recorded: spawn() cannot execute npm's .cmd shims without a shell on win32, so the TEST uses cmd.exe /c with a compile-time-fixed command string and zero interpolated data; product code never uses shell=true.",
+    "Acceptance seam disclosure: because 0.2.0 is intentionally unpublished, task-owned fixture profiles carry a pnpm overrides entry redirecting @ran-sh/dsh-vision to the local vision tarball. The seam lives only inside disposable DSH_HOME fixtures created by tests; user-facing flows need no seam after publication.",
+    "Boot-smoke scope honesty: live HTTP boot runs on one CI lane (Linux Node 22) plus local Windows evidence; Windows/macOS CI lanes prove parsing/spawning plus the full lifecycle roundtrip. Registry-install CLI roundtrip and `npx ...@latest` real-update evidence remain post-publication debt per docs/verification-debt.md.",
+    "No forbidden side effects occurred: no npm publish/unpublish/deprecate/dist-tag, no Git tag, no GitHub Release, no registry write, no force-push/history rewrite, no installation or enablement in the user's real Harness, and no reading/modifying of real Harness profiles, settings, credentials, stores or caches. Both package versions remain 0.2.0 and package-lock.json was not modified.",
+    "result_commit self-reference convention mirrors Batch 018: the field records the completion commit introducing the final Result Contract together with the ACTIVE_TASK deletion; one follow-up commit records that SHA inside this document."
+  ],
+  "result_validation": {
+    "status": "PASS",
+    "validator": "node .agent-workflow/validator/validate-contract.mjs result docs/agent-results/DSH-VISION-NPX-LIFECYCLE-CLI-019-result.json --stamp",
+    "validated_at": "2026-08-23T06:50:05Z",
+    "evidence": "Exit 0: VALID RESULT CONTRACT: docs/agent-results/DSH-VISION-NPX-LIFECYCLE-CLI-019-result.json"
+  }
 }
