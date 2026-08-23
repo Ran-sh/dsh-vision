@@ -6,6 +6,15 @@ is independent of DeepSeek and follows SemVer for its 0.x line.
 
 ## [Unreleased]
 
+- Batch 017 aligns the 0.2.0 pre-publish evidence with exact
+  `@deepseek-ai/dsh@0.1.1-rc.2`: peer ranges moved from the `^0.1.0-rc.7` line
+  (which node-semver rejects for the rc.2 prerelease family) to `^0.1.1-rc.2`,
+  the repository test host pins the official `@deepseek-ai/dsh@0.1.1-rc.2` CLI
+  with its full peer family and react 19.2.x, and package tests lock the
+  admission policy. An isolated task-owned rc.2 web acceptance (official
+  add/boot/composition, `/image-mind` routes, keyless visual challenge,
+  PNG/JPEG/WebP attachment journey, restart recovery, official
+  remove/re-add/remove) passes with the local-packed 0.2.0 packages.
 - Batch 016 closes documentation and final pre-publish evidence reconciliation.
 - Route diagnostics expose provider, semantic-cache, reusable-evidence,
   explicit-route and bounded fallback sources without endpoint or credential

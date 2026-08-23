@@ -38,6 +38,16 @@ proves them. Do not mark them green from a local mock:
 - [ ] route/RPC/settings reachability and official add/remove with exact
   `@deepseek-ai/dsh@0.1.1-rc.1`; Batch 016 may close this only with a
   task-owned profile and local-packed 0.2.0 packages.
+  **Closed for exact rc.2 by Batch 017**: with a task-owned profile and
+  local-packed 0.2.0 packages, official add/boot/remove, `/image-mind` route
+  reachability, settings writes, the keyless visual challenge and restart
+  recovery all pass against `@deepseek-ai/dsh@0.1.1-rc.2` (see
+  `docs/compatibility.md`); the Batch 008 `/image-mind/*` route gap observed on
+  rc.1 does not reproduce on rc.2. The exact rc.2 browser run also closed the
+  rendered attachment/settings, PNG/JPEG/WebP drop/paste/lightbox,
+  exact-eight/ninth-rejected fail-fast, neutral-marker, real
+  `understand_image`→vision→main, failed-send retry/draft-retention,
+  session-switch/restart and cache/refocus gates.
 - [ ] lifecycle observer records in a real host contain no prompt/path/key/
   response text, and an observer failure does not change the request result.
 - [ ] long 1440px screenshots and browser memory/OCR quality at the intended
