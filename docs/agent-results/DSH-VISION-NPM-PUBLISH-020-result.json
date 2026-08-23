@@ -2,9 +2,9 @@
   "schema_version": 2,
   "task_id": "DSH-VISION-NPM-PUBLISH-020",
   "source_commit": "aa50bb7346a7931de632aa88daf900f8bae3a4df",
-  "result_commit": null,
+  "result_commit": "78cd9e98034722df07872af3e1324f8e4b519b31",
   "status": "BLOCKED",
-  "summary": "The explicitly authorized npm publication of dsh-vision 0.2.0 was attempted exactly per contract and stopped safely before any registry mutation: every fresh pre-write gate passed (manifests still exactly @ran-sh/dsh-vision@0.2.0 and dsh-plugin-image-mind@0.2.0 with registry-safe specs and the lib/cli.js bin mapping; npm ping PONG; npm whoami authenticated as rss1001; both exact 0.2.0 versions confirmed absent with latest 0.1.0/0.1.1; full repo lane ci/typecheck/build/test 360+59/test:package 13/test:built 6/git diff --check clean; pack dry-runs 15+9 files; publish dry-runs exit 0), and REAL PUBLISH STEP 1 for the service package was then executed from packages/vision as `npm publish --access public`. The registry REJECTED the write with EOTP: the npm account requires a one-time password / browser authentication for publish. Per the Task Contract (no requesting, capturing or logging OTP/token material) the flow was abandoned immediately, plugin publication was never attempted, and post-failure read-only verification proved zero registry change (@ran-sh/dsh-vision@0.2.0 and dsh-plugin-image-mind@0.2.0 both still E404; @ran-sh/dsh-vision latest still 0.1.0). No Git tag, GitHub Release, dist-tag mutation or real-Harness installation occurred. Final state: BLOCKED_BEFORE_PUBLICATION 鈥?publication remains authorized but requires a maintainer-side publish credential that can satisfy npm 2FA (for example an interactive maintainer run or an automation-grade granular access token with publish rights); once available, re-running this task's gates plus the two publishes is expected to complete without other changes.",
+  "summary": "The explicitly authorized npm publication of dsh-vision 0.2.0 was attempted exactly per contract and stopped safely before any registry mutation: every fresh pre-write gate passed (manifests still exactly @ran-sh/dsh-vision@0.2.0 and dsh-plugin-image-mind@0.2.0 with registry-safe specs and the lib/cli.js bin mapping; npm ping PONG; npm whoami authenticated as rss1001; both exact 0.2.0 versions confirmed absent with latest 0.1.0/0.1.1; full repo lane ci/typecheck/build/test 360+59/test:package 13/test:built 6/git diff --check clean; pack dry-runs 15+9 files; publish dry-runs exit 0), and REAL PUBLISH STEP 1 for the service package was then executed from packages/vision as `npm publish --access public`. The registry REJECTED the write with EOTP: the npm account requires a one-time password / browser authentication for publish. Per the Task Contract (no requesting, capturing or logging OTP/token material) the flow was abandoned immediately, plugin publication was never attempted, and post-failure read-only verification proved zero registry change (@ran-sh/dsh-vision@0.2.0 and dsh-plugin-image-mind@0.2.0 both still E404; @ran-sh/dsh-vision latest still 0.1.0). No Git tag, GitHub Release, dist-tag mutation or real-Harness installation occurred. Final state: BLOCKED_BEFORE_PUBLICATION 閳?publication remains authorized but requires a maintainer-side publish credential that can satisfy npm 2FA (for example an interactive maintainer run or an automation-grade granular access token with publish rights); once available, re-running this task's gates plus the two publishes is expected to complete without other changes.",
   "timeline": {
     "started_at": "2026-08-23T15:59:56+08:00",
     "completed_at": "2026-08-23T16:06:48+08:00"
@@ -27,7 +27,7 @@
     {
       "name": "registry-connectivity-and-authentication",
       "status": "PASS",
-      "evidence": "npm ping -> PING/PONG against https://registry.npmjs.org/ (1389ms), exit 0. npm whoami -> authenticated username `rss1001`, exit 0 鈥?this executor session holds valid npm credentials (unlike the Batch 018 preflight environment which returned E401). Only connectivity success and the returned username were recorded; no token, .npmrc content, cookie or OTP value was read, requested or logged."
+      "evidence": "npm ping -> PING/PONG against https://registry.npmjs.org/ (1389ms), exit 0. npm whoami -> authenticated username `rss1001`, exit 0 閳?this executor session holds valid npm credentials (unlike the Batch 018 preflight environment which returned E401). Only connectivity success and the returned username were recorded; no token, .npmrc content, cookie or OTP value was read, requested or logged."
     },
     {
       "name": "pre-write-registry-state-read-only",
@@ -68,7 +68,7 @@
   "result_validation": {
     "status": "PASS",
     "validator": "node .agent-workflow/validator/validate-contract.mjs result docs/agent-results/DSH-VISION-NPM-PUBLISH-020-result.json --stamp",
-    "validated_at": "2026-08-23T08:08:55Z",
+    "validated_at": "2026-08-23T08:09:29Z",
     "evidence": "Exit 0: VALID RESULT CONTRACT: docs/agent-results/DSH-VISION-NPM-PUBLISH-020-result.json"
   }
 }
