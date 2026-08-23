@@ -1,0 +1,63 @@
+{
+  "id": "DSH-VISION-NPM-PUBLISH-020",
+  "mode": "TEST_ONLY",
+  "source_branch": "main",
+  "source_commit": "LATEST",
+  "objective": "Execute the explicitly authorized npm publication of dsh-vision 0.2.0 from the accepted main candidate, publishing @ran-sh/dsh-vision@0.2.0 first and dsh-plugin-image-mind@0.2.0 second, with read-after-write registry verification and a clean-room public-registry install/npx lifecycle smoke after both publishes. Stop safely on any authentication, registry, metadata, integrity, install or lifecycle failure. Do not create Git tags or GitHub Releases and do not install into the user's real Harness.",
+  "context": "The user explicitly authorized formal npm publication of 0.2.0 on 2026-08-23. Batch 019 / PR #61 is accepted and merged on main as f161bd8394dae3e8d6a963fa3b1e0245c34038de, adding true packed-artifact npx install/update/status/uninstall acceptance across Linux/Windows/macOS against exact @deepseek-ai/dsh@0.1.1-rc.2. Batch 018 preflight previously confirmed both 0.2.0 versions absent, pack/publish dry-runs green, and publication order service-first then plugin-second; because Batch 019 changed the plugin package, all registry/pack/auth safety checks must be re-confirmed before real publication. Previous Codex preflight environment returned npm whoami E401, so authentication must be freshly verified and publication must stop before any registry write if the current executor is not authenticated. Authorization scope is npm publication plus post-publication public-registry verification only; Git tag v0.2.0, GitHub Release, dist-tag changes beyond npm's normal publish default, and real-Harness installation remain unauthorized.",
+  "allowed_changes": [
+    "docs/agent-results/DSH-VISION-NPM-PUBLISH-020-result.json"
+  ],
+  "forbidden_changes": [
+    "any product source, test, benchmark, workflow, README, CHANGELOG, compatibility, release-checklist, package manifest, lockfile, version or repository-content change except the Result Contract and ACTIVE_TASK deletion",
+    "publishing any package/version other than exactly @ran-sh/dsh-vision@0.2.0 and dsh-plugin-image-mind@0.2.0",
+    "npm unpublish, npm deprecate, npm dist-tag add/rm, package visibility/access mutation after publication, provenance mutation beyond normal npm publish behavior, or any registry write not required to publish the two exact authorized versions",
+    "Git tag creation/deletion/push, GitHub Release creation/editing/deletion, release asset upload, branch protection mutation or repository release-side effects other than the Result PR",
+    "installation or enablement in the user's real Harness, or reading/modifying real Harness profiles/settings/credentials/node_modules/store/caches",
+    "reading, printing, logging or committing npm tokens, OTP values, cookies, authorization headers, .npmrc contents, API keys or other secret material",
+    "force-push, history rewrite, destructive reset, unrelated branch deletion or writes outside Ran-sh/dsh-vision except the two explicitly authorized npm package publishes"
+  ],
+  "validation": [
+    "validate this Task Contract, fetch latest main, record the exact source SHA, create one task branch from main and open one Draft PR early for the Result Contract only",
+    "before any registry write, verify both manifests are still exactly @ran-sh/dsh-vision@0.2.0 and dsh-plugin-image-mind@0.2.0, verify image-mind depends on @ran-sh/dsh-vision@^0.2.0, and verify no file:, link:, workspace: or git dependency specifiers exist in either publishable package",
+    "before any registry write, run npm ping and npm whoami against https://registry.npmjs.org/. Record only connectivity success/failure and returned username. If npm whoami is not authenticated, stop before publish and report BLOCKED with the authentication requirement; do not inspect credential files or request/log token/OTP material",
+    "before any registry write, perform read-only npm view checks for @ran-sh/dsh-vision@0.2.0 and dsh-plugin-image-mind@0.2.0. If either exact version already exists, never republish it. Record its public metadata; if both already exist and match the intended exact versions, skip publish and continue with public-registry verification. If only one exists, verify it and continue only with the missing package when dependency/order safety permits",
+    "from the exact final main candidate, rerun npm ci, npm run typecheck, npm run build, npm test, npm run test:package, npm run test:built and git diff --check; require all to pass before any publish",
+    "run npm pack --dry-run for packages/vision and packages/image-mind and inspect the publish file lists; require the image-mind package to include lib/cli.js and its bin mapping while excluding src/tests/private/credential material",
+    "run side-effect-free npm publish --dry-run --access public for packages/vision then packages/image-mind and require both to pass before any real publish",
+    "REAL PUBLISH STEP 1 AUTHORIZED: if @ran-sh/dsh-vision@0.2.0 is still absent and authentication is valid, run the normal public publish from packages/vision for exactly version 0.2.0. Do not publish any other version. Immediately verify with repeated read-only npm view until the public registry returns exact version 0.2.0 and expected public metadata. If publish or verification fails, stop and do not publish the plugin",
+    "REAL PUBLISH STEP 2 AUTHORIZED: only after @ran-sh/dsh-vision@0.2.0 public verification succeeds, if dsh-plugin-image-mind@0.2.0 is still absent, run the normal public publish from packages/image-mind for exactly version 0.2.0. Immediately verify exact version, bin mapping and dependency on @ran-sh/dsh-vision@^0.2.0 with read-only npm view. If publish or verification fails, stop and report the exact partial-publication state",
+    "after both exact versions are publicly visible, create a task-owned clean temporary directory/prefix with no workspace links and install both packages from https://registry.npmjs.org/ by exact version. Smoke-import @ran-sh/dsh-vision and verify dsh-plugin-image-mind's npm bin is created",
+    "after both exact versions are publicly visible, use a disposable DSH_HOME and exact @deepseek-ai/dsh@0.1.1-rc.2 to exercise the PUBLIC REGISTRY CLI path without --from/local tarball seams: npx dsh-plugin-image-mind@0.2.0 install --profile web, status --profile web, status --json --profile web, update --profile web, composition/boot smoke, uninstall --profile web, status absent, second uninstall. All Harness state must be task-owned and disposable; do not touch the user's real Harness",
+    "verify public `npx dsh-plugin-image-mind@0.2.0 --version` and the four public lifecycle commands resolve through registry/npm-exec semantics. Record exact platform/Node/npm/DSH versions used and truthful outcomes",
+    "do not create v0.2.0 tag or GitHub Release in this task even if all publication checks pass. The Result must state that tag/release remain a separate explicit authorization gate",
+    "write docs/agent-results/DSH-VISION-NPM-PUBLISH-020-result.json with Result Contract v2, second-precision timezone-aware timestamps, exact source/result commits, auth username or authentication blocker without secrets, pre/post registry states for both packages, publish command outcomes, public metadata, clean-room install evidence, public npx lifecycle evidence, and an explicit final state: PUBLISHED_AND_PUBLICLY_VERIFIED, PARTIAL_PUBLICATION, or BLOCKED_BEFORE_PUBLICATION",
+    "delete docs/agent-tasks/ACTIVE_TASK.json on the execution branch after completion, validate/stamp the Result Contract, commit/push only the Result plus ACTIVE_TASK deletion, leave the Draft PR unmerged and stop"
+  ],
+  "acceptance_criteria": [
+    "No registry write occurs unless npm authentication is valid and all fresh repository/package/dry-run gates pass.",
+    "@ran-sh/dsh-vision@0.2.0 is published first and publicly verified before any real dsh-plugin-image-mind@0.2.0 publish occurs.",
+    "dsh-plugin-image-mind@0.2.0 is publicly verified with the expected bin mapping and @ran-sh/dsh-vision@^0.2.0 dependency.",
+    "A clean-room install from the public npm registry succeeds with no workspace/local-tarball seam.",
+    "The public registry npx lifecycle path succeeds against task-owned exact @deepseek-ai/dsh@0.1.1-rc.2 state for install/status/status --json/update/boot-or-composition smoke/uninstall/absent status/idempotent uninstall.",
+    "Any failure produces a truthful BLOCKED_BEFORE_PUBLICATION or PARTIAL_PUBLICATION Result and immediately stops unsafe follow-on publication steps.",
+    "No Git tag, GitHub Release, extra dist-tag mutation or real-Harness installation occurs.",
+    "Result Contract v2 validates with --stamp, ACTIVE_TASK is deleted on the execution branch, and the single Draft PR remains unmerged for ChatGPT review."
+  ],
+  "result_contract": "docs/agent-results/DSH-VISION-NPM-PUBLISH-020-result.json",
+  "completion_commit_contract": [
+    "docs/agent-results/DSH-VISION-NPM-PUBLISH-020-result.json",
+    "docs/agent-tasks/ACTIVE_TASK.json"
+  ],
+  "delete_active_task_on_completion": true,
+  "metadata": {
+    "executor": "CODEX",
+    "purpose": "authorized-npm-publication-0.2.0",
+    "related_issue": "21",
+    "package_version": "0.2.0",
+    "harness_target": "@deepseek-ai/dsh@0.1.1-rc.2",
+    "publish_authorized": true,
+    "tag_release_authorized": false,
+    "real_harness_install_authorized": false
+  }
+}
