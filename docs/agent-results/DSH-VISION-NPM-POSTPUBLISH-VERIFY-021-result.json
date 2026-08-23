@@ -2,7 +2,7 @@
   "schema_version": 2,
   "task_id": "DSH-VISION-NPM-POSTPUBLISH-VERIFY-021",
   "source_commit": "48aebc6966c342bd59dc129ad9428738ec592cdf",
-  "result_commit": null,
+  "result_commit": "e2397b91b6dd142f95b86c6a4b1f108c32b0ee01",
   "status": "FAIL",
   "summary": "Final state: NOT PUBLISHED_AND_PUBLICLY_VERIFIED — DEFECTIVE_PUBLICATION. Independent public-registry verification of the maintainer's manual npm publication proves both @ran-sh/dsh-vision@0.2.0 and dsh-plugin-image-mind@0.2.0 were published as EMPTY SHELLS with no built code. Registry metadata shows dist.fileCount 2 / unpackedSize 2042 bytes (vision) and 3 files / 6753 bytes (image-mind) instead of the accepted candidate's 15 files (~61 kB) and 9 files (~820 kB incl. lib/cli.js); published shasums d43b11093201bf2004215bf914cf7e98363d48d0 and 550b696f0ac91f6d669b5dde1796dc5df4f3f87c match neither the Batch 018 dry-run artifacts (328f7235bf449be7670f7fea8842ad749fb22276, 7f59073ddfadbffdf0409fcead34deabd7e943cb) nor any built tree. A clean-room exact-version install from https://registry.npmjs.org/ confirms the installed trees contain ONLY package.json/README.md (vision) and package.json/README.md/cordis.patch.yml (image-mind): lib/index.js is absent so @ran-sh/dsh-vision cannot be imported (ERR_MODULE_NOT_FOUND), and lib/cli.js is absent so npm skipped creating the dsh-plugin-image-mind bin shim entirely and `npx --yes dsh-plugin-image-mind@0.2.0 --version` fails ('dsh-plugin-image-mind' is not recognized). The public npx lifecycle roundtrip is therefore impossible and was recorded NOT RUN rather than faked; composition/boot smoke could not meaningfully run against a service that cannot load. Metadata that DID come through correctly: both dist-tags moved latest to 0.2.0 via npm's normal publish default (recorded truthfully, not mutated), engines node ^22.19.0 || >=24.0.0 on image-mind, bin mapping string and dependencies {@ran-sh/dsh-vision: ^0.2.0, schemastery: ^3.18.0} with zero file:/link:/workspace:/git seams in installed metadata. Zero registry writes, no Git tag, no GitHub Release, no real-Harness touch, no repository mutation outside this Result and the ACTIVE_TASK deletion (git diff --check clean). URGENT maintainer remediation required before any v0.2.0 tag/release authorization: the broken 0.2.0 tarballs must be unpublished per npm policy and republished from a built tree (npm run build first), or superseded by corrected versions, because latest currently serves non-functional packages.",
   "timeline": {
@@ -66,7 +66,7 @@
   "result_validation": {
     "status": "PASS",
     "validator": "node .agent-workflow/validator/validate-contract.mjs result docs/agent-results/DSH-VISION-NPM-POSTPUBLISH-VERIFY-021-result.json --stamp",
-    "validated_at": "2026-08-23T09:38:51Z",
+    "validated_at": "2026-08-23T09:39:20Z",
     "evidence": "Exit 0: VALID RESULT CONTRACT: docs/agent-results/DSH-VISION-NPM-POSTPUBLISH-VERIFY-021-result.json"
   }
 }
