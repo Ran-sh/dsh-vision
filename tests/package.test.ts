@@ -20,6 +20,54 @@ function readJson(path: string): Record<string, unknown> {
   return JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>
 }
 
+/**
+ * Minimal node-semver-compatible admission check for `^M.m.p-pre` ranges (the
+ * only shape used by this project's peer policy). Mirroring node-semver,
+ * prerelease candidates must share the range's [major, minor, patch] tuple;
+ * release candidates only need the plain numeric bounds.
+ */
+function rangeAdmits(version: string, range: string): boolean {
+  interface Ver { major: number; minor: number; patch: number; pre: string[] }
+
+  const parse = (v: string): Ver => {
+    const [core, pre = ''] = v.split('-')
+    const [major, minor, patch] = core.split('.').map(Number)
+    return { major, minor, patch, pre: pre ? pre.split('.') : [] }
+  }
+
+  const cmp = (a: Ver, b: Ver): number => {
+    if (a.major !== b.major) return a.major - b.major
+    if (a.minor !== b.minor) return a.minor - b.minor
+    if (a.patch !== b.patch) return a.patch - b.patch
+    if (a.pre.length === 0 && b.pre.length === 0) return 0
+    if (a.pre.length === 0) return 1 // release > prerelease
+    if (b.pre.length === 0) return -1
+    const max = Math.max(a.pre.length, b.pre.length)
+    for (let i = 0; i < max; i++) {
+      const pa = a.pre[i], pb = b.pre[i]
+      if (pa === undefined) return -1
+      if (pb === undefined) return 1
+      const na = /^\d+$/.test(pa), nb = /^\d+$/.test(pb)
+      const d = na && nb ? Number(pa) - Number(pb) : na ? -1 : nb ? 1 : pa < pb ? -1 : pa > pb ? 1 : 0
+      if (d !== 0) return d
+    }
+    return 0
+  }
+
+  const lower = parse(range.replace(/^\^/, ''))
+  const upper: Ver = lower.major > 0
+    ? { major: lower.major + 1, minor: 0, patch: 0, pre: [] }
+    : lower.minor > 0
+      ? { major: 0, minor: lower.minor + 1, patch: 0, pre: [] }
+      : { major: 0, minor: 0, patch: lower.patch + 1, pre: [] }
+  const v = parse(version)
+  if (cmp(v, lower) < 0 || cmp(v, upper) >= 0) return false
+  if (lower.pre.length > 0 && v.pre.length > 0) {
+    if (v.major !== lower.major || v.minor !== lower.minor || v.patch !== lower.patch) return false
+  }
+  return true
+}
+
 /** Run `npm pack --dry-run --json` in a package dir and parse the file list. */
 function packFiles(pkgDir: string): string[] {
   // `npm` on Windows resolves through npm.cmd, so run through the shell.
@@ -101,6 +149,27 @@ describe('@ran-sh/dsh-vision package metadata', () => {
     const peer = pkg['peerDependencies'] as Record<string, unknown>
     expect(peer['@deepseek-ai/cordis']).toBeDefined()
     expect(peer['@deepseek-ai/dsh-llm']).toBeDefined()
+  })
+})
+
+describe('peer dependency ranges admit the exact 0.1.1-rc.2 harness line', () => {
+  const imageMindPkg = readJson(resolve(IMAGE_MIND_DIR, 'package.json'))
+  const imageMindPeer = imageMindPkg['peerDependencies'] as Record<string, string>
+  const visionPeer = (readJson(resolve(VISION_DIR, 'package.json'))['peerDependencies']) as Record<string, string>
+
+  it('image-mind peers admit the official 0.1.1-rc.2 family and reject stale/overshoot prereleases', () => {
+    const hostPeers = Object.entries(imageMindPeer).filter(([name]) => name !== '@deepseek-ai/cordis')
+    expect(hostPeers.length).toBeGreaterThan(0)
+    for (const [name, range] of hostPeers) {
+      expect(rangeAdmits('0.1.1-rc.2', range), `${name} ${range} rejects the 0.1.1-rc.2 line`).toBe(true)
+      expect(rangeAdmits('0.1.1-rc.1', range), `${name} ${range} admits the older 0.1.1-rc.1`).toBe(false)
+      expect(rangeAdmits('0.2.0', range), `${name} ${range} admits 0.2.0`).toBe(false)
+    }
+  })
+
+  it('the vision service peer admits the 0.1.1-rc.2 dsh-llm line', () => {
+    expect(rangeAdmits('0.1.1-rc.2', visionPeer['@deepseek-ai/dsh-llm'])).toBe(true)
+    expect(rangeAdmits('0.1.1-rc.1', visionPeer['@deepseek-ai/dsh-llm'])).toBe(false)
   })
 })
 
