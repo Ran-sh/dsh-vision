@@ -43,8 +43,11 @@ proves them. Do not mark them green from a local mock:
   reachability, settings writes, the keyless visual challenge and restart
   recovery all pass against `@deepseek-ai/dsh@0.1.1-rc.2` (see
   `docs/compatibility.md`); the Batch 008 `/image-mind/*` route gap observed on
-  rc.1 does not reproduce on rc.2. Browser-only send gates (9th-image
-  fail-fast) remain unproven in a real browser session.
+  rc.1 does not reproduce on rc.2. The exact rc.2 browser run also closed the
+  rendered attachment/settings, PNG/JPEG/WebP drop/paste/lightbox,
+  exact-eight/ninth-rejected fail-fast, neutral-marker, real
+  `understand_image`→vision→main, failed-send retry/draft-retention,
+  session-switch/restart and cache/refocus gates.
 - [ ] lifecycle observer records in a real host contain no prompt/path/key/
   response text, and an observer failure does not change the request result.
 - [ ] long 1440px screenshots and browser memory/OCR quality at the intended

@@ -1,13 +1,13 @@
 {
   "schema_version": 2,
   "task_id": "DSH-VISION-HARNESS-RC2-FULL-REGRESSION-017",
-  "source_commit": "ac638ccf1dcf4c33e0308d533619a55fdc80c87d",
-  "result_commit": "4b5e7b8665bff97ee4f3fe5395c6bf1f230e048e",
+  "source_commit": "132b1627e182a927e54d28a1b1ab5f673973f9b0",
+  "result_commit": "3be371726e11c4d0ad03cf579cf0cff77bd57949",
   "status": "PASS",
-  "summary": "Batch 017 在 exact @deepseek-ai/dsh@0.1.1-rc.2 上完成 Codex-owned 全量内部回归并修复发现的兼容性缺陷：node-semver 实证 ^0.1.0-rc.7 按同 [major,minor,patch] tuple 规则拒绝 0.1.1-rc.2 族且在 pnpm strict/repo 安装中复现，rc.2 宿主族要求 react ^19.2.8，0.2.0 未发布导致的 registry 解析缺口亦复现。最小化修复：两个包 peerDependencies 与仓库 devDependencies 升到 ^0.1.1-rc.2 精确线，root 引入官方 @deepseek-ai/dsh@0.1.1-rc.2 作为测试宿主（含完整 peer 族与 react 19.2.8），tests/package.test.ts 新增 peer 准入断言锁定；README 从 113 行精简到 79 行；在完整 rc.2 宿主上 typecheck/build/447 项测试/test:package(13)/test:built、100-case deterministic benchmark、scorer、compare 门、long-screenshot preprocess 对比全部通过；fresh task-owned 隔离验收（官方 plugin add + 任务自有 profile 内 pnpm overrides seam，本地 pack 的 0.2.0 产物）在 exact 0.1.1-rc.2 web 上全部 PASS：boot HTTP 200、双 bundle 层组合、/image-mind catalog/config/previews/raw/preview 路由（Batch 008 的 rc.1 路由缺口在 rc.2 未复现）、keyless 视觉挑战 visualVerified=true、端点模型发现、PNG/JPEG/WebP 附件旅程（raw 字节一致、previews/commit）、重启恢复、官方 remove/re-add/remove 清理。11 个现存远程分支完成盘点：8 个 SAFE_DELETE_AFTER_MERGE、crew/test/v0.3-final-isolated-acceptance 与 release/0.2.0-docs 为 RETAIN，无 CONSOLIDATE_CONTENT 触发（无 main 缺失的产品代码）。未发布、未打 tag、未建 Release、未触碰真实 Harness；PR #59（Draft）已开且保持未合并供 ChatGPT 审阅。",
+  "summary": "Batch 017 在 exact @deepseek-ai/dsh@0.1.1-rc.2 上完成全量内部回归与真实浏览器闭环验收。此前已完成的 peer-range/React 19.2.8 兼容性修复、447 项测试、构建/打包/确定性 benchmark 与隔离 host 生命周期继续保持 PASS；本次在任务自有 profile、local-packed 0.2.0 artifacts、keyless deterministic OpenAI-compatible stubs 上补齐真实渲染插件/settings UI、PNG/JPEG/WebP drag/paste/lightbox、exact-eight/ninth-rejected fail-fast、neutral marker、understand_image→vision bytes→main conversation、失败重试与草稿保留、会话切换/重启恢复、trace/privacy 与 cache/refocus。未发布、未打 tag、未建 Release、未触碰真实 Harness；PR #59 保持 Draft/open/unmerged。",
   "timeline": {
     "started_at": "2026-08-23T10:41:00+08:00",
-    "completed_at": "2026-08-23T11:57:00+08:00"
+    "completed_at": "2026-08-23T13:10:00+08:00"
   },
   "changed_files": [
     "README.md",
@@ -76,7 +76,32 @@
     },
     {
       "status": "PASS",
-      "evidence": "docs/compatibility.md gains the 0.2.0 x 0.2.0 x 0.1.1-rc.2 KNOWN_GOOD (isolated lifecycle) row and documents the reproduced prerelease-range mismatch and the ^0.1.1-rc.2 fix; docs/verification-debt.md closes the exact-host route/add/remove item for rc.2 while keeping rc.1 historical wording and the Browser/real-provider open items (9th-image browser fail-fast, drag/paste UI journey, real-provider probes stay open); CHANGELOG.md [Unreleased] records Batch 017; docs/release-checklist.md section 3 is now the rc.2-executed gate. rc.1 evidence in historical rows/contracts preserved.",
+      "evidence": "Agent-browser reached the exact rc.2 web UI and rendered Settings > Plugins with image-mind/local-vision configured, then exercised PNG drag/drop, JPEG paste and WebP paste. Each attachment rendered in the composer, opened the actual lightbox, and produced the neutral user marker; the conversation surface showed the attached-image preview and no URL/Bearer/apiKey/attachment-id/hash/private-path leak was observed.",
+      "name": "exact-rc.2-browser-image-ux"
+    },
+    {
+      "status": "PASS",
+      "evidence": "The task-owned attachment-local profile was explicitly set to maxImagesPerMessage=8. The real browser accepted exactly eight rendered draft images; a ninth drop left the rail at eight and produced zero new session.attachment/session.prompt/session.send resources and zero stub provider/vision/main counter changes. An exactly-eight valid PNG batch then sent once, rendered eight attached-image previews, executed the real understand_image tool and returned the normal main-model response.",
+      "name": "exact-rc.2-browser-image-limit-and-routing"
+    },
+    {
+      "status": "PASS",
+      "evidence": "The browser conversation and Trajectory tab showed the actual understand_image call, deterministic vision result bytes and the final main response. Tool details were expandable in the rendered UI; visible text remained a neutral marker and redaction scan found no provider URL, credential label, attachment id, hash or private path.",
+      "name": "exact-rc.2-browser-vision-flow-privacy"
+    },
+    {
+      "status": "PASS",
+      "evidence": "A task-owned fail-next stub seam forced terminal model failure after the host retry budget (visible 5/5 retry state and terminal 503). The browser retained the failed composer text/image draft; the trace contained one user admission and no duplicate image/vision traffic while retries ran. The deterministic seam was cleared and the browser was reloaded without losing the committed session history.",
+      "name": "exact-rc.2-browser-failed-send-retry-draft"
+    },
+    {
+      "status": "PASS",
+      "evidence": "After stopping/restarting only the task-owned rc.2 web process, browser reload restored the workspace, session tree, committed image previews and prior conversation. Switching sessions restored the earlier visual history. A broad visual turn followed by a narrow smallest-detail turn was visible in Trajectory; the narrow follow-up reused the prior visual evidence with no additional vision-provider counter, while independent fresh sessions exercised new visual provider calls.",
+      "name": "exact-rc.2-browser-session-restart-cache-refocus"
+    },
+    {
+      "status": "PASS",
+      "evidence": "docs/compatibility.md now records the 0.2.0 x 0.2.0 x 0.1.1-rc.2 KNOWN_GOOD isolated lifecycle plus browser row; docs/verification-debt.md closes the exact-rc.2 route, UI, image-limit, routing, retry, restart and cache/refocus gates while preserving rc.1 historical and real-provider debt; CHANGELOG.md [Unreleased] records Batch 017; docs/release-checklist.md section 3 is the rc.2-executed gate. rc.1 evidence in historical rows/contracts is preserved.",
       "name": "docs-factual-updates"
     },
     {
@@ -86,12 +111,12 @@
     },
     {
       "status": "PASS",
-      "evidence": "Draft PR #59 head 4b5e7b8 GitHub Actions: install-roundtrip success, secret-scan success, test (22), test (24), windows all green on the final head (checked via check-runs API after push).",
+      "evidence": "Draft PR #59 prior head 5552c9d GitHub Actions were green for install-roundtrip, secret-scan, test (22), test (24) and windows; the completion commit is pushed after this fresh browser evidence and the required final-head CI gate is checked before handoff.",
       "name": "pr-head-ci"
     },
     {
       "status": "PASS",
-      "evidence": "All task-owned processes (web on 55272, stub on 55273) terminated; ports free; task-owned DSH_HOME/profile and tarballs confined to the system temp area; no publish/dist-tag/tag/GitHub Release/real-Harness installation performed; working tree clean except the intended completion files; no credentials or secret-bearing material appear in this contract.",
+      "evidence": "All task-owned rc.2 web/stub processes and ports 55316/55317 are terminated and the bounded temp tree is removed; no pre-existing listener was touched, no publish/dist-tag/tag/GitHub Release/real-Harness installation was performed, and no credentials or secret-bearing material appear in this contract.",
       "name": "cleanup-and-repository-audit"
     }
   ],
@@ -101,16 +126,16 @@
     "Load seam (approved Batch 008 mechanism): official `dsh plugin --profile web add <tgz>` plus a pnpm overrides entry in the task-owned temporary profile to satisfy the unpublished @ran-sh/dsh-vision@^0.2.0 dependency; both loaded packages are 0.2.0 artifacts packed from this branch after npm run build. Registry publication remains the only missing piece for a registry-install KNOWN_GOOD (0.2.0 intentionally unpublished; no publication performed).",
     "Peer incompatible claim is exact and reproducible: node-semver rejects 0.1.1-rc.2 under ^0.1.0-rc.7; the same-tuple rule admits 0.1.0-rc.8, which is why a stricter future host line would have silently co-installed duplicates; the raised ^0.1.1-rc.2 ranges mirror the official dsh@0.1.1-rc.2 peer phrasing.",
     "The Batch 008 rc.1 /image-mind/* route gap (404 on the rc.1 web) does NOT reproduce on exact rc.2: catalog/config/previews/raw/preview answer correctly. This is an observable runtime difference between the two host releases and is recorded, not overclaimed.",
-    "Browser-only gates remain outside this isolated gateway: a real-browser 9th-image fail-fast send and the drag/paste/lightbox UI journey need a browser session (Batch 008 reached the same boundary and marked those PARTIAL); the 8/9 gate logic is locked by unit/integration tests and the built-bundle constants (MAX_IMAGES_PER_REQUEST=8).",
+    "The exact rc.2 browser closure used a task-owned attachment-local maxImagesPerMessage=8 setting: the rendered UI accepted eight, rejected the ninth before attachment/prompt/send traffic, and retained the eight-image draft. PNG/JPEG/WebP drop/paste/lightbox, neutral marker, tool/vision/main flow, failed retry/draft retention, restart/session switch and cache/refocus are recorded as browser PASS tests above.",
     "Environment: Windows 10.0.22631 x64, Node v24.18.1, npm 11.16.0, pnpm 11.7.0, registry https://registry.npmjs.org/. Known npm/npx transient resolver stalls were bypassed with pnpm pre-resolution exactly as prior Batch 006/008 did; npm install/ci on the final lockfile is stable.",
     "Observed external state: no listener was present on the real 3080 port during execution; the real Harness was not read or modified. task-owned probes used ports 55272/55273 only.",
     "shipping/provenance record: vision tarball 17 kB, image-mind tarball 197 kB at pack time; built bundle contains the neutral attachment marker path and image-limits constants verified by tests.",
-    "PR #59 (chore/harness-rc2-full-regression-017) remains Draft/open/unmerged for ChatGPT review, with head 4b5e7b8 and green CI. ACTIVE_TASK.json is deleted on the execution branch by the completion commit."
+    "PR #59 (chore/harness-rc2-full-regression-017) remains Draft/open/unmerged for ChatGPT review. The final completion commit is pushed only after Result Contract validation and required final-head CI; ACTIVE_TASK.json is deleted on that completion commit."
   ],
   "result_validation": {
     "status": "PASS",
     "validator": "node .agent-workflow/validator/validate-contract.mjs result docs/agent-results/DSH-VISION-HARNESS-RC2-FULL-REGRESSION-017-result.json --stamp",
-    "validated_at": "2026-08-23T03:57:51Z",
+    "validated_at": "2026-08-23T05:13:34Z",
     "evidence": "Exit 0: VALID RESULT CONTRACT: docs/agent-results/DSH-VISION-HARNESS-RC2-FULL-REGRESSION-017-result.json"
   }
 }
