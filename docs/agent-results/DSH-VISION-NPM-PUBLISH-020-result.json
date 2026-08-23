@@ -1,0 +1,16 @@
+{
+  "schema_version": 2,
+  "task_id": "DSH-VISION-NPM-PUBLISH-020",
+  "source_commit": "aa50bb7346a7931de632aa88daf900f8bae3a4df",
+  "result_commit": null,
+  "status": "PARTIAL",
+  "final_state": "PENDING",
+  "timeline": {
+    "started_at": "2026-08-23T15:59:56+08:00",
+    "completed_at": null
+  },
+  "changed_files": [],
+  "tests": [],
+  "blockers": [],
+  "result_path": "docs/agent-results/DSH-VISION-NPM-PUBLISH-020-result.json"
+}
