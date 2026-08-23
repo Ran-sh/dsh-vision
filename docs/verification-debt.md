@@ -63,12 +63,14 @@ disposable DSH_HOME state (Result Contract 019; dedicated Linux/Windows/macOS
 CI lanes). Still open:
 
 - [ ] registry-install CLI roundtrip: everything above runs on local-packed
-  artifacts; a published-registry install remains post-publication evidence.
+  artifacts; the npm-published 0.2.0 tarballs proved DEFECTIVE (empty shells,
+  Batch 021), so the first valid registry evidence will come from publishing
+  the guarded 0.2.1 remediation candidate and re-running this verification.
 - [ ] HTTP boot smoke currently runs on one CI lane (Linux Node 22); Windows/
   macOS lanes prove parsing/spawning plus the full lifecycle roundtrip but not
   a live boot.
 - [ ] `npx dsh-plugin-image-mind@latest update` from a real older registry
-  version cannot be exercised before publication.
+  version cannot be exercised before a healthy publication exists.
 
 The known exact-rc.1 registry add blocker is package availability, not a
 plugin runtime failure: 0.2.0 is intentionally unpublished. Use local-packed

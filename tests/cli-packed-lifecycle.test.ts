@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Packed-artifact lifecycle acceptance for the dsh-plugin-image-mind CLI
  * (`RUN_CLI_LIFECYCLE=1 vitest run tests/cli-packed-lifecycle.test.ts`).
  *
@@ -9,7 +9,7 @@
  * resolution before its mutations flow through official
  * `dsh plugin --profile <name> add|remove` operations. A pnpm overrides seam
  * inside each TASK-OWNED profile redirects @ran-sh/dsh-vision resolution to
- * the local vision tarball because 0.2.0 is intentionally unpublished.
+ * the local vision tarball because the 0.2.1 remediation candidate is intentionally unpublished at test time.
  *
  * Nothing here touches the user's real Harness: DSH_HOME always points into
  * a mkdtemp directory, and cleanup removes it wholesale.
@@ -24,6 +24,8 @@ import { dirname, join } from 'node:path'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { resolveDshEntry } from '../packages/image-mind/src/cli/dsh.ts'
 
+const CANDIDATE_VERSION = (JSON.parse(readFileSync(join(import.meta.dirname, '..', 'packages', 'image-mind', 'package.json'), 'utf8')) as { version: string }).version
+const VISION_VERSION = (JSON.parse(readFileSync(join(import.meta.dirname, '..', 'packages', 'vision', 'package.json'), 'utf8')) as { version: string }).version
 const RUN = process.env.RUN_CLI_LIFECYCLE === '1'
 const BOOT_SMOKE = process.env.DSH_CLI_BOOT_SMOKE === '1'
 const IS_WIN = process.platform === 'win32'
@@ -228,8 +230,8 @@ describe.skipIf(!RUN)('packed dsh-plugin-image-mind CLI lifecycle (isolated exac
     imageMindTgz = packPackage(join(repoRoot, 'packages', 'image-mind'))
 
     // Co-installing BOTH packed tarballs lets npm satisfy the plugin's
-    // @ran-sh/dsh-vision@^0.2.0 dependency from the local vision artifact —
-    // the public registry intentionally has no 0.2.0 yet.
+    // @ran-sh/dsh-vision@^0.2.0 dependency from the local vision artifact 鈥?
+    // the public registry does not carry the unreleased candidate yet.
     const install = runCapture('npm', ['install', '--prefix', cliPrefix, imageMindTgz, visionTgz])
     expect(install.status, install.stderr).toBe(0)
     // npx/npm-exec discoverability: the bin shim must exist next to the
@@ -243,14 +245,14 @@ describe.skipIf(!RUN)('packed dsh-plugin-image-mind CLI lifecycle (isolated exac
     const manifest = JSON.parse(
       readFileSync(join(cliPrefix, 'node_modules', 'dsh-plugin-image-mind', 'package.json'), 'utf8'),
     ) as { version: string; bin: Record<string, string> }
-    expect(manifest.version).toBe('0.2.0')
+    expect(manifest.version).toBe(CANDIDATE_VERSION)
     expect(manifest.bin['dsh-plugin-image-mind']).toBe('lib/cli.js')
   })
 
   it('runs through genuine npx semantics on this platform', () => {
     const result = runNpxCli(['--version'])
     expect(result.status, result.stderr).toBe(0)
-    expect(result.stdout).toContain('0.2.0')
+    expect(result.stdout).toContain(CANDIDATE_VERSION)
   })
 
   it('install -> status -> second install stays idempotent in the web profile', () => {
@@ -264,11 +266,11 @@ describe.skipIf(!RUN)('packed dsh-plugin-image-mind CLI lifecycle (isolated exac
       service: { present: boolean; version: string }
     }
     expect(state.plugin.installed).toBe(true)
-    expect(state.plugin.version).toBe('0.2.0')
+    expect(state.plugin.version).toBe(CANDIDATE_VERSION)
     expect(state.plugin.relation).toBe('same')
     expect(state.plugin.layerActive).toBe(true)
     expect(state.service.present).toBe(true)
-    expect(state.service.version).toBe('0.2.0')
+    expect(state.service.version).toBe(VISION_VERSION)
 
     const second = runNpxCli(['install', '--from', imageMindTgz])
     expect(second.status, second.stdout + second.stderr).toBe(0)
@@ -384,7 +386,7 @@ describe.skipIf(!RUN)('packed dsh-plugin-image-mind CLI lifecycle (isolated exac
     expect(update.status, update.stdout + update.stderr).toBe(0)
 
     const after = statusJson('upgrade') as { plugin: { version: string; relation: string; layerActive: boolean } }
-    expect(after.plugin.version).toBe('0.2.0')
+    expect(after.plugin.version).toBe(CANDIDATE_VERSION)
     expect(after.plugin.relation).toBe('same')
     expect(after.plugin.layerActive).toBe(true)
   }, 600_000)

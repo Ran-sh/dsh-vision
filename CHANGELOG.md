@@ -6,6 +6,14 @@ is independent of DeepSeek and follows SemVer for its 0.x line.
 
 ## [Unreleased]
 
+- Batch 022 prepares the `0.2.1` remediation candidate after the defective
+  public `0.2.0` publication: both publishable packages move to `0.2.1`
+  (image-mind depends on `@ran-sh/dsh-vision@^0.2.1`), and a content-hash
+  prepack guard (`scripts/pack-guard.mjs`, wired via npm's `prepack`) now
+  rebuilds or fails closed before `npm pack`/`npm publish` can emit a tarball,
+  making metadata-only empty shells structurally impossible. Incident
+  regression tests exercise the real packaging lifecycle (auto-build on
+  missing outputs, hash-detected stale inputs, fail-closed broken build).
 - Batch 019 adds a packaged lifecycle CLI to `dsh-plugin-image-mind` (npm bin
   `lib/cli.js`, so `npx dsh-plugin-image-mind install|update|status|uninstall`
   works after publication). It delegates every mutation to official
@@ -35,10 +43,14 @@ is independent of DeepSeek and follows SemVer for its 0.x line.
   evidence instead of guessing; benchmark JSONL/scoring preserves and checks
   route/trace coverage.
 
-## [0.2.0] — candidate, not published
+## [0.2.0] — published DEFECTIVE on npm; do not use
 
-`0.2.0` is the repository candidate for both packages. It is not a registry
-release and must not be described as a published KNOWN_GOOD package.
+`0.2.0` was published to npm by mistake from a checkout without build output:
+both tarballs are metadata-only empty shells (no `lib/**`), so the registry
+artifacts are non-functional even though the repository candidate itself was
+fully validated. `latest` currently points at these broken tarballs; do not
+install them. Batch 022 prepares `0.2.1` as the remediation candidate and adds
+a prepack fail-safe so packaging without built artifacts fails closed.
 
 ### Added
 
