@@ -4,10 +4,10 @@
   "source_commit": "47a1f0f88fc51954dfbc6bdc794c312d8e3e41c0",
   "result_commit": "dd33c7d4319b7b58c796cd23def23742919924e6",
   "status": "PASS",
-  "summary": "Completed Batch 019's true packed-artifact npx acceptance on main@47a1f0f: the dependency-free ESM npm bin exposes install/update/status/uninstall plus --profile (default web), --from, --dsh-bin, --json, help/version. Every lifecycle invocation now resolves the packed dsh-plugin-image-mind@0.2.0 bin through npx/npm-exec semantics (Windows uses npm's npx-cli.js entry with shell:false argv), while mutations delegate only to the official exact @deepseek-ai/dsh@0.1.1-rc.2 forwarder; status is read-only, operations are idempotent, and shared-service retention is preserved. The isolated exact-rc.2 roundtrip passed 9/9 locally on Windows including HTTP boot smoke, and final PR-head CI run 32625788886 is green on all nine checks across Node 22/24, Windows, Linux/macOS lifecycle lanes, install-roundtrip and secret-scan. Draft PR #61 remains open/unmerged for ChatGPT review; no publish, tag, release or real-Harness side effect occurred.",
+  "summary": "Completed Batch 019's true packed-artifact npx acceptance on main@47a1f0f: the dependency-free ESM npm bin exposes install/update/status/uninstall plus --profile (default web), --from, --dsh-bin, --json, help/version. Every lifecycle invocation now resolves the packed dsh-plugin-image-mind@0.2.0 bin through npx/npm-exec semantics (Windows uses npm's npx-cli.js entry with shell:false argv), while mutations delegate only to the official exact @deepseek-ai/dsh@0.1.1-rc.2 forwarder; status is read-only, operations are idempotent, and shared-service retention is preserved. The isolated exact-rc.2 roundtrip passed 9/9 locally on Windows including HTTP boot smoke, and final PR-head CI run 32626056604 is green on all nine checks across Node 22/24, Windows, Linux/macOS lifecycle lanes, install-roundtrip and secret-scan. Draft PR #61 remains open/unmerged for ChatGPT review; no publish, tag, release or real-Harness side effect occurred.",
   "timeline": {
     "started_at": "2026-08-23T15:21:34+08:00",
-    "completed_at": "2026-08-23T15:34:44+08:00"
+    "completed_at": "2026-08-23T15:40:32+08:00"
   },
   "changed_files": [
     ".github/workflows/ci.yml",
@@ -74,7 +74,7 @@
     {
       "name": "isolated-exact-rc2-roundtrip-with-boot-smoke",
       "status": "PASS",
-      "evidence": "RUN_CLI_LIFECYCLE=1 suite drives a disposable DSH_HOME through official operations only: seed (official add of vision tarball plus task-owned overrides seam) -> npx-packed-CLI install -> status and status --json -> idempotent second install -> same-version update noop -> dump-config composition smoke -> HTTP boot smoke -> shared-service-retaining uninstall -> absent status -> idempotent re-uninstall. Local Windows run: 9/9 passed including boot smoke with HTTP 200. CI run 32625788886 passes the same roundtrip on Linux Node 22 (boot smoke), Linux Node 24, Windows Node 22 and macOS Node 22. Every user-facing lifecycle command was npx-resolved; every Harness mutation remained official `dsh plugin` behavior and final active layers were clean."
+      "evidence": "RUN_CLI_LIFECYCLE=1 suite drives a disposable DSH_HOME through official operations only: seed (official add of vision tarball plus task-owned overrides seam) -> npx-packed-CLI install -> status and status --json -> idempotent second install -> same-version update noop -> dump-config composition smoke -> HTTP boot smoke -> shared-service-retaining uninstall -> absent status -> idempotent re-uninstall. Local Windows run: 9/9 passed including boot smoke with HTTP 200. Final CI run 32626056604 passes the same roundtrip on Linux Node 22 (boot smoke), Linux Node 24, Windows Node 22 and macOS Node 22. Every user-facing lifecycle command was npx-resolved; every Harness mutation remained official `dsh plugin` behavior and final active layers were clean."
     },
     {
       "name": "shared-service-retention-proof",
@@ -94,7 +94,7 @@
     {
       "name": "pr-head-ci-green-including-macos-cli-lane",
       "status": "PASS",
-      "evidence": "GitHub Actions run 32625788886 on head 8ce3317abaf91d3cec065dd4eadcf537e1102539: all nine checks PASS — test(22), test(24), windows, install-roundtrip, secret-scan, and cli-lifecycle on ubuntu Node 22 (boot-smoke=1), ubuntu Node 24, windows Node 22 and macOS Node 22. The lifecycle jobs execute the gated packed suite (35 unit tests plus 9/9 or 8/1-skipped roundtrip according to the single-lane boot-smoke contract); no vacuous skip occurred. PR #61 is still draft, open and unmerged."
+      "evidence": "GitHub Actions run 32626056604 on head bd0654fb18f6a1c765fae4e4fa73166c5fd4c0a0: all nine checks PASS — test(22), test(24), windows, install-roundtrip, secret-scan, and cli-lifecycle on ubuntu Node 22 (boot-smoke=1), ubuntu Node 24, windows Node 22 and macOS Node 22. The lifecycle jobs execute the gated packed suite (35 unit tests plus 9/9 or 8/1-skipped roundtrip according to the single-lane boot-smoke contract); no vacuous skip occurred. PR #61 is still draft, open and unmerged."
     },
     {
       "name": "documentation-updates",
@@ -116,7 +116,7 @@
   "result_validation": {
     "status": "PASS",
     "validator": "node .agent-workflow/validator/validate-contract.mjs result docs/agent-results/DSH-VISION-NPX-LIFECYCLE-CLI-019-result.json --stamp",
-    "validated_at": "2026-08-23T07:37:12Z",
+    "validated_at": "2026-08-23T07:41:16Z",
     "evidence": "Exit 0: VALID RESULT CONTRACT: docs/agent-results/DSH-VISION-NPX-LIFECYCLE-CLI-019-result.json"
   }
 }
