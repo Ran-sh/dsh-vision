@@ -1,0 +1,85 @@
+{
+  "schema_version": 2,
+  "task_id": "DSH-VISION-0200-PUBLICATION-PREFLIGHT-018",
+  "source_commit": "a13728d3c92bda98179dd290deb798a6c6efe255",
+  "result_commit": "6fa36dc3c30a5a464e88b9cc22833b04058a9bf6",
+  "status": "PASS",
+  "summary": "Side-effect-free 0.2.0 publication preflight completed on main@a13728d3c92bda98179dd290deb798a6c6efe255. Both manifests are exactly @ran-sh/dsh-vision@0.2.0 and dsh-plugin-image-mind@0.2.0 with registry-safe dependencies (no file:/link:/workspace:/git specifiers); image-mind depends on @ran-sh/dsh-vision@^0.2.0, so the service-first/plugin-second order is unambiguous. Read-only npm view confirms neither exact 0.2.0 version exists on https://registry.npmjs.org/ (EXPECTED_NOT_PUBLISHED). Registry connectivity PASS (npm ping PONG); auth probe recorded truthfully: npm whoami returns E401 in this executor environment (no username), so real publication requires a maintainer-authenticated environment; no token/config/OTP material was read or logged. Clean lane on the final main candidate: npm ci OK, typecheck/build/test/test:package/test:built all exit 0 (59+13+6 checks) and git diff --check clean. npm pack --dry-run file lists contain only declared artifacts (vision: 15 files; image-mind: 7 files; no src/tests/private paths or credential material). npm publish --dry-run --access public for both packages exited 0 with explicit 'Publishing to ... (dry-run)' notices and no registry write. All nine SAFE_DELETE remote branches were independently reconfirmed as merged/subsumed (8 via MERGED PRs #1-#9, fix/rc1-webserver-lifecycle via tip-is-ancestor-of-main) and deleted; main and release/0.2.0-docs retained. Exactly one ACTIVE_TASK existed (this one), the only open PR is Draft PR #60, and no package version drift from 0.2.0 exists. No npm publish/dist-tag, Git tag, GitHub Release, registry write, or real-Harness installation occurred. Verdict: the candidate is READY_FOR_EXPLICIT_PUBLISH_AUTHORIZATION.",
+  "timeline": {
+    "started_at": "2026-08-23T13:30:14+08:00",
+    "completed_at": "2026-08-23T13:40:46+08:00"
+  },
+  "changed_files": [
+    "docs/agent-results/DSH-VISION-0200-PUBLICATION-PREFLIGHT-018-result.json",
+    "docs/agent-tasks/ACTIVE_TASK.json"
+  ],
+  "tests": [
+    {
+      "name": "task-contract-validation-and-source-revision",
+      "status": "PASS",
+      "evidence": "node .agent-workflow/validator/validate-contract.mjs task docs/agent-tasks/ACTIVE_TASK.json -> VALID TASK CONTRACT; git pull --ff-only on main fast-forwarded ac638cc..a13728d; exact source SHA used: a13728d3c92bda98179dd290deb798a6c6efe255 (source_commit=LATEST resolved per workflow section 4); task branch chore/publication-preflight-018 created from that tip; Draft PR #60 opened early after first commit and left unmerged (https://github.com/Ran-sh/dsh-vision/pull/60)."
+    },
+    {
+      "name": "manifest-identity-and-dependency-safety",
+      "status": "PASS",
+      "evidence": "packages/vision/package.json -> name @ran-sh/dsh-vision, version 0.2.0; packages/image-mind/package.json -> name dsh-plugin-image-mind, version 0.2.0; image-mind dependencies include exactly \"@ran-sh/dsh-vision\": \"^0.2.0\" plus schemastery ^3.18.0. Programmatic scan of dependencies/peerDependencies/devDependencies/optionalDependencies in both manifests found zero file:, link:, workspace:, or git*: specifiers."
+    },
+    {
+      "name": "registry-exact-version-state-read-only",
+      "status": "PASS",
+      "evidence": "npm view @ran-sh/dsh-vision@0.2.0 -> E404 No match found for version 0.2.0; npm view dsh-plugin-image-mind@0.2.0 -> E404 No match found for version 0.2.0. Recorded EXPECTED_NOT_PUBLISHED for both; no republish attempt made because neither exact version exists and none was expected to exist."
+    },
+    {
+      "name": "registry-connectivity-and-auth-readiness-probe",
+      "status": "PASS",
+      "evidence": "npm ping -> PING/PONG against https://registry.npmjs.org/ (1293ms): connectivity PASS. npm whoami -> E401 Unauthorized with exit 1: this executor environment holds no npm login credentials and no username was returned. Recorded success/failure only; no .npmrc/token/config contents, cookies, OTP values, or other secret material were read, requested, captured, or logged. This does not gate candidate readiness: metadata.publish_authorized=false and actual publication must run in an explicit maintainer-authenticated environment."
+    },
+    {
+      "name": "clean-install-build-test-matrix-on-final-main-candidate",
+      "status": "PASS",
+      "evidence": "npm ci added 501 packages cleanly (no lockfile mutation); npm run typecheck exit 0 (tsc host+client+vision); npm run build exit 0 (lib/index.js + lib/client.js bundles emitted); npm test exit 0 (9 files / 59 tests passed incl. tests/package.test.ts tarball assertions); npm run test:package exit 0 (13 tests); npm run test:built exit 0 (6 tests over built artifacts); git diff --check exit 0 with clean working tree at commit time."
+    },
+    {
+      "name": "pack-file-list-audit",
+      "status": "PASS",
+      "evidence": "npm pack --dry-run packages/vision -> ran-sh-dsh-vision-0.2.0.tgz, total files 15: README.md, lib/index.js, lib/types/*.d.ts (12 declaration files), package.json. npm pack --dry-run packages/image-mind -> dsh-plugin-image-mind-0.2.0.tgz, total files 7: README.md, cordis.patch.yml, lib/client.js(+.map), lib/index.js(+.map), package.json. Neither tarball ships src/**, tests/**, scripts/**, credentials, .env, or private configuration; every shipped path matches the manifests' files allowlists and tests/package.test.ts privacy assertions passed."
+    },
+    {
+      "name": "side-effect-free-publish-dry-runs-service-first",
+      "status": "PASS",
+      "evidence": "npm client 11.16.0 supports unambiguous dry-run-only publishing. Service first: cd packages/vision && npm publish --dry-run --access public -> exit 0, notice 'Publishing to https://registry.npmjs.org/ with tag latest and public access (dry-run)', tarball shasum 328f7235bf449be7670f7fea8842ad749fb22276, metadata/tarball/dependency closure resolved without any registry write. Plugin second: cd packages/image-mind && npm publish --dry-run --access public -> exit 0, same dry-run notice, shasum 7f59073ddfadbffdf0409fcead34deabd7e943cb. Working tree and HEAD unchanged by both runs; no authentication was prompted or consumed."
+    },
+    {
+      "name": "safe-delete-branch-cleanup",
+      "status": "PASS",
+      "evidence": "Re-verified all nine SAFE_DELETE_AFTER_MERGE branches against current main before deletion via ancestry count + GitHub PR state: chore/agent-workflow-v1.7 (PR #7 MERGED), chore/codex-full-regression (PR #1 MERGED), chore/codex-release-retest (PR #3 MERGED), chore/sync-orchestrator-workflow (PR #8 MERGED), chore/sync-result-v2-evidence (PR #9 MERGED), fix/new-r1-history-preview-runtime (PR #4 MERGED), fix/rc1-webserver-lifecycle (rev-list origin/main..tip = 0, tip fully contained in main), fix/release-readiness-r1-fr001 (PR #2 MERGED), release/0.2.0 (PR #5 MERGED). All nine DELETED via git push origin --delete; ls-remote afterwards shows only refs/heads/chore/publication-preflight-018, refs/heads/main, refs/heads/release/0.2.0-docs. RETAINED: main and release/0.2.0-docs per task contract. No open PR referenced any deleted branch."
+    },
+    {
+      "name": "repository-state-consistency",
+      "status": "PASS",
+      "evidence": "docs/agent-tasks/ contains exactly one ACTIVE_TASK.json (this task) plus README/templates; gh pr list --state open returns only Draft PR #60 (this task's Result PR) so no unmerged release-candidate PR supersedes main; both package manifests remain exactly 0.2.0 with zero version drift after the full matrix."
+    },
+    {
+      "name": "publication-order-tag-plan-derived-not-executed",
+      "status": "PASS",
+      "evidence": "Exact later sequence derived and recorded in notes[] for maintainer authorization only: service @ran-sh/dsh-vision@0.2.0 publish + npm view verification, then plugin dsh-plugin-image-mind@0.2.0 publish + verification, then clean registry install check, then v0.2.0 tag/GitHub Release. None of those real commands was executed in this task; no tag, release, dist-tag, or registry write exists."
+    }
+  ],
+  "blockers": [],
+  "result_path": "docs/agent-results/DSH-VISION-0200-PUBLICATION-PREFLIGHT-018-result.json",
+  "notes": [
+    "Readiness verdict: READY_FOR_EXPLICIT_PUBLISH_AUTHORIZATION = true. This means the repository candidate is ready to receive a separate explicit publish authorization; it does NOT mean publication occurred and it grants no authorization by itself.",
+    "Intended real publication sequence for later maintainer authorization (do not run until authorized, in a maintainer-authenticated environment): (1) cd packages/vision && npm publish --access public; (2) verify with npm view @ran-sh/dsh-vision@0.2.0 version -> 0.2.0; (3) cd packages/image-mind && npm publish --access public; (4) verify with npm view dsh-plugin-image-mind@0.2.0 version -> 0.2.0; (5) clean-room install both from the public registry in a temp dir and smoke-import before tagging.",
+    "Proposed Git tag/release plan for later authorization: create tag v0.2.0 on main ONLY after both exact registry versions exist and the clean registry install passes; then create GitHub Release v0.2.0 from that tag referencing CHANGELOG.md. Do not tag or release before both publishes are verified.",
+    "Environment caveat recorded truthfully: npm whoami returned E401 here (no credentials configured for this executor). The maintainer-side publish environment must hold npm login for the @ran-sh scope owner; expect possible OTP interaction there. No credential material was read or persisted during this task.",
+    "Branch cleanup outcome detail: DELETED chore/agent-workflow-v1.7, chore/codex-full-regression, chore/codex-release-retest, chore/sync-orchestrator-workflow, chore/sync-result-v2-evidence, fix/new-r1-history-preview-runtime, fix/rc1-webserver-lifecycle, fix/release-readiness-r1-fr001, release/0.2.0; RETAINED main, release/0.2.0-docs (per task instruction to keep for now); task branch chore/publication-preflight-018 carries Draft PR #60 and stays until review.",
+    "No forbidden side effects occurred: no npm publish/unpublish/deprecate/dist-tag, no Git tag creation/deletion/push, no GitHub Release creation/editing/deletion, no branch protection mutation, no force-push/history rewrite, no real-Harness installation, and no writes outside Ran-sh/dsh-vision except this Result Contract and the ACTIVE_TASK deletion.",
+    "result_commit self-reference convention: the field records the completion commit that introduced the final Result Contract together with the ACTIVE_TASK deletion; the immediately following commit only records that SHA inside this document, mirroring the batch-017 precedent."
+  ],
+  "result_validation": {
+    "status": "PASS",
+    "validator": "node .agent-workflow/validator/validate-contract.mjs result docs/agent-results/DSH-VISION-0200-PUBLICATION-PREFLIGHT-018-result.json --stamp",
+    "validated_at": "2026-08-23T05:42:21Z",
+    "evidence": "Exit 0: VALID RESULT CONTRACT: docs/agent-results/DSH-VISION-0200-PUBLICATION-PREFLIGHT-018-result.json"
+  }
+}
