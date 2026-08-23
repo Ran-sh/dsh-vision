@@ -33,16 +33,19 @@ truth where the corpus claims it, no forbidden-answer leakage, automatic
 refocus for narrow cached questions, ordered multi-image labels, and a
 controlled wrong-answer comparison with a non-zero exit status.
 
-## 3. Exact DSH rc.1 isolated gate
+## 3. Exact DSH isolated gate
 
 Use only a task-owned temporary DSH state and official Harness lifecycle
 commands. Build and pack both 0.2.0 packages locally because the registry
-versions are not published. Against exact `@deepseek-ai/dsh@0.1.1-rc.1`, verify
-baseline boot, local-packed add, service/plugin composition, web/runtime route
-and tool smoke, settings/RPC envelopes where available, restart/reopen and
-official remove. Browser evidence must distinguish route/UI reachability from
-provider quality. No real credentials are read; a missing provider is recorded
-as external debt rather than a fake PASS.
+versions are not published. Against exact `@deepseek-ai/dsh@0.1.1-rc.2` (the
+current target; rc.1 evidence stays in Batches 006–016), verify baseline boot,
+local-packed add, service/plugin composition, web/runtime route and tool
+smoke, settings/RPC envelopes where available, restart/reopen and official
+remove. Batch 017 executed this gate and recorded PASS for exact rc.2 in
+`docs/compatibility.md`; re-run the gate when the target version changes.
+Browser evidence must distinguish route/UI reachability from provider
+quality. No real credentials are read; a missing provider is recorded as
+external debt rather than a fake PASS.
 
 ## 4. Registry preflight and publication boundary
 

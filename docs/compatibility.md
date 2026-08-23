@@ -6,6 +6,7 @@ and does not promise compatibility with every future DSH release.
 
 | Plugin version | Vision version | DSH (CLI) | DSH runtime (@deepseek-ai/dsh-*) | Status | Date | Notes |
 |---|---|---|---|---|---|---|
+| 0.2.0 | 0.2.0 | 0.1.1-rc.2 | exact `^0.1.1-rc.2` peer family, react 19.2.8 host | KNOWN_GOOD (isolated lifecycle) | 2026-08-23 | Batch 017 exact `@deepseek-ai/dsh@0.1.1-rc.2` isolated acceptance: official add (`dsh plugin --profile web add <tgz>` with a pnpm overrides seam in the task-owned profile), boot reaches HTTP 200 on a task-owned port, both bundle layers compose, `/image-mind` catalog/config/previews/raw/preview routes answer (the rc.1 route gap from Batch 008 does not reproduce), keyless visual challenge passes against a deterministic local OpenAI-compatible stub (`visualVerified: true`), model discovery reads the endpoint, PNG/JPEG/WebP attachment journey stores and serves byte-identical raws with preview batches/commit, restart recovery keeps the committed batch, and official remove/re-add/remove fully prunes the layers. Real-provider quality, registry install and the 9th-image browser fail-fast remain outside this isolated gate (see docs/verification-debt.md). |
 | 0.2.0 | 0.2.0 | 0.1.1-rc.1 | source-built/local-packed host path exercised | PARTIAL (pre-publish evidence; registry target unavailable) | 2026-08-22 | Batches 013–015 used the exact rc.1 CLI, official add/boot/remove, local-packed 0.2.0 service/plugin artifacts, deterministic local stubs, built bundle and browser/settings seams. No registry install or hosted-provider quality is implied. Batch 016's repeat was not allowed to touch a pre-existing listener on port 3080, so this row remains partial rather than claiming a new isolated run. |
 | 0.1.1 | 0.1.0 | 0.1.1-rc.1 | published 0.1.x line | KNOWN_GOOD (isolated lifecycle) | 2026-08-21 | exact rc.1 + published `dsh-plugin-image-mind@0.1.1` / `@ran-sh/dsh-vision@0.1.0`: official add PASS, both bundle layers compose, web reaches HTTP 200, `understand_image` registration is present in the loaded published bundle, official remove fully prunes the isolated install. Real provider image call remained PARTIAL because provider provenance could not be established without reading forbidden real Harness settings. |
 | 0.2.0 | 0.2.0 | 0.1.0-rc.7 | 0.1.0-rc.7 / cordis 4.0.1 | PRE-PUBLISH SOURCE EVIDENCE (not registry KNOWN_GOOD) | 2026-08-21 | Batch 013–015 deterministic/build/Windows/package/browser evidence and final CI are green; the 0.2.0 packages remain repository artifacts and are not published to npm. |
@@ -17,11 +18,18 @@ and does not promise compatibility with every future DSH release.
 ## Peer dependency policy
 
 Host-owned DSH runtime packages are declared as **peerDependencies** with a
-bounded range (`^0.1.0-rc.7` / `^4.0.1`), mirroring the official
+bounded range (`^0.1.1-rc.2` / `^4.0.1`), mirroring the official
 `@deepseek-ai/dsh-web-search-exa` convention. image-mind never ships a private
 nested copy of these host packages (the profile tree stays deduped). The
 plugin-owned `@ran-sh/dsh-vision` service and the `schemastery` schema library
 live in `dependencies`.
+
+Batch 017 reproduced the prerelease-range mismatch before changing manifests:
+`^0.1.0-rc.7` rejects the `0.1.1-rc.2` family under node-semver's
+same-`[major, minor, patch]`-tuple prerelease rule, and the rc.2 host family
+requires react 19.2.x, so the peer ranges and the repository test host were
+raised to the exact rc.2 line (`^0.1.1-rc.2`, react 19.2.8) and locked with
+package tests in `tests/package.test.ts`.
 
 For the repository's 0.2.0 line, `dsh-plugin-image-mind@0.2.0` depends on
 `@ran-sh/dsh-vision@^0.2.0`. These 0.2.0 packages are not yet published to npm,
