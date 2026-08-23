@@ -2,7 +2,7 @@
   "schema_version": 2,
   "task_id": "DSH-VISION-0201-REMEDIATION-CANDIDATE-022",
   "source_commit": "fea712ab0a6c746265438ac58abdd641a3f02707",
-  "result_commit": null,
+  "result_commit": "d262d18e35f650601e370122e5b5a3f68da740c1",
   "status": "PASS",
   "summary": "Prepared the exact 0.2.1 remediation candidate on main@fea712a with a structural fix for the defective public 0.2.0 empty-shell incident. Both publishable packages are now exactly 0.2.1 (image-mind depends on @ran-sh/dsh-vision@^0.2.1; lockfile updated with zero unrelated churn). The release fail-safe is a content-hash prepack guard: each build records sha256 over its declared pack inputs into lib/.pack-state.json (scripts/pack-state.mjs, written by both build.mjs files), and scripts/pack-guard.mjs — wired as the npm `prepack` hook so BOTH `npm pack` and `npm publish` run it — rebuilds via the package's real build when outputs are missing or inputs changed, then verifies every required entry (vision: lib/index.js + lib/types/index.d.ts; image-mind: lib/index.js/lib/client.js/lib/cli.js) and fails closed before any tarball can be produced. Guard logs go to stderr so `npm pack --json` output stays machine-clean. Incident regression tests exercise the REAL npm packaging lifecycle on synthetic fixtures: auto-build ships working entries from a no-output state, hash-detected input changes repack fresh content, and a failing build aborts packaging with a clear error. Real 0.2.1 pack artifacts recorded: vision 15 files / 17.1 KB tgz; image-mind 9 files incl. lib/cli.js / 215.2 KB tgz — explicitly contrasting the defective public 0.2.0 (2 and 3 metadata-only files). Full gates green (ci/typecheck/build/test 360+65/test:package 13/test:built 6/git diff --check); publish dry-runs pass with complete file sets; read-only registry checks confirm both 0.2.1 versions absent and both broken 0.2.0 versions still present (shasums d43b1109/550b696f unchanged); local packed-artifact npx lifecycle acceptance vs exact rc.2 passes 9/9 including HTTP boot smoke, and PR-head CI run 32635184298 is green on all nine lanes with the guard executing in-lane. No registry write, tag, release or real-Harness touch occurred in this preparation stage.",
   "timeline": {
@@ -99,7 +99,7 @@
   "result_validation": {
     "status": "PASS",
     "validator": "node .agent-workflow/validator/validate-contract.mjs result docs/agent-results/DSH-VISION-0201-REMEDIATION-CANDIDATE-022-result.json --stamp",
-    "validated_at": "2026-08-23T11:03:31Z",
+    "validated_at": "2026-08-23T11:04:14Z",
     "evidence": "Exit 0: VALID RESULT CONTRACT: docs/agent-results/DSH-VISION-0201-REMEDIATION-CANDIDATE-022-result.json"
   }
 }
