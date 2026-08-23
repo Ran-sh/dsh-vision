@@ -4,8 +4,9 @@
  *
  * Runs the REAL official @deepseek-ai/dsh@0.1.1-rc.2 plugin forwarder against
  * a disposable DSH_HOME: both workspace packages are actually packed, the
- * CLI is installed FROM THE PACKED TARBALL (npm prefix layout, plus a real
- * npx probe), and every mutation flows through official
+ * CLI is installed FROM THE PACKED TARBALL (npm prefix layout), and every
+ * user-facing lifecycle command is invoked through genuine npx/npm-exec bin
+ * resolution before its mutations flow through official
  * `dsh plugin --profile <name> add|remove` operations. A pnpm overrides seam
  * inside each TASK-OWNED profile redirects @ran-sh/dsh-vision resolution to
  * the local vision tarball because 0.2.0 is intentionally unpublished.
@@ -19,7 +20,7 @@ import { spawnSync, execFileSync, spawn } from 'node:child_process'
 import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { resolveDshEntry } from '../packages/image-mind/src/cli/dsh.ts'
 
@@ -74,18 +75,34 @@ interface CliRun {
   stderr: string
 }
 
-function runPackedCli(args: string[]): CliRun {
-  const entry = join(cliPrefix, 'node_modules', 'dsh-plugin-image-mind', 'lib', 'cli.js')
+function resolveNpxCli(): string {
+  // Windows' npx.cmd shim cannot be spawned with shell:false. Invoke the
+  // exact npm-provided npx CLI entry with Node instead; this preserves genuine
+  // npm bin resolution while keeping every argument a separate argv element.
+  const candidate = join(dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npx-cli.js')
+  if (!existsSync(candidate)) throw new Error(`npm npx CLI entry not found: ${candidate}`)
+  return candidate
+}
+
+function runNpxCli(args: string[]): CliRun {
   // The packed CLI cannot see the repository's devDependency dsh install
   // from its isolated prefix, so tests pin it explicitly via the documented
-  // --dsh-bin data option.
-  return runCapture(process.execPath, [entry, ...args, '--dsh-bin', dshEntry], {
-    env: { DSH_HOME: dshHome },
-  })
+  // --dsh-bin data option. The `--` delimiter ensures all following options
+  // belong to the package rather than npm/npx itself.
+  const npxArgs = ['--no-install', '--', 'dsh-plugin-image-mind', ...args, '--dsh-bin', dshEntry]
+  return IS_WIN
+    ? runCapture(process.execPath, [resolveNpxCli(), ...npxArgs], {
+        cwd: cliPrefix,
+        env: { DSH_HOME: dshHome },
+      })
+    : runCapture('npx', npxArgs, {
+        cwd: cliPrefix,
+        env: { DSH_HOME: dshHome },
+      })
 }
 
 function statusJson(profile: string): Record<string, unknown> {
-  const run = runPackedCli(['status', '--json', '--profile', profile])
+  const run = runNpxCli(['status', '--json', '--profile', profile])
   expect(run.status, run.stderr).toBe(0)
   return JSON.parse(run.stdout) as Record<string, unknown>
 }
@@ -231,20 +248,15 @@ describe.skipIf(!RUN)('packed dsh-plugin-image-mind CLI lifecycle (isolated exac
   })
 
   it('runs through genuine npx semantics on this platform', () => {
-    // Fixed command string, no interpolated data -> injection-safe by
-    // construction even where cmd.exe is required to launch npm shims.
-    const command = 'npx --no-install dsh-plugin-image-mind --version'
-    const result = IS_WIN
-      ? spawnSync('cmd.exe', ['/d', '/s', '/c', command], { cwd: cliPrefix, encoding: 'utf8', windowsHide: true })
-      : spawnSync('npx', ['--no-install', 'dsh-plugin-image-mind', '--version'], { cwd: cliPrefix, encoding: 'utf8' })
-    expect(result.status).toBe(0)
+    const result = runNpxCli(['--version'])
+    expect(result.status, result.stderr).toBe(0)
     expect(result.stdout).toContain('0.2.0')
   })
 
   it('install -> status -> second install stays idempotent in the web profile', () => {
     seedProfile('web')
 
-    const first = runPackedCli(['install', '--from', imageMindTgz])
+    const first = runNpxCli(['install', '--from', imageMindTgz])
     expect(first.status, first.stdout + first.stderr).toBe(0)
 
     const state = statusJson('web') as {
@@ -258,7 +270,7 @@ describe.skipIf(!RUN)('packed dsh-plugin-image-mind CLI lifecycle (isolated exac
     expect(state.service.present).toBe(true)
     expect(state.service.version).toBe('0.2.0')
 
-    const second = runPackedCli(['install', '--from', imageMindTgz])
+    const second = runNpxCli(['install', '--from', imageMindTgz])
     expect(second.status, second.stdout + second.stderr).toBe(0)
 
     const manifestPath = join(dshHome, 'profiles', 'web', 'package.json')
@@ -271,7 +283,7 @@ describe.skipIf(!RUN)('packed dsh-plugin-image-mind CLI lifecycle (isolated exac
   }, 600_000)
 
   it('same-version update is a safe no-op success', () => {
-    const run = runPackedCli(['update', '--profile', 'web'])
+    const run = runNpxCli(['update', '--profile', 'web'])
     expect(run.status, run.stdout + run.stderr).toBe(0)
     expect(run.stdout).toContain('already matches the CLI version')
   }, 300_000)
@@ -312,10 +324,10 @@ describe.skipIf(!RUN)('packed dsh-plugin-image-mind CLI lifecycle (isolated exac
     })
     expect(addConsumer.status, addConsumer.stderr).toBe(0)
 
-    const install = runPackedCli(['install', '--from', imageMindTgz, '--profile', 'shared'])
+    const install = runNpxCli(['install', '--from', imageMindTgz, '--profile', 'shared'])
     expect(install.status, install.stdout + install.stderr).toBe(0)
 
-    const uninstall = runPackedCli(['uninstall', '--profile', 'shared'])
+    const uninstall = runNpxCli(['uninstall', '--profile', 'shared'])
     expect(uninstall.status, uninstall.stdout + uninstall.stderr).toBe(0)
     expect(uninstall.stdout).toContain('fake-vision-consumer')
     expect(uninstall.stdout).toContain('kept in the profile')
@@ -368,7 +380,7 @@ describe.skipIf(!RUN)('packed dsh-plugin-image-mind CLI lifecycle (isolated exac
     expect(before.plugin.version).toBe('0.1.0')
     expect(before.plugin.relation).toBe('older')
 
-    const update = runPackedCli(['update', '--profile', 'upgrade', '--from', imageMindTgz])
+    const update = runNpxCli(['update', '--profile', 'upgrade', '--from', imageMindTgz])
     expect(update.status, update.stdout + update.stderr).toBe(0)
 
     const after = statusJson('upgrade') as { plugin: { version: string; relation: string; layerActive: boolean } }
@@ -378,14 +390,14 @@ describe.skipIf(!RUN)('packed dsh-plugin-image-mind CLI lifecycle (isolated exac
   }, 600_000)
 
   it('uninstall is idempotent when already absent and leaves clean layers', () => {
-    const first = runPackedCli(['uninstall', '--profile', 'web'])
+    const first = runNpxCli(['uninstall', '--profile', 'web'])
     expect(first.status, first.stdout + first.stderr).toBe(0)
 
     const gone = statusJson('web') as { plugin: { installed: boolean; relation: string } }
     expect(gone.plugin.installed).toBe(false)
     expect(gone.plugin.relation).toBe('absent')
 
-    const second = runPackedCli(['uninstall', '--profile', 'web'])
+    const second = runNpxCli(['uninstall', '--profile', 'web'])
     expect(second.status, second.stdout + second.stderr).toBe(0)
     expect(second.stdout).toContain('already absent')
   }, 600_000)
