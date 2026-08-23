@@ -1,0 +1,15 @@
+{
+  "schema_version": 2,
+  "task_id": "DSH-VISION-NPM-POSTPUBLISH-VERIFY-021",
+  "source_commit": "48aebc6966c342bd59dc129ad9428738ec592cdf",
+  "result_commit": null,
+  "status": "PARTIAL",
+  "timeline": {
+    "started_at": "2026-08-23T17:33:42+08:00",
+    "completed_at": null
+  },
+  "changed_files": [],
+  "tests": [],
+  "blockers": [],
+  "result_path": "docs/agent-results/DSH-VISION-NPM-POSTPUBLISH-VERIFY-021-result.json"
+}
