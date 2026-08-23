@@ -57,3 +57,20 @@ await build({
   footer: { js: 'return module.exports; } });' },
   logLevel: 'info',
 })
+
+// The lifecycle CLI bundles standalone for the npm bin entry
+// (`npx dsh-plugin-image-mind install|update|status|uninstall`). Node
+// built-ins stay external via platform:'node'; no @deepseek-ai/* or
+// @ran-sh/* imports exist here on purpose — the CLI must run before/without
+// any profile tree and delegates everything to the official dsh launcher.
+await build({
+  entryPoints: ['src/cli/bin.ts'],
+  outfile: 'lib/cli.js',
+  bundle: true,
+  format: 'esm',
+  platform: 'node',
+  target: 'es2024',
+  sourcemap: true,
+  // esbuild preserves bin.ts's #!/usr/bin/env node line on its own.
+  logLevel: 'info',
+})

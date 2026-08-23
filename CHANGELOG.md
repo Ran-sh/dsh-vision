@@ -6,6 +6,18 @@ is independent of DeepSeek and follows SemVer for its 0.x line.
 
 ## [Unreleased]
 
+- Batch 019 adds a packaged lifecycle CLI to `dsh-plugin-image-mind` (npm bin
+  `lib/cli.js`, so `npx dsh-plugin-image-mind install|update|status|uninstall`
+  works after publication). It delegates every mutation to official
+  `@deepseek-ai/dsh` plugin lifecycle commands, never hand-edits Harness-owned
+  state, is idempotent for repeat installs/same-version updates/absent
+  uninstalls, keeps a shared `@ran-sh/dsh-vision` service when other layers
+  still reference it, redacts secret-shaped output, and offers a stable
+  `status --json`. Packed-artifact acceptance against exact rc.2 — install →
+  status → idempotent second install → same-version no-op update → older→current
+  convergence, shared-service retention, composition dump and an HTTP boot
+  smoke on a task-owned port — runs in dedicated Linux (Node 22/24), Windows
+  and macOS CI lanes.
 - Batch 017 aligns the 0.2.0 pre-publish evidence with exact
   `@deepseek-ai/dsh@0.1.1-rc.2`: peer ranges moved from the `^0.1.0-rc.7` line
   (which node-semver rejects for the rc.2 prerelease family) to `^0.1.1-rc.2`,

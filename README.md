@@ -32,16 +32,28 @@ See [docs/architecture.md](docs/architecture.md).
 
 ## Install and use
 
-DSH owns installation and profile composition. After an authorized npm publication,
-install through the official plugin manager:
+After an authorized npm publication, one command manages the plugin. The
+`dsh-plugin-image-mind` CLI delegates every mutation to official DSH plugin
+lifecycle operations — it never hand-edits profiles, lockfiles or stores:
+
+```sh
+npx dsh-plugin-image-mind install      # into the default `web` profile
+npx dsh-plugin-image-mind status       # `status --json` for scripts
+npx dsh-plugin-image-mind update
+npx dsh-plugin-image-mind uninstall    # keeps a shared vision service
+```
+
+`--profile <name>` targets another profile; the official DeepSeek Harness CLI
+(`dsh`) must be installed. The raw official commands remain the advanced/
+fallback path:
 
 ```sh
 npx @deepseek-ai/dsh plugin --profile web add dsh-plugin-image-mind@0.2.0
 npx @deepseek-ai/dsh plugin --profile web remove dsh-plugin-image-mind
 ```
 
-The 0.2.0 packages are **not published yet**; the command is the future registry path,
-not current availability. For local development, build/pack the workspace and use an
+The 0.2.0 packages are **not published yet**; these are the post-publication
+commands, not current availability. For local development, build/pack the workspace and use an
 isolated DSH profile — never hand-edit `cordis.patch.yml` or install into a real profile.
 
 In the web UI, configure a provider under 设置 → 插件 → 图像理解; API keys go through the

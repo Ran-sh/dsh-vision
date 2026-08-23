@@ -67,6 +67,44 @@ jobs:
       - name: Package integrity (Windows npm pack)
         run: npm run test:package
 
+  # Focused lanes for the packaged dsh-plugin-image-mind lifecycle CLI: help/
+  # status parsing, injection-safe process spawning, and the full packed-
+  # artifact install/status/update/uninstall roundtrip against exact
+  # @deepseek-ai/dsh@0.1.1-rc.2 in a disposable DSH_HOME. The HTTP boot smoke
+  # runs on one lane only to bound cost; every lane proves the roundtrip.
+  cli-lifecycle:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, node: 22, boot-smoke: '1' }
+          - { os: ubuntu-latest, node: 24, boot-smoke: '' }
+          - { os: windows-latest, node: 22, boot-smoke: '' }
+          - { os: macos-latest, node: 22, boot-smoke: '' }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.7.0
+      - name: Install
+        run: npm ci
+      - name: Build artifacts (the packed CLI comes from lib/)
+        run: npm run build
+      - name: CLI unit tests
+        run: npx vitest run tests/cli.test.ts
+        working-directory: packages/image-mind
+      - name: Packed CLI lifecycle roundtrip (isolated exact rc.2)
+        run: npx vitest run tests/cli-packed-lifecycle.test.ts
+        env:
+          RUN_CLI_LIFECYCLE: '1'
+          DSH_CLI_BOOT_SMOKE: ${{ matrix.boot-smoke }}
+
   secret-scan:
     runs-on: ubuntu-latest
     steps:
