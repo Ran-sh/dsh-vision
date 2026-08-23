@@ -1,0 +1,21 @@
+{
+  "schema_version": 2,
+  "task_id": "DSH-VISION-0201-PUBLISH-AND-DEPRECATE-023",
+  "source_commit": "97738a1dbca24d6fa26727c97a12ed6d0d4532ca",
+  "result_commit": null,
+  "status": "IN_PROGRESS",
+  "summary": "Draft placeholder for the authorized 0.2.1 remediation publication and 0.2.0 deprecation. All pre-publish gates have passed (contract, ancestry 2ea15a0, npm auth rss1001, read-only registry absence of 0.2.1 and presence of both defective 0.2.0 shells, candidate manifests/guard/entries, clean lane, pack 15/9 files with hashes, publish dry-runs). The final document is written and validator-stamped only after the authorized registry writes and public lifecycle acceptance complete.",
+  "timeline": {
+    "started_at": "2026-08-23T21:40:00+08:00",
+    "completed_at": null
+  },
+  "changed_files": [
+    "docs/agent-results/DSH-VISION-0201-PUBLISH-AND-DEPRECATE-023-result.json",
+    "docs/agent-tasks/ACTIVE_TASK.json"
+  ],
+  "tests": [],
+  "blockers": [],
+  "result_path": "docs/agent-results/DSH-VISION-0201-PUBLISH-AND-DEPRECATE-023-result.json",
+  "notes": [],
+  "result_validation": {}
+}
