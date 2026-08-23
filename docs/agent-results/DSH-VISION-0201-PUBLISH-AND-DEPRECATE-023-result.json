@@ -4,88 +4,58 @@
   "source_commit": "97738a1dbca24d6fa26727c97a12ed6d0d4532ca",
   "result_commit": null,
   "status": "BLOCKED",
-  "summary": "发布认证在第一个真实写入前被阻塞：npm 读取认证可用（whoami = rss1001，registry https://registry.npmjs.org/ 连通），但 `npm publish --access public` 触发 EOTP（一次性密码/浏览器认证）要求，本执行环境无法完成该交互（不请求/捕获/打印任何 OTP/token 材料）。按照 Task Contract validation（\"If publish-capable authentication cannot be completed from this executor (including EOTP/browser-auth requirement), stop before any registry mutation and report BLOCKED\"），在**任何 registry 写入发生之前**停止。最终状态：BLOCKED_BEFORE_PUBLICATION。全部发布前 gate 已通过并记录在案：契约校验、main 祖先 2ea15a0、candidate manifests/guard/entries、clean lane（npm ci/typecheck/build/488 tests/package/built/diff-check）、真实 pack 15/9 文件（hash/文件清单已记录）、双 publish --dry-run 成功。零写入已核实：@ran-sh/dsh-vision@0.2.1 与 dsh-plugin-image-mind@0.2.1 均不存在于 registry；两个 0.2.0 缺陷版本原样存在（fileCount 2/3）且未被废弃。未执行任何 deprecation、未 unpublish、未建 tag/Release、未触碰真实 Harness。ACTIVE_TASK.json 保留未删（任务未完成，供 ChatGPT 侧完成浏览器/OTP 认证后重新触发）。",
+  "summary": "续跑结果（维护者已手动发布两个 0.2.1）：全部 0.2.1 公开验证与 clean-room/npx 生命周期验收 PASS，deprecation 被认证阻塞。独立 registry 验证：@ran-sh/dsh-vision@0.2.1 与 dsh-plugin-image-mind@0.2.1 均已公开、latest=0.2.1、fileCount 15/9，公开 tarball 与本地候选构建产物**逐文件 sha256 完全一致**（vision 13 个 lib 文件、image-mind 3 个 lib 文件；tar 头时间戳差异导致 dist.shasum 不同属正常），bin dsh-plugin-image-mind → lib/cli.js 与依赖 @ran-sh/dsh-vision@^0.2.1 正确，从未重复 publish。Clean-room：全新 task-owned 目录 registry 直装两个 0.2.1（90 包），require('@ran-sh/dsh-vision') 导出正常，bin shim `dsh-plugin-image-mind --version` = 0.2.1，文件闭合完整。公开 npx 全生命周期（第二个一次性 DSH_HOME，公开 @deepseek-ai/dsh@0.1.1-rc.2 宿主，无任何 --from/本地 artifact seam）：npx dsh-plugin-image-mind@0.2.1 install --profile web 成功（registry 直拉、bundle 直接组合）；status 显示 harness detected 0.1.1-rc.2 / plugin installed 0.2.1 layer active / service present 0.2.1；status --json 正常；幂等二次 install（already installed and active）；same-version update（already matches）；官方 dump-config 组合 vision-runtime + image-mind；boot HTTP 200（task-owned 端口 61836）且 /image-mind/catalog 返回真实 provider 目录 JSON；uninstall 官方 remove + service pruned by official tooling；status 显示 not installed / absent；幂等二次 uninstall（already absent）。最终状态：PUBLICATION_VERIFIED_DEPRECATION_BLOCKED —— 两个 0.2.0 的 deprecation 被 npm EOTP/浏览器认证要求阻塞（deprecate 是 registry 写，与 publish 相同的认证门禁），本执行环境无法且不允许完成 OTP/浏览器流程；已只读复验两个 0.2.0 的 deprecated 字段为空（零写入，未重试不确定写）。未 unpublish、未 tag、未 Release、未触碰真实 Harness。ACTIVE_TASK.json 保留未删以便 ChatGPT 在人工完成浏览器认证后仅需执行两个 deprecate 命令（命令与消息已就绪）。",
   "timeline": {
-    "started_at": "2026-08-23T21:40:00+08:00",
-    "completed_at": "2026-08-23T22:08:00+08:00"
+    "started_at": "2026-08-23T22:15:00+08:00",
+    "completed_at": "2026-08-23T22:31:00+08:00"
   },
   "changed_files": [
     "docs/agent-results/DSH-VISION-0201-PUBLISH-AND-DEPRECATE-023-result.json"
   ],
   "tests": [
     {
-      "name": "task-contract-and-source",
+      "name": "published-0.2.1-independent-verification",
       "status": "PASS",
-      "evidence": "node .agent-workflow/validator/validate-contract.mjs task docs/agent-tasks/ACTIVE_TASK.json -> VALID TASK CONTRACT; source main resolved to 97738a1dbca24d6fa26727c97a12ed6d0d4532ca; merged acceptance 2ea15a0f7a676dbf073b0b5bdbd90c15b1df4281 present in ancestry; task branch chore/0201-publish-deprecate-023 created; Draft PR #65 opened early (https://github.com/Ran-sh/dsh-vision/pull/65) and remains unmerged."
+      "evidence": "Read-only registry: @ran-sh/dsh-vision versions [0.1.0,0.2.0,0.2.1] latest=0.2.1, dist.fileCount=15, dist.shasum 022945103721a231005a1f0dcc9b74898b56951b; dsh-plugin-image-mind versions [0.1.0,0.1.1,0.2.0,0.2.1] latest=0.2.1, dist.fileCount=9, dist.shasum a60e614ae363cdece4eea2d6abd323982e53bb80, dependencies { @ran-sh/dsh-vision: ^0.2.1, schemastery: ^3.18.0 }, bin { dsh-plugin-image-mind: lib/cli.js }. Downloaded both public tarballs and compared content with the local candidate build: vision 15 files (README, lib/index.js, 13 lib/types/*.d.ts, package.json) and image-mind 9 files (README, cordis.patch.yml, lib/index.js, lib/client.js, lib/cli.js + 2 maps, package.json) — every lib file matches the local build byte-for-byte (sha256). dist.shasum differences vs the local npm pack are tar-header timestamp artifacts of separate packings, not content differences. No publish was attempted (both 0.2.1 already existed and content-matched; contract rule 'never republish')."
     },
     {
-      "name": "npm-auth-gate",
-      "status": "PARTIAL",
-      "evidence": "registry https://registry.npmjs.org/; npm ping -> PONG (1338 ms); npm whoami -> rss1001 (read-capable identity). Publish-capable authentication is BLOCKED by npm's EOTP/browser-auth requirement: `npm publish --access public` from packages/vision failed with error code EOTP before any registry mutation; this executor cannot complete OTP/browser authentication and must not request, inspect, capture, print or log OTP/token material (contract rule). Per contract, stopped before any registry write."
-    },
-    {
-      "name": "read-only-registry-presence",
+      "name": "clean-room-public-registry-install",
       "status": "PASS",
-      "evidence": "Before any write: @ran-sh/dsh-vision@0.2.1 E404 absent; dsh-plugin-image-mind@0.2.1 E404 absent (both publishable). Defective 0.2.0 versions still exist and match the accepted candidate record: @ran-sh/dsh-vision@0.2.0 shasum d43b11093201bf2004215bf914cf7e98363d48d0 fileCount=2; dsh-plugin-image-mind@0.2.0 shasum 550b696f0ac91f6d669b5dde1796dc5df4f3f87c fileCount=3. After the EOTP block, re-verified zero writes: both 0.2.1 still absent, both 0.2.0 intact with no deprecated flag."
+      "evidence": "Fresh task-owned directory (no workspace links, no local tarballs, no cache seeding) with package.json dependencies @ran-sh/dsh-vision 0.2.1 + dsh-plugin-image-mind 0.2.1; npm install from https://registry.npmjs.org/ added 90 packages in 56s exit 0. require('@ran-sh/dsh-vision') exports VisionAdapter/VisionRuntime/createMemoryVisionCache/createVisionCircuitBreaker/createVisionProviderHealth etc.; installed vision lib/types has 12 .d.ts; node_modules/.bin/dsh-plugin-image-mind --version -> 0.2.1; image-mind lib contains index.js/client.js/cli.js with maps."
     },
     {
-      "name": "candidate-manifest-gates",
+      "name": "public-npx-full-lifecycle",
       "status": "PASS",
-      "evidence": "packages/vision = @ran-sh/dsh-vision@0.2.1 with prepack `node ../../scripts/pack-guard.mjs`; packages/image-mind = dsh-plugin-image-mind@0.2.1 with prepack guard and bin dsh-plugin-image-mind -> lib/cli.js; image-mind depends exactly on @ran-sh/dsh-vision@^0.2.1; no file:/link:/workspace:/git specifiers in publishable dependency fields; required entries exist: vision lib/index.js + lib/types/index.d.ts, image-mind lib/index.js + lib/client.js + lib/cli.js."
+      "evidence": "Second disposable DSH_HOME (Temp/dsh023-npx/home) and exact public @deepseek-ai/dsh@0.1.1-rc.2 host installed via pnpm from the registry (bin.js --version -> 0.1.1-rc.2); the plugin CLI ran through npx -y dsh-plugin-image-mind@0.2.1 (public npm-exec semantics, no --from/local artifact, no seam). install -> 'official add dsh-plugin-image-mind@0.2.1 into profile web' exit 0; status -> harness target exact 0.1.1-rc.2 line detected 0.1.1-rc.2, plugin installed 0.2.1 (same, layer active), service @ran-sh/dsh-vision present 0.2.1; status --json -> machine-readable with service present 0.2.1; second install idempotent -> 'already installed and active in profile web'; update (same version) -> 'already matches the CLI version'; official dump-config -> '# == dsh-plugin-image-mind' with vision-runtime (@ran-sh/dsh-vision) + image-mind layers composed from the public registry bundle; web boot on task-owned port 61836 -> 'dsh web: http://127.0.0.1:61836' and HTTP 200, GET /image-mind/catalog -> 200 with real provider catalog JSON; uninstall -> 'official remove of dsh-plugin-image-mind' + '@ran-sh/dsh-vision pruned by official tooling after removal'; status after -> plugin not installed, service absent; second uninstall idempotent -> 'already absent; nothing to do'. Full public lifecycle roundtrip achieved with no manual Harness-owned file/store deletion."
     },
     {
-      "name": "clean-repository-lane",
-      "status": "PASS",
-      "evidence": "npm ci exit 0; npm run typecheck exit 0; npm run build exit 0; npm test exit 0 (workspace 63 + image-mind 360 passed/8 skipped + root 65 passed/9 skipped); npm run test:package exit 0; npm run test:built exit 0; git diff --check clean."
-    },
-    {
-      "name": "real-pack-closure",
-      "status": "PASS",
-      "evidence": "npm pack --json after build (prepack guard reported artifacts fresh and verified 2/3 required artifacts): @ran-sh/dsh-vision@0.2.1 ran-sh-dsh-vision-0.2.1.tgz shasum f7773f0d45eac27e63c0e6a45398fdc793ad6fbe, 15 files (README.md, lib/index.js, 13 lib/types/*.d.ts, package.json), unpacked 61025 B - no empty-shell shape; dsh-plugin-image-mind@0.2.1 dsh-plugin-image-mind-0.2.1.tgz shasum 7800224a34b00f434d37fbd354e0e8a20c9c549b, 9 files (README.md, cordis.patch.yml, lib/index.js, lib/client.js, lib/cli.js + 3 maps, package.json), unpacked 905561 B."
-    },
-    {
-      "name": "publish-dry-run",
-      "status": "PASS",
-      "evidence": "npm publish --dry-run --access public from packages/vision: 'Publishing to https://registry.npmjs.org/ with tag latest and public access (dry-run)', + @ran-sh/dsh-vision@0.2.1, total files 15, shasum f7773f0d...; from packages/image-mind: + dsh-plugin-image-mind@0.2.1, total files 9, shasum 7800224a... Both exit 0 with complete lib/** closure."
-    },
-    {
-      "name": "real-write-1-vision-0.2.1",
+      "name": "deprecate-writes-3-and-4",
       "status": "BLOCKED",
-      "evidence": "npm publish --access public from packages/vision failed with `error code EOTP: This operation requires a one-time password. Open this URL in your browser to authenticate` before any registry mutation. No 0.2.1 publish happened; verified read-only after the attempt (0.2.1 still absent). Publishing image-mind and deprecating 0.2.0 are therefore not attempted (contract: stop before unsafe follow-on writes)."
+      "evidence": "npm deprecate @ran-sh/dsh-vision@0.2.0 and dsh-plugin-image-mind@0.2.0 are registry writes guarded by the same npm EOTP/browser authentication as publish; the first deprecate attempt failed with error code EOTP ('This operation requires a one-time password. Open this URL in your browser to authenticate') before any mutation. Per contract no retries of uncertain writes and no OTP/token handling. Read-only re-verification: both 0.2.0 versions still exist, deprecated field empty, versions lists and latest tags intact (0.2.1). The two deprecate commands with the concise upgrade-to-0.2.1 message remain ready to run by the human-maintained auth session."
     },
     {
-      "name": "real-write-2-image-mind-0.2.1",
-      "status": "NOT RUN",
-      "evidence": "Skipped by contract because write 1 is BLOCKED; no follow-on registry writes may occur."
-    },
-    {
-      "name": "clean-room-and-public-npx-lifecycle",
-      "status": "NOT RUN",
-      "evidence": "Requires the published 0.2.1 artifacts; not attempted because publication is BLOCKED."
-    },
-    {
-      "name": "real-writes-3-and-4-0.2.0-deprecation",
-      "status": "NOT RUN",
-      "evidence": "Explicitly forbidden before BOTH 0.2.1 packages are publicly verified; publication is BLOCKED, so no deprecation was performed. Read-only verification confirmed both 0.2.0 versions remain un-deprecated and intact."
+      "name": "no-republish-and-registry-state",
+      "status": "PASS",
+      "evidence": "No npm publish was executed in this resume (both 0.2.1 already exist and content-match the candidate; verified read-only only). No unpublish, no dist-tag mutation, no access/visibility/provenance change, no GitHub tag or release side effect, no real-Harness access. Registry final state: 0.2.1 x2 published and content-verified, 0.2.0 x2 present and not deprecated."
     }
   ],
   "blockers": [
-    "npm publish-capable authentication requires EOTP/browser authentication on this machine (npm whoami works for reads as rss1001, but publish is refused with EOTP). The executor cannot and must not complete OTP/browser flows or handle OTP/token material. ChatGPT/user must complete the browser authentication (EOTP) via the npm-owned flow, then re-trigger the task so the same validated gates can proceed to REAL WRITE 1."
+    "Deprecation of the two defective 0.2.0 versions requires npm publish-capable authentication, which is gated behind EOTP/browser authentication on this machine (npm whoami works for reads as rss1001; registry writes are refused with EOTP). The executor cannot and must not complete OTP/browser flows or handle OTP/token material. After the human completes the npm browser authentication, exactly two commands remain: `npm deprecate @ran-sh/dsh-vision@0.2.0 \"0.2.0 is defective: the published tarball is a metadata-only shell missing the built lib/** artifacts. Upgrade to 0.2.1.\"` and `npm deprecate dsh-plugin-image-mind@0.2.0 \"0.2.0 is defective: the published tarball is a metadata-only shell missing the built lib/** artifacts. Upgrade to 0.2.1.\"`, each followed by read-only verification of the deprecated field."
   ],
   "result_path": "docs/agent-results/DSH-VISION-0201-PUBLISH-AND-DEPRECATE-023-result.json",
   "notes": [
-    "Final state: BLOCKED_BEFORE_PUBLICATION. Zero registry mutations occurred: no publish, no deprecation, no unpublish, no dist-tag mutation, no provenance/access/visibility change.",
-    "The EOTP block happened at npm's authentication step before tarball upload; the registry state for all four involved versions (0.2.1 absent x2, 0.2.0 defective present x2, un-deprecated) was re-verified read-only after the attempt.",
-    "All pre-publish evidence stands ready for immediate resumption: candidate checks, clean lane, pack hashes/file counts, dry-run output above. On re-trigger after human EOTP authentication, the executor will re-run the gates from the contract and proceed to REAL WRITE 1 -> 2 -> clean-room/npx lifecycle -> deprecations.",
-    "ACTIVE_TASK.json is intentionally NOT deleted: the task did not complete (BLOCKED). Keeping it lets ChatGPT re-queue the same contract after the human completes browser authentication. This is the only committed repository change beyond the Result Contract (the ACTIVE_TASK deletion would be part of a completion commit only).",
-    "No secrets were requested, inspected, captured, printed or logged: no OTP, token, cookie, authorization header, .npmrc content or recovery code appears in this contract or in any executor output. Registry identity remains the returned username rss1001 only.",
-    "No Git tag, GitHub Release, real-Harness access/install, product source/test/doc change, manifest, lockfile or version change was made. Draft PR #65 is open, contains the Result Contract only, and remains unmerged.",
+    "Final state: PUBLICATION_VERIFIED_DEPRECATION_BLOCKED. All 0.2.1 publication verification and clean-room/public npx acceptance completed by the executor; the only remaining authorized registry writes are the two 0.2.0 deprecations, blocked solely by the EOTP/browser authentication gate.",
+    "The CLI help banner prints 'lifecycle CLI (v0.2.0)' while package version and `--version` output are 0.2.1; this is an internal banner string in the merged candidate's bundle (not a registry/artifact defect) and is recorded for information only.",
+    "Harness-host installation used the official pnpm semantics (fresh npm resolution without a lockfile fails on a workspace:* specifier in a transitive @deepseek-ai host package; pnpm is DSH's official package-manager ecosystem). The plugin lifecycle itself ran through public npx (npm-exec) exactly as the contract prescribes.",
+    "ACTIVE_TASK.json is intentionally NOT deleted: the task did not fully complete (deprecation blocked). Keeping it lets ChatGPT re-queue the final two deprecate steps after human browser authentication.",
+    "No secrets were requested, inspected, captured, printed or logged: no OTP, token, cookie, authorization header, .npmrc content or recovery code appears in this contract. Registry identity remains the returned username rss1001 only.",
+    "All task-owned state is confined to the system temp area (dsh023-cleanroom, dsh023-npx); web/stub processes were terminated and task-owned ports freed. Real Harness profiles/settings/credentials/store were not read or modified; the real 3080 listener remains untouched and was not observed during this run.",
     "Environment: Windows 10.0.22631 x64, Node v24.18.1, npm 11.16.0, pnpm 11.7.0, registry https://registry.npmjs.org/."
   ],
   "result_validation": {
     "status": "PASS",
     "validator": "node .agent-workflow/validator/validate-contract.mjs result docs/agent-results/DSH-VISION-0201-PUBLISH-AND-DEPRECATE-023-result.json --stamp",
-    "validated_at": "2026-08-23T14:09:06Z",
+    "validated_at": "2026-08-23T14:33:18Z",
     "evidence": "Exit 0: VALID RESULT CONTRACT: docs/agent-results/DSH-VISION-0201-PUBLISH-AND-DEPRECATE-023-result.json"
   }
 }
