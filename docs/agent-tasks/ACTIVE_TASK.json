@@ -1,0 +1,74 @@
+{
+  "id": "DSH-VISION-NPX-LIFECYCLE-CLI-019",
+  "mode": "IMPLEMENT",
+  "source_branch": "main",
+  "source_commit": "LATEST",
+  "objective": "Continue the existing Batch 019 on Draft PR #61 and close the remaining acceptance gap: prove the four user-facing lifecycle commands themselves through genuine npx/npm-exec semantics from the packed dsh-plugin-image-mind@0.2.0 artifact, not merely by running lib/cli.js directly. Preserve all already-green implementation, rc.2 lifecycle, platform, release-gate and documentation evidence. Fix only if the true npx path exposes a confirmed defect. Leave PR #61 unmerged for ChatGPT review. Do not publish, tag, release, or touch the user's real Harness.",
+  "context": "First-pass Batch 019 implementation is on branch feat/npx-lifecycle-cli-019 / Draft PR #61. It already adds the npm bin, install/update/status/uninstall implementation, idempotence, shared-service retention, exact @deepseek-ai/dsh@0.1.1-rc.2 isolated lifecycle tests, Linux/Windows/macOS CI lanes, README/docs, pack and publish dry-runs. ChatGPT review found one evidence gap: tests execute lifecycle operations from the packed package's lib/cli.js via Node with --dsh-bin, while genuine npx semantics are exercised only for --version. The Task Contract explicitly requires the intended public UX `npx dsh-plugin-image-mind install|update|status|uninstall` and packed-artifact execution with npx/npm exec semantics. Final PR head 03c71dc9f8e556699603c7d7a6ff5b1c2757f0ec currently has all nine CI jobs green. Continue the same Batch/PR; do not create a second PR or a new batch.",
+  "allowed_changes": [
+    ".github/workflows/ci.yml",
+    "README.md",
+    "CHANGELOG.md",
+    "docs/compatibility.md",
+    "docs/release-checklist.md",
+    "docs/verification-debt.md",
+    "packages/image-mind/package.json",
+    "packages/image-mind/build.mjs",
+    "packages/image-mind/src/**",
+    "packages/image-mind/tests/**",
+    "packages/image-mind/README.md",
+    "tests/**",
+    "scripts/**",
+    "package.json",
+    "package-lock.json",
+    "docs/agent-results/DSH-VISION-NPX-LIFECYCLE-CLI-019-result.json"
+  ],
+  "forbidden_changes": [
+    "npm publish, npm unpublish, npm deprecate, npm dist-tag mutation, Git tag creation/push, GitHub Release creation, or any registry write",
+    "changing either package version away from 0.2.0",
+    "installing/enabling the candidate in the user's real Harness or reading/modifying the user's real Harness profiles/settings/credentials/node_modules/store/cache/lockfiles",
+    "directly editing Harness-owned state as product behavior or bypassing official DSH lifecycle operations",
+    "weakening or replacing the genuine npx/npm-exec acceptance with a direct node lib/cli.js invocation",
+    "shell-string construction with user-controlled data, secret/private-path logging, force-push, history rewrite, unrelated feature expansion, or a second PR"
+  ],
+  "validation": [
+    "validate this revised Task Contract; fetch latest main, existing branch feat/npx-lifecycle-cli-019 and Draft PR #61; merge/fast-forward the latest main task commit into that branch without force-push and preserve all valid first-pass commits",
+    "confirm the revised ACTIVE_TASK is present on the execution branch before continuing",
+    "keep the existing product implementation unchanged unless a true npx/npm-exec lifecycle invocation exposes a confirmed defect",
+    "change the packed lifecycle acceptance so install, status, second install, same-version update, older-to-current update, uninstall, absent status and second uninstall are invoked through genuine npx/npm exec semantics from the packed dsh-plugin-image-mind artifact rather than by directly running lib/cli.js with Node",
+    "because 0.2.0 is unpublished, use a side-effect-free local package execution form supported by npm/npx (for example npm exec/npx with the local tarball/package spec) that exercises npm bin resolution exactly as publication will; record the exact command shape. --from and --dsh-bin may remain test-only data arguments for the unpublished service/Harness seam",
+    "prove the four public commands themselves: npx-equivalent install succeeds, status and status --json are correct and read-only, update converges older->0.2.0 and same-version is a no-op, uninstall is idempotent and retains a shared service while referenced",
+    "run this true packed npx/npm-exec roundtrip on Linux, Windows and macOS CI lanes against exact @deepseek-ai/dsh@0.1.1-rc.2 task-owned state; keep the existing one-lane HTTP boot smoke unless a product change requires more",
+    "ensure Windows uses a bounded safe invocation strategy for npm .cmd shims with no user-controlled interpolation; product code must remain shell:false/injection-resistant",
+    "if the true npx path reveals that dsh discovery, argument forwarding, package resolution, update semantics or any other CLI behavior is broken, fix it narrowly in the same PR, add regression coverage, and rerun affected full release/package lanes",
+    "do not rerun unrelated expensive matrices unnecessarily if no product code changes; however require final PR #61 head CI green for test Node22/24, Windows, install-roundtrip, secret-scan and all four cli-lifecycle platform jobs",
+    "update docs/agent-results/DSH-VISION-NPX-LIFECYCLE-CLI-019-result.json so its PASS evidence explicitly distinguishes true npx/npm-exec lifecycle execution from direct-entry execution and cites the final PR head/final CI run; remove any wording that overclaims the first-pass direct-entry test",
+    "keep blockers empty and status PASS only if every four-command true npx/npm-exec acceptance requirement passes; otherwise report PARTIAL/BLOCKED truthfully",
+    "delete docs/agent-tasks/ACTIVE_TASK.json on the execution branch after completion, validate/stamp the Result Contract, commit/push, leave PR #61 unmerged, and stop"
+  ],
+  "acceptance_criteria": [
+    "The packed dsh-plugin-image-mind@0.2.0 artifact is exercised through genuine npx/npm-exec bin resolution for install, update, status and uninstall, not just --version.",
+    "The exact public one-command lifecycle semantics work in task-owned exact DSH 0.1.1-rc.2 state, including idempotence, status --json, older->current update and shared-service-safe uninstall.",
+    "Linux, Windows and macOS CLI lifecycle CI lanes prove the true npx/npm-exec path at the level supported by rc.2; no direct-entry-only evidence is substituted.",
+    "No unresolved CLI defect remains; if code changes, affected release/package checks are rerun and pass.",
+    "Final PR #61 head CI is green, Result Contract v2 is validator-stamped with final-head evidence, ACTIVE_TASK is deleted on the execution branch, and no publish/tag/release/real-Harness side effect occurs."
+  ],
+  "result_contract": "docs/agent-results/DSH-VISION-NPX-LIFECYCLE-CLI-019-result.json",
+  "completion_commit_contract": [
+    "docs/agent-results/DSH-VISION-NPX-LIFECYCLE-CLI-019-result.json",
+    "docs/agent-tasks/ACTIVE_TASK.json"
+  ],
+  "delete_active_task_on_completion": true,
+  "metadata": {
+    "executor": "CODEX",
+    "purpose": "true-npx-lifecycle-acceptance-before-publish",
+    "related_issue": "21",
+    "package_version": "0.2.0",
+    "harness_target": "@deepseek-ai/dsh@0.1.1-rc.2",
+    "resume_pr": "61",
+    "resume_branch": "feat/npx-lifecycle-cli-019",
+    "publish_authorized": false,
+    "tag_release_authorized": false,
+    "real_harness_install_authorized": false
+  }
+}
