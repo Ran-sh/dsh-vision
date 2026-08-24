@@ -3,20 +3,21 @@
   "task_id": "DSH-VISION-0201-PUBLISH-AND-DEPRECATE-023",
   "source_commit": "76d3c8837cc685081674b195f1ef6a2656c84fbd",
   "result_commit": null,
-  "status": "BLOCKED",
-  "summary": "Authentication retry completed truthfully. npm ping and npm whoami succeeded, but the exact authorized service deprecation was rejected twice with EOTP before registry mutation. The official browser ceremony opened an Authentication Successful page in the existing browser session without any secret entry or inspection, but a CLI retry still received a fresh EOTP challenge; the plugin deprecation was therefore not attempted because the contract requires the service deprecation to verify first. All non-blocked release closure remained healthy: both public 0.2.1 packages are unchanged/latest and were never republished, v0.2.1 and its public GitHub Release target the accepted product commit, the real Harness remains on plugin/service 0.2.1 active through official lifecycle tooling, and bounded host/UI/settings/catalog smoke passed. The optional hosted-provider UI smoke was PARTIAL because the image did not enter the upload/tool path and no assistant completion arrived inside 120 seconds. Both 0.2.0 versions remain published and not deprecated, so mandatory acceptance is still blocked solely by npm's interactive EOTP write ceremony. ACTIVE_TASK.json is retained and PR #65 remains Draft/unmerged.",
+  "status": "PASS",
+  "summary": "Batch 023 completed the mandatory 0.2.1 release closure. Both public 0.2.1 packages were re-verified unchanged/latest and were never republished. Interactive npm security-key flows successfully deprecated exactly @ran-sh/dsh-vision@0.2.0 first and then dsh-plugin-image-mind@0.2.0; both remain published with clear upgrade-to-0.2.1 guidance. The existing v0.2.1 annotated tag and public GitHub Release resolve exactly to accepted product commit 2ea15a0f7a676dbf073b0b5bdbd90c15b1df4281. The real Harness web profile remains on dsh-plugin-image-mind@0.2.1 active with @ran-sh/dsh-vision@0.2.1 present through official lifecycle tooling; composition, host boot, settings, catalog and rendered plugin-client smoke passed. The optional hosted-provider UI smoke reached image upload and understand_image but no normal assistant reply arrived within 180 seconds, so it is PARTIAL and explicitly non-blocking. No secret material was inspected or recorded, ACTIVE_TASK.json was deleted, and PR #65 remains Draft/unmerged.",
   "timeline": {
-    "started_at": "2026-08-24T11:06:22+08:00",
-    "completed_at": "2026-08-24T11:12:20+08:00"
+    "started_at": "2026-08-24T11:22:01+08:00",
+    "completed_at": "2026-08-24T12:10:38+08:00"
   },
   "changed_files": [
-    "docs/agent-results/DSH-VISION-0201-PUBLISH-AND-DEPRECATE-023-result.json"
+    "docs/agent-results/DSH-VISION-0201-PUBLISH-AND-DEPRECATE-023-result.json",
+    "docs/agent-tasks/ACTIVE_TASK.json"
   ],
   "tests": [
     {
       "name": "task-contract-source-and-existing-pr",
       "status": "PASS",
-      "evidence": "Fetched origin/main and existing chore/0201-publish-deprecate-023. main remained 76d3c8837cc685081674b195f1ef6a2656c84fbd; the execution branch already contained it and was clean at 23e40e4648185ff8b103dbc979bc935d0127bfa6. Task validator exited 0. Existing Draft PR #65 was reused; no branch or PR was created."
+      "evidence": "Fetched origin/main and existing chore/0201-publish-deprecate-023. main resolved to 76d3c8837cc685081674b195f1ef6a2656c84fbd; the existing execution branch already contained it and was clean. Task validator exited 0. Existing Draft PR #65 was reused; no branch or PR was created."
     },
     {
       "name": "public-0.2.1-registry-and-artifact-identity",
@@ -24,24 +25,24 @@
       "evidence": "Read-only registry verification: @ran-sh/dsh-vision latest=0.2.1, versions [0.1.0,0.2.0,0.2.1], fileCount 15, shasum 022945103721a231005a1f0dcc9b74898b56951b; dsh-plugin-image-mind latest=0.2.1, versions [0.1.0,0.1.1,0.2.0,0.2.1], fileCount 9, shasum a60e614ae363cdece4eea2d6abd323982e53bb80, bin dsh-plugin-image-mind -> lib/cli.js, dependency @ran-sh/dsh-vision ^0.2.1. These exact public tarball identities match the accepted prior byte-level candidate evidence. No publish was run."
     },
     {
-      "name": "npm-read-authentication",
+      "name": "npm-authentication-and-secret-safety",
       "status": "PASS",
-      "evidence": "npm ping returned PONG and npm whoami returned the public account name rss1001. No npm config, debug log, token, OTP, password, cookie, authorization header, authId, recovery code, or credential file was read or emitted."
+      "evidence": "npm ping returned PONG and npm whoami returned public account name rss1001. Because the account uses a WebAuthn security key rather than TOTP, each authorized write ran in an interactive TTY: npm generated its official authentication page, ENTER opened the browser, and the user completed the security-key ceremony directly. No password, PIN, OTP, token, cookie, authorization header, auth response, npm config or debug-log content was read or recorded."
     },
     {
       "name": "service-0.2.0-deprecation",
-      "status": "BLOCKED",
-      "evidence": "The exact authorized npm deprecate @ran-sh/dsh-vision@0.2.0 command was attempted with upgrade-to-0.2.1 guidance and failed before mutation with EOTP. npm opened its official web ceremony and the existing browser showed Authentication Successful without agent input, but the retried exact command received a new EOTP challenge and again failed before mutation. Final read-only verification found no deprecated field. No OTP/token/auth URL material was collected and no bypass was attempted."
+      "status": "PASS",
+      "evidence": "Executed exactly npm deprecate @ran-sh/dsh-vision@0.2.0 with the authorized defective-missing-built-lib guidance through npm's official interactive security-key flow; exit 0. Immediate prefer-online registry verification confirmed deprecated='0.2.0 is defective because the published package is missing built lib/** artifacts. Upgrade to 0.2.1.' The version remains published."
     },
     {
       "name": "plugin-0.2.0-deprecation",
-      "status": "NOT RUN",
-      "evidence": "Not attempted because the contract explicitly permits this write only after the service 0.2.0 deprecation verifies. Final read-only verification found no deprecated field for dsh-plugin-image-mind@0.2.0."
+      "status": "PASS",
+      "evidence": "Only after the service deprecation verified, executed exactly npm deprecate dsh-plugin-image-mind@0.2.0 with the same authorized guidance through npm's official interactive security-key flow; exit 0. Immediate prefer-online registry verification confirmed the exact deprecated field. The version remains published."
     },
     {
       "name": "git-tag-and-github-release-v0.2.1",
       "status": "PASS",
-      "evidence": "Existing annotated tag v0.2.1 resolves locally and on origin exactly to 2ea15a0f7a676dbf073b0b5bdbd90c15b1df4281. Existing public non-draft, non-prerelease Release https://github.com/Ran-sh/dsh-vision/releases/tag/v0.2.1 references the same tag/target. Neither object was moved, rewritten, or duplicated."
+      "evidence": "Existing annotated tag v0.2.1 resolves locally and on origin exactly to 2ea15a0f7a676dbf073b0b5bdbd90c15b1df4281. Existing public non-draft, non-prerelease Release https://github.com/Ran-sh/dsh-vision/releases/tag/v0.2.1 references the same tag/target with accurate remediation notes. Neither object was moved, rewritten or duplicated."
     },
     {
       "name": "real-harness-official-lifecycle-state",
@@ -51,33 +52,31 @@
     {
       "name": "real-harness-host-route-and-rendered-ui-smoke",
       "status": "PASS",
-      "evidence": "The real web profile booted on a task-owned localhost port. Headless Edge reached the rendered UI after networkidle; the DOM contained the image-mind plugin client marker; redacted settings and /image-mind/catalog returned HTTP 200. Only boolean and HTTP evidence was recorded. The task-owned host was stopped and its port verified closed; the plugin remained installed."
+      "evidence": "The real web profile booted on a task-owned localhost port. Headless Edge reached the rendered UI after networkidle; the DOM contained the image-mind plugin client marker; the redacted settings surface and /image-mind/catalog both returned HTTP 200. Only boolean and HTTP evidence was recorded. The task-owned host was stopped and its port verified closed; the plugin remained installed."
     },
     {
-      "name": "optional-real-ui-hosted-provider-visual-smoke",
-      "status": "PARTIAL",
-      "evidence": "The redacted settings view confirmed only the booleans active-provider complete=true and keyReady=true; no provider identity, endpoint, model, key, or secret was read or printed. A new UI session received an in-memory 16x16 solid-color PNG and a non-sensitive color prompt. The user message entered the UI, but no /image-mind/attach request or understand_image marker was observed and no assistant completion arrived within the bounded 120-second wait. The optional flow is therefore PARTIAL, never PASS."
-    },
-    {
-      "name": "final-state-and-pr-ci",
+      "name": "final-registry-and-release-state",
       "status": "PASS",
-      "evidence": "Final registry state was unchanged: both 0.2.1 versions present/latest; both 0.2.0 versions present and not deprecated; no unexpected versions or dist-tags. Tag/Release remained correct, real Harness remained 0.2.1 active, task port was closed, and all nine checks on the pre-result Draft PR #65 head 23e40e4648185ff8b103dbc979bc935d0127bfa6 were SUCCESS."
+      "evidence": "Final prefer-online verification confirmed both 0.2.1 versions remain public/latest and complete; exactly both 0.2.0 versions remain published with the intended deprecated guidance; version lists and dist-tags contain no unexpected changes. v0.2.1 and its GitHub Release remain tied to the accepted product commit. No republish, unpublish, access, visibility or arbitrary dist-tag mutation occurred."
+    },
+    {
+      "name": "pre-completion-pr-ci",
+      "status": "PASS",
+      "evidence": "All nine checks on Draft PR #65 head d65782118d3eea76cd98b0cdc2bc41b81200f11b were SUCCESS before the completion commit: Node 22/24 tests, install-roundtrip, Windows, four cross-platform CLI lifecycle lanes and secret-scan. The PR remained open, Draft and unmerged."
     }
   ],
-  "blockers": [
-    "npm accepts read authentication but requires a fresh interactive EOTP/browser authorization for the deprecate write. The official browser ceremony can show success, yet the subsequent CLI invocation receives a new EOTP challenge, and the task forbids collecting OTP/token/auth material. A maintainer-side publish-capable authentication path that remains valid for the exact write is required before the two mandatory 0.2.0 deprecations can complete."
-  ],
+  "blockers": [],
   "result_path": "docs/agent-results/DSH-VISION-0201-PUBLISH-AND-DEPRECATE-023-result.json",
   "notes": [
-    "ACTIVE_TASK.json is intentionally retained because mandatory deprecation acceptance is incomplete.",
-    "No republish, unpublish, dist-tag/access/visibility mutation, product edit, force-push, history rewrite, new PR, self-merge, manual Harness file edit, or plugin removal occurred.",
-    "The browser was used only to observe the official npm authentication success state; no fields were filled or submitted and no secrets were inspected.",
-    "The webapp-testing skill influenced the host/UI verification: its Python Playwright dependency was unavailable, so the bundled Node Playwright drove installed Edge headlessly with networkidle and closed the browser after each bounded check."
+    "ACTIVE_TASK.json was deleted because all mandatory acceptance criteria completed successfully.",
+    "Optional hosted-provider outcome (PARTIAL, non-blocking): the redacted settings view confirmed only active-provider complete=true and keyReady=true; an in-memory 32x32 solid-red PNG passed draft, /image-mind/attach upload and understand_image tool-stage checks, but no normal assistant row arrived within the bounded 180-second wait. No provider identity, endpoint, model, key, secret or response content was read or printed. This does not change the PASS verdict because public exact-rc.2 lifecycle and mandatory real host/UI acceptance are proven and the contract labels hosted-provider completion optional.",
+    "No secrets were requested, inspected, printed into the Result, copied or committed. Authentication happened directly in npm's official browser security-key ceremony.",
+    "No product files, manifests, lockfiles, release metadata, Harness-owned files or unrelated user state were manually edited."
   ],
   "result_validation": {
     "status": "PASS",
     "validator": "node .agent-workflow/validator/validate-contract.mjs result docs/agent-results/DSH-VISION-0201-PUBLISH-AND-DEPRECATE-023-result.json --stamp",
-    "validated_at": "2026-08-24T03:13:26Z",
+    "validated_at": "2026-08-24T04:12:02Z",
     "evidence": "Exit 0: VALID RESULT CONTRACT: docs/agent-results/DSH-VISION-0201-PUBLISH-AND-DEPRECATE-023-result.json"
   }
 }
