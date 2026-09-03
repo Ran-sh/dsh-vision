@@ -1,0 +1,31 @@
+{
+  "schema_version": 2,
+  "task_id": "dsh-vision-rc1-rg1-rg2",
+  "source_commit": "0692a2ed59428577cd8edbd7cf520590dfbfc663",
+  "status": "PASS",
+  "summary": "RG-1 (final SHA/CI/package closure) and RG-2 (exact rc.1 local-packed lifecycle clean-room) PASS on the frozen 0.3.2+0.3.3 candidate.",
+  "timeline": {
+    "started_at": "2026-09-04T02:50:00Z",
+    "completed_at": "2026-09-04T03:20:00Z"
+  },
+  "changed_files": ["docs/compatibility.md"],
+  "tests": [
+    {
+      "name": "RG-1 final SHA / CI / package / docs evidence closure",
+      "status": "PASS",
+      "evidence": "GitHub main == 0692a2e (parent 9b787e5). CI 9/9 success: test Node 22/24, windows, install-roundtrip, secret-scan, cli-lifecycle ubuntu 22/24 + windows + macos. Manifests: @ran-sh/dsh-vision@0.3.2, dsh-plugin-image-mind@0.3.3, dependency ^0.3.2. Lockfile root mirrors private root package.json (0.3.0); workspace entries 0.3.2/0.3.3. Anti-drift package test reads root manifest. Local: typecheck host+client clean, build both packages, image-mind vitest 421 passed/6 skipped, vision 63, root 69, test:package 20, test:built 6. docs/compatibility.md candidate row now marks registry evidence as HISTORICAL 0.3.1+0.3.2 pair; current 0.3.2+0.3.3 is CANDIDATE CODE-GO NOT PUBLISHED."
+    },
+    {
+      "name": "RG-2 exact rc.1 local-packed lifecycle clean-room",
+      "status": "PASS",
+      "evidence": "RUN_CLI_LIFECYCLE=1 npx vitest run tests/cli-packed-lifecycle.test.ts: 8 passed/1 skipped (109s) on this machine. Disposable DSH_HOME, exact @deepseek-ai/dsh@0.1.2-rc.1, local-packed tgz (no registry): install -> status -> second install idempotent in web profile -> same-version update safe no-op -> uninstall removes plugin but keeps shared referenced service -> older-installed converges -> uninstall idempotent when absent + clean layers. CI lanes (ubuntu 22/24, windows, macos) also green on the same packed lifecycle."
+    }
+  ],
+  "blockers": [],
+  "result_path": "docs/agent-results/dsh-vision-rg1-rg2-result.json",
+  "notes": [
+    "RG-3 registry clean-room is POST-PUBLISH (requires service-first 0.3.2 then plugin-second 0.3.3 on npm, then fresh registry-only install).",
+    "RG-4..RG-13 require real rc.1 web + Chrome + hosted provider environment (user-authorized real-environment activity).",
+    "RG-12 may be SKIP + WAIVED-ENV only under the locked rule (second independent gateway unavailable; deterministic cross-provider suite PASS; RG-9/RG-11 PASS)."
+  ]
+}
