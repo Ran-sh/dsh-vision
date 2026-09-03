@@ -1,9 +1,8 @@
 /**
- * Real-endpoint connectivity test for the two hosted plans this deployment
- * uses (opencode-go and commandcode-goat). Reads the credentials from the DSH
- * credential document (`~/.dsh/.credentials.yaml`) at runtime — never from
- * source, never printed — and resolves them through the same key seam a real
- * call uses.
+ * Real-endpoint connectivity test for the hosted vision plan this deployment
+ * uses (opencode-go). Reads the credentials from the DSH credential document
+ * (`~/.dsh/.credentials.yaml`) at runtime — never from source, never printed —
+ * and resolves them through the same key seam a real call uses.
  *
  * Self-skips without `RUN_VISION_E2E=1` so `npm test` stays keyless.
  * @vitest-environment node
@@ -86,18 +85,14 @@ function runCase(providerId: string, baseURL: string, model: string, apiKeyEnv: 
 
 describe.skipIf(!RUN)('real-endpoint vision connectivity', () => {
   it('opencode-go answers over the new adapter', runCase('opencode-go', 'https://opencode.ai/zen/go/v1', 'mimo-v2.5', 'OPENCODE_GO_API_KEY'), 40_000)
-  it('commandcode-goat answers over the new adapter', runCase('commandcode-goat', 'https://api.commandcode.ai/provider/v1', 'xiaomi/mimo-v2.5', 'COMMANDCODE_API_KEY'), 40_000)
 })
 
 describe.skipIf(!RUN)('real-endpoint composition (apply + runtime)', () => {
-  /** Mount apply() with both providers and the given active, via the launch env. */
+  /** Mount apply() with the opencode-go provider and the given active, via the launch env. */
   async function mountComposition(active: string): Promise<{ vision: VisionRuntime }> {
     const storedA = credentialFromFile('OPENCODE_GO_API_KEY')
-    const storedB = credentialFromFile('COMMANDCODE_API_KEY')
     expect(storedA, 'OPENCODE_GO_API_KEY must be present').toBeDefined()
-    expect(storedB, 'COMMANDCODE_API_KEY must be present').toBeDefined()
     process.env['OPENCODE_GO_API_KEY'] = storedA
-    process.env['COMMANDCODE_API_KEY'] = storedB
     const ctx = new Context()
     // The vision service is injected: load the service package first.
     await ctx.plugin(VisionRuntime)
@@ -105,7 +100,6 @@ describe.skipIf(!RUN)('real-endpoint composition (apply + runtime)', () => {
     apply(ctx, {
       providers: {
         'opencode-go': { baseURL: 'https://opencode.ai/zen/go/v1', model: 'mimo-v2.5', apiKeyEnv: 'OPENCODE_GO_API_KEY' },
-        'commandcode-goat': { baseURL: 'https://api.commandcode.ai/provider/v1', model: 'xiaomi/mimo-v2.5', apiKeyEnv: 'COMMANDCODE_API_KEY' },
       },
       active,
     })
@@ -124,18 +118,10 @@ describe.skipIf(!RUN)('real-endpoint composition (apply + runtime)', () => {
     expect(result.text.trim()).not.toHaveLength(0)
   }, 40_000)
 
-  it('active = commandcode-goat → omitted provider call goes to commandcode-goat', async () => {
-    const { vision } = await mountComposition('commandcode-goat')
-    const result = await vision.call({ ...PROBE, signal: AbortSignal.timeout(30_000) })
-    expect(result.provider).toBe('commandcode-goat')
-    expect(result.model).toBe('xiaomi/mimo-v2.5')
-    expect(result.text.trim()).not.toHaveLength(0)
-  }, 40_000)
-
-  it('explicit provider override beats the active', async () => {
+  it('explicit provider override stays on the only configured provider', async () => {
     const { vision } = await mountComposition('opencode-go')
-    const result = await vision.call({ ...PROBE, provider: 'commandcode-goat', signal: AbortSignal.timeout(30_000) })
-    expect(result.provider).toBe('commandcode-goat')
+    const result = await vision.call({ ...PROBE, provider: 'opencode-go', signal: AbortSignal.timeout(30_000) })
+    expect(result.provider).toBe('opencode-go')
     expect(result.text.trim()).not.toHaveLength(0)
   }, 40_000)
 
