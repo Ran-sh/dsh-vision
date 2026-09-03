@@ -53,19 +53,19 @@ function applyOp(value: Record<string, unknown>, op: { op: 'set' | 'unset'; path
 }
 
 /** An in-memory fake of the alpha settings scope + credentials faces. */
-function fakeConnection(initial: Record<string, unknown>): { connection: ImageMindClientContext; view: Record<string, unknown> } {
+function fakeConnection(initial: Record<string, unknown>, opts: { startLoading?: boolean } = {}): {
+  connection: ImageMindClientContext
+  view: Record<string, unknown>
+  /** Flip the mirror between `loading` and `ready` and notify subscribers. */
+  setStatus: (status: 'loading' | 'ready') => void
+} {
   const view: Record<string, unknown> = JSON.parse(JSON.stringify(initial))
   const credentials = new Map<string, string>()
   let revision = 1
-  const snapshotOf = (): { status: 'ready'; value: Record<string, unknown>; base: unknown; user: unknown; revision: number; writable: boolean; mode: 'host' } => ({
-    status: 'ready',
-    value: JSON.parse(JSON.stringify(view)) as Record<string, unknown>,
-    base: undefined,
-    user: JSON.parse(JSON.stringify(view)) as Record<string, unknown>,
-    revision,
-    writable: true,
-    mode: 'host',
-  })
+  let status: 'loading' | 'ready' = opts.startLoading === true ? 'loading' : 'ready'
+  const snapshotOf = () => status === 'loading'
+    ? { status: 'loading' as const, value: undefined, base: undefined, user: undefined, revision: undefined, writable: false, mode: 'host' as const }
+    : { status: 'ready' as const, value: JSON.parse(JSON.stringify(view)) as Record<string, unknown>, base: undefined, user: JSON.parse(JSON.stringify(view)) as Record<string, unknown>, revision, writable: true, mode: 'host' as const }
   const listeners = new Set<() => void>()
   const publish = (): void => { for (const listener of listeners) listener() }
   const scope = {
@@ -109,7 +109,14 @@ function fakeConnection(initial: Record<string, unknown>): { connection: ImageMi
       },
     },
   }
-  return { connection, view }
+  return {
+    connection,
+    view,
+    setStatus: (next: 'loading' | 'ready') => {
+      status = next
+      publish()
+    },
+  }
 }
 
 /** The stored provider record inside the fake wire, for direct assertions. */
@@ -240,5 +247,47 @@ describe('ImageMindSettingsStore persistence', () => {
     expect(store.pendingCredentialWrites()).toEqual([])
     await store.save() // must not throw and must not write
     expect(storedProvider(view, 'a')).toEqual({ baseURL: 'https://api.example.com/v1', model: 'm1' })
+  })
+
+  it('follows the scope mirror from loading to ready (browser lifecycle regression)', async () => {
+    // The rc.1 browser journey failure: the store snapshotted the scope once
+    // while it was still `loading` and never became visible. A bound scope is
+    // an observable mirror — the store must subscribe and follow it into
+    // `ready`, then keep following document updates.
+    const fake = fakeConnection(
+      { providers: { a: { baseURL: 'https://api.example.com/v1', model: 'm1' } }, active: 'a' },
+      { startLoading: true },
+    )
+    const store = new ImageMindSettingsStore(fake.connection)
+    // Initial snapshot is loading: card not exposed yet.
+    expect(store.store.getSnapshot().shell.available).toBe(false)
+    expect(store.store.getSnapshot().shell.exposed).toBe(false)
+
+    // Mirror reaches ready: subscribers fire, store must become exposed.
+    fake.setStatus('ready')
+    await new Promise(resolve => setImmediate(resolve))
+    await store.load()
+    const ready = store.store.getSnapshot()
+    expect(ready.shell.exposed).toBe(true)
+    expect(ready.shell.writable).toBe(true)
+    expect(ready.providers.find(p => p.id === 'a')?.model).toBe('m1')
+
+    // A later document update through the mirror is followed without remount.
+    fake.view['providers'] = { a: { baseURL: 'https://api.example.com/v1', model: 'm2' }, active: 'a' }
+    fake.setStatus('loading')
+    fake.setStatus('ready')
+    await new Promise(resolve => setImmediate(resolve))
+    await store.load()
+    expect(store.store.getSnapshot().providers.find(p => p.id === 'a')?.model).toBe('m2')
+
+    store.dispose()
+  })
+
+  it('exposes nothing when no settings scope is available', async () => {
+    const store = new ImageMindSettingsStore({} as ImageMindClientContext)
+    expect(store.store.getSnapshot().shell.available).toBe(true)
+    expect(store.store.getSnapshot().shell.exposed).toBe(false)
+    expect(store.store.getSnapshot().transport).toBe('unavailable')
+    store.dispose()
   })
 })

@@ -11,9 +11,11 @@
  */
 
 import { createSnapshotStore, type SnapshotStore } from '@deepseek-ai/dsh-client-store'
+import type { SettingsScope } from '@deepseek-ai/dsh-client-ui-settings/client'
 import {
-  describeCredentialOfficial, hasOfficialSettings, readOfficial, setCredentialOfficial,
-  writeOfficial, type ImageMindClientContext, type SettingsOp, type SettingsSnapshot,
+  describeCredentialOfficial, resolveScope, setCredentialOfficial,
+  snapshotFromBoundScope, writeThroughScope,
+  type ImageMindClientContext, type SettingsOp, type SettingsSnapshot,
 } from './transport.ts'
 
 /** One provider as the browser edits it (all string drafts; secret kept write-only). */
@@ -136,27 +138,51 @@ export class ImageMindSettingsStore {
   private failed = false
   private failedReason: string | undefined
   private generation = 0
+  /** The bound settings scope (observable mirror) this store follows. */
+  private readonly scope: SettingsScope<Record<string, unknown>> | undefined
+  /** Removes the mirror subscription on dispose. */
+  private readonly disposeScope: (() => void) | undefined
+  private disposed = false
 
   constructor(private readonly ctx: ImageMindClientContext) {
     this.store = createSnapshotStore(this.projection())
+    // Bind the scope ONCE and treat it as an observable mirror, never as a
+    // request/response getter: its first snapshot may be `loading`, and the
+    // card must follow it into `ready` (and subsequent document/reconnect
+    // changes) via subscribe — exactly like the official rc.1 controllers.
+    this.scope = resolveScope(ctx)
+    if (this.scope === undefined) {
+      this.view = { status: 'unavailable', value: undefined, base: undefined, user: undefined, revision: undefined, writable: false, mode: 'legacy' }
+      this.publish()
+      return
+    }
+    this.disposeScope = this.scope.subscribe(() => {
+      if (!this.disposed) void this.load()
+    })
     void this.load()
+  }
+
+  /** Drop the mirror subscription; no further loads fire. */
+  dispose(): void {
+    this.disposed = true
+    this.disposeScope?.()
   }
 
   /** Whether the official settings wire is live for this connection. */
   get transport(): 'official' | 'legacy' | 'unavailable' {
-    return hasOfficialSettings(this.ctx) ? 'official' : 'unavailable'
+    return this.scope !== undefined ? 'official' : 'unavailable'
   }
 
-  /** Refresh the snapshot from the host. */
+  /** Refresh the snapshot from the bound scope mirror. */
   async load(): Promise<void> {
     const generation = ++this.generation
-    if (!hasOfficialSettings(this.ctx)) {
+    if (this.scope === undefined) {
       this.view = { status: 'unavailable', value: undefined, base: undefined, user: undefined, revision: undefined, writable: false, mode: 'legacy' }
       this.publish()
       return
     }
     try {
-      const next = await readOfficial(this.ctx)
+      const next = snapshotFromBoundScope(this.scope)
       if (generation !== this.generation) return
       this.view = next
       // Batch-describe every referenced credential for the status lamps.
@@ -459,7 +485,7 @@ export class ImageMindSettingsStore {
   /** Save the staged drafts as path ops, then store any typed keys. */
   async save(): Promise<void> {
     if (this.saving || !this.dirty()) return
-    if (!hasOfficialSettings(this.ctx)) {
+    if (this.scope === undefined) {
       this.failed = true
       this.failedReason = '当前环境不支持官方设置通道'
       this.publish()
@@ -475,7 +501,7 @@ export class ImageMindSettingsStore {
     try {
       const revision = this.view.revision
       if (ops.length > 0) {
-        this.view = await writeOfficial(this.ctx, ops, revision)
+        this.view = await writeThroughScope(this.scope, ops, revision)
       }
       for (const write of credentialWrites) {
         await setCredentialOfficial(this.ctx, write.ref, write.value)
@@ -484,7 +510,7 @@ export class ImageMindSettingsStore {
           const record = providerRecordOf(this.view, write.id)
           const currentEnv = typeof record?.['apiKeyEnv'] === 'string' ? record['apiKeyEnv'] : ''
           if (currentEnv !== write.ref) {
-            this.view = await writeOfficial(this.ctx, [{ op: 'set', path: ['providers', write.id, 'apiKeyEnv'], value: write.ref }], this.view.revision)
+            this.view = await writeThroughScope(this.scope, [{ op: 'set', path: ['providers', write.id, 'apiKeyEnv'], value: write.ref }], this.view.revision)
           }
         }
       }

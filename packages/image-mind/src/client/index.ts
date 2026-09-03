@@ -81,13 +81,14 @@ export function apply(ctx: Context): void {
   })
 
   ctx.inject(['slots'], (slotsCtx: Context) => {
-    const controller = new ImageMindSettingsCardController(slotsCtx)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const slots = (slotsCtx as any).slots
+    const controller = new ImageMindSettingsCardController(slotsCtx)
+    slotsCtx.effect(() => () => controller.dispose(), 'dsh-plugin-image-mind: settings card controller')
     slots.inject('settings.plugin.item', () =>
       slots.register({
         name: 'settings.plugin.item',
-        key: 'image-mind',
+        key: NS,
         locale: NS,
         inject: () => controller.inject(),
       }, ImageMindSettingsCard))

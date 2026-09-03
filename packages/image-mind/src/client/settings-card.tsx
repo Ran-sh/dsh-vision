@@ -75,6 +75,7 @@ export interface ImageMindSettingsCardFace {
 export class ImageMindSettingsCardController {
   private readonly store: SnapshotStore<ImageMindSettingsCardState>
   private readonly host: ImageMindSettingsStore | undefined
+  private readonly unsubscribeHost: (() => void) | undefined
 
   /** @param ctx - the slots-injected client context (carries the settings scope). */
   constructor(ctx: Context) {
@@ -94,7 +95,7 @@ export class ImageMindSettingsCardController {
       ? new ImageMindSettingsStore(ctx as unknown as import('./settings/transport.ts').ImageMindClientContext)
       : undefined
     if (this.host !== undefined) {
-      this.host.store.subscribe(() => {
+      this.unsubscribeHost = this.host.store.subscribe(() => {
         // Mirror the preview toggle into the module cache the enhancer reads.
         const state = this.host?.store.getSnapshot()
         if (state !== undefined && state.shell.exposed) {
@@ -103,6 +104,12 @@ export class ImageMindSettingsCardController {
         this.publish()
       })
     }
+  }
+
+  /** Drop the host-store subscription and the settings-scope mirror subscription. */
+  dispose(): void {
+    this.unsubscribeHost?.()
+    this.host?.dispose()
   }
 
   private publish(): void {
