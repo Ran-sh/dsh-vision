@@ -69,9 +69,11 @@ Still open:
 - [ ] `npx dsh-plugin-image-mind@latest update` from a real older registry
   version cannot be exercised before a healthy publication exists.
 
-The known exact-rc.1 registry add blocker is package availability, not a
-plugin runtime failure: 0.2.0 is intentionally unpublished. Use local-packed
+The known pre-publish registry add blocker is package availability, not a
+plugin runtime failure: `0.3.0` is intentionally unpublished. Use local-packed
 artifacts for this pre-publish gate and keep registry compatibility unverified.
+(Historical note: the defective public `0.2.0` empty-shell incident stays in
+history; do not reinstall it.)
 
 ## Real-provider debt (requires explicit credentials and quota)
 
@@ -96,10 +98,10 @@ Result Contract. Do not spend provider quota during this pre-publish task.
 
 ## Release and registry debt
 
-- [ ] `npm view @ran-sh/dsh-vision@0.2.0 name version dist-tags` and the same
-  lookup for `dsh-plugin-image-mind@0.2.0` remain `EXPECTED_NOT_PUBLISHED` until
+- [ ] `npm view @ran-sh/dsh-vision@0.3.0 name version dist-tags` and the same
+  lookup for `dsh-plugin-image-mind@0.3.0` remain `EXPECTED_NOT_PUBLISHED` until
   a maintainer authorizes publication.
-- [ ] Fresh registry install with `npm ls` showing both 0.2.0 packages and no
+- [ ] Fresh registry install with `npm ls` showing both 0.3.0 packages and no
   file/link/workspace dependency (post-publication only).
 - [ ] Service-first then plugin-second npm publication, OTP/secret handling,
   tag/release and a clean post-publish Harness install/remove (maintainer-only).
@@ -115,7 +117,7 @@ reboot). Still open — do not convert to PASS without new Result Contracts:
 
 - [ ] registry install of published `0.3.0` artifacts (service-first
   then plugin-second; maintainer-authorized publication only).
-- [ ] full alpha browser journey (settings card render/add/edit/save/delete,
+- [ ] full browser journey (settings card render/add/edit/save/delete,
   drop/paste/lightbox, exact-eight/ninth-rejected gate, retry/draft,
   session switch/restart) in the real `0.1.2-rc.1` web UI.
 - [ ] hosted-provider quality, quota/413/429 behavior and token-trace
@@ -123,7 +125,7 @@ reboot). Still open — do not convert to PASS without new Result Contracts:
 
 ## Exit rule
 
-The 0.2.0 candidate is pre-publish ready only when the repository/package,
-benchmark, focused regression, exact isolated rc.1 source-built/local-packed,
+The 0.3.0 candidate is pre-publish ready only when the repository/package,
+benchmark, focused regression, exact isolated `0.1.2-rc.1` local-packed,
 security and documentation checks pass; open provider, registry-publication
 and authorization debt is listed here rather than silently converted to PASS.
