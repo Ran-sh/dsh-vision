@@ -84,9 +84,9 @@ describe('dsh-plugin-image-mind package metadata', () => {
   const pkg = readJson(resolve(IMAGE_MIND_DIR, 'package.json'))
 
   it('is exactly the 0.3.0 adaptation candidate', () => {
-    expect(pkg['version']).toBe('0.3.0')
+    expect(pkg['version']).toBe('0.3.1')
     const visionPkg = readJson(resolve(VISION_DIR, 'package.json'))
-    expect(visionPkg['version']).toBe('0.3.0')
+    expect(visionPkg['version']).toBe('0.3.1')
   })
 
   it('depends on the compatible service range @ran-sh/dsh-vision@^0.3.0', () => {
