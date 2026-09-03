@@ -31,15 +31,13 @@ export interface SettingsSnapshot {
   mode: 'host' | 'memory' | 'legacy'
 }
 
-/** Minimal structural view of the alpha `remote.credentials` face. */
+/** Minimal structural view of the rc.1 `remote.credentials` face. */
 export interface RemoteCredentials {
-  set(request: { ref: string; value: string }): Promise<{ result: { ok: boolean; error?: { message?: string } } }>
-  describe(request: { refs: string[] }): Promise<{
-    result: {
-      ok: boolean
-      value?: { credentials?: Record<string, { configured?: boolean; writable?: boolean }> }
-      error?: { message?: string }
-    }
+  set(ref: string, value: string): Promise<{ ok: boolean; error?: { message?: string } }>
+  describe(refs: string[]): Promise<{
+    ok: boolean
+    value?: Record<string, { configured?: boolean; writable?: boolean }>
+    error?: { message?: string }
   }>
 }
 
@@ -157,9 +155,9 @@ export async function writeOfficial(
 export async function setCredentialOfficial(ctx: ImageMindClientContext, ref: string, value: string): Promise<void> {
   const credentials = resolveCredentials(ctx)
   if (credentials === undefined) throw new Error('image-mind credential store is not available')
-  const response = await credentials.set({ ref, value })
-  if (!response.result.ok) {
-    throw new Error(response.result.error?.message ?? 'credential store rejected the write')
+  const response = await credentials.set(ref, value)
+  if (!response.ok) {
+    throw new Error(response.error?.message ?? 'credential store rejected the write')
   }
 }
 
@@ -170,8 +168,8 @@ export async function describeCredentialOfficial(
 ): Promise<{ configured: boolean; writable: boolean }> {
   const credentials = resolveCredentials(ctx)
   if (credentials === undefined) return { configured: false, writable: false }
-  const response = await credentials.describe({ refs: [ref] })
-  if (!response.result.ok) return { configured: false, writable: false }
-  const view = response.result.value?.credentials?.[ref]
+  const response = await credentials.describe([ref])
+  if (!response.ok) return { configured: false, writable: false }
+  const view = response.value?.[ref]
   return { configured: view?.configured ?? false, writable: view?.writable ?? false }
 }
