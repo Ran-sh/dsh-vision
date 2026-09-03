@@ -48,7 +48,11 @@ export function apply(ctx: Context): void {
   ctx.effect(() => ctx.locale.register(NS, localeDictionaries), 'dsh-plugin-image-mind: card dictionaries')
 
   ctx.inject(['conversation'], (scope: Context) => {
-    installSendHook(scope.conversation)
+    const dispose = installSendHook(scope.conversation)
+    scope.effect(
+      () => dispose,
+      'dsh-plugin-image-mind: conversation send hook',
+    )
   })
 
   // Keep the old markdown enhancer for already persisted legacy messages.

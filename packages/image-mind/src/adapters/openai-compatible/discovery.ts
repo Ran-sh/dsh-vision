@@ -10,6 +10,7 @@
 import type { VisionModel } from '@ran-sh/dsh-vision'
 import { readBoundedBody } from '../../media/load.ts'
 import type { OpenAICompatibleVisionOptions } from './types.ts'
+import { authHeaders } from './auth-headers.ts'
 
 /**
  * Vision models grouped by endpoint, matched on the root hostname. The two
@@ -206,7 +207,7 @@ export async function discoverEndpointModels(
   let response: Response
   try {
     response = await fetch(`${options.baseURL}/models`, {
-      headers: { authorization: `Bearer ${apiKey}` },
+      headers: authHeaders(apiKey),
       redirect: 'error',
       signal: AbortSignal.any([signal ?? new AbortController().signal, AbortSignal.timeout(15_000)]),
     })

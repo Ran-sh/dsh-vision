@@ -13,13 +13,21 @@ const PNG = Buffer.from([
   0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
 ])
 
+// Behavioral tests enable the local-file policy confined to a fixture root.
+let allowedRoots: string[] = []
+
 function tool() {
   const ctx = new Context()
   ctx.provide('vision', {
     call: async () => ({ text: 'ok', provider: 'p', model: 'm' }),
   } as never)
   ctx.provide('attachments', {} as never)
-  return understandImageTool(ctx, () => 'describe', () => ({ maxBytes: 1024 * 1024, allowPrivateNetwork: false }))
+  return understandImageTool(ctx, () => 'describe', () => ({
+    maxBytes: 1024 * 1024,
+    allowPrivateNetwork: false,
+    allowLocalFiles: true,
+    localFileRoots: allowedRoots,
+  }))
 }
 
 describe('understand_image session history selector', () => {
@@ -27,6 +35,7 @@ describe('understand_image session history selector', () => {
     const dir = mkdtempSync(join(tmpdir(), 'image-mind-history-tool-'))
     const file = join(dir, 'image.png')
     writeFileSync(file, PNG)
+    allowedRoots = [dir]
 
     await expect(tool().execute(
       { image: file, sessionBatchOffset: 1, prompt: 'describe' },

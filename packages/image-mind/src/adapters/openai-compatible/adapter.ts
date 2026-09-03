@@ -22,6 +22,7 @@ import { resolveBackoff, sleepBackoff, type BackoffConfig } from './retry.ts'
 import type { VisionCache } from '../../cache/vision-cache.ts'
 import { globalVisionExecutionGate } from '../../runtime/execution-gate.ts'
 import type { OpenAICompatibleVisionOptions } from './types.ts'
+import { authHeaders } from './auth-headers.ts'
 
 const DEFAULT_MAX_RETRIES = 2
 const MAX_PROVIDER_FALLBACKS = 2
@@ -256,7 +257,7 @@ async function callVisionOnce(
   try {
     response = await fetch(path, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${apiKey}` },
+      headers: { 'content-type': 'application/json', ...authHeaders(apiKey) },
       body,
       redirect: 'error',
       signal: AbortSignal.any([request.signal ?? new AbortController().signal, AbortSignal.timeout(options.timeoutMs)]),

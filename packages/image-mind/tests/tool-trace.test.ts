@@ -35,7 +35,7 @@ describe('understand_image diagnostics passthrough', () => {
     const file = join(dir, 'img.png')
     writeFileSync(file, PNG)
 
-    const tool = understandImageTool(ctx, () => 'describe', () => ({ maxBytes: 1024 * 1024, allowPrivateNetwork: false }))
+    const tool = understandImageTool(ctx, () => 'describe', () => ({ maxBytes: 1024 * 1024, allowPrivateNetwork: false, allowLocalFiles: true, localFileRoots: [dir] }))
     const result = await tool.execute({ image: file }, { signal: new AbortController().signal } as never)
 
     expect(result.trace).toEqual(trace)

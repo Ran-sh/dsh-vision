@@ -1,15 +1,19 @@
 /**
- * Image loading: one image from a local absolute path, an http(s) URL, an
- * attachment reference JSON, or a bare attachment id taken out of a markdown
- * image reference, enforcing the byte bound and the network policy before any
- * bytes reach the vision model. Non-http(s) URL schemes are rejected; private
- * network hosts are refused unless `allowPrivateNetwork` is set (localhost is
- * always allowed — Ollama / LM Studio are local vision endpoints).
+ * Image loading: one image from an http(s) URL, an attachment reference JSON,
+ * a bare attachment id taken out of a markdown image reference, or — only
+ * when local files are explicitly enabled and the path resolves inside an
+ * allow-listed root — an absolute local path. Enforces the byte bound and the
+ * network policy before any bytes reach the vision model. Non-http(s) URL
+ * schemes are rejected; private network hosts are refused unless
+ * `allowPrivateNetwork` is set (localhost is always allowed — Ollama / LM
+ * Studio are local vision endpoints). Local filesystem reads are disabled by
+ * default (see `media/local-file-policy`).
  * @module dsh-plugin-image-mind/media/load
  */
 
 import { readFile, stat } from 'node:fs/promises'
 import { validateImageUrl } from './network.ts'
+import { isAuthorizedLocalPath, resolveAuthorizedLocalFile } from './local-file-policy.ts'
 import type { Context } from '@deepseek-ai/cordis'
 import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import { attachmentRefById, parseImageAttachmentRef } from '../attachments/store.ts'
@@ -74,14 +78,16 @@ function assertWithinBound(bytes: number, maxBytes: number): void {
 // + DNS pre-resolution); this module only orchestrates loading.
 
 /**
- * Load one image from a local absolute path, an http(s) URL, an attachment
- * reference JSON, or a bare attachment id, enforcing the byte bound and the
- * private-network policy.
+ * Load one image from an http(s) URL, an attachment reference JSON, a bare
+ * attachment id, or — only when the deployment has explicitly enabled local
+ * files and the path resolves inside an allow-listed root — an absolute local
+ * path. Enforces the byte bound, the local-file policy, and the
+ * private-network policy before any bytes reach the vision model.
  * @param ctx - registrant context; supplies the optional attachment service.
  * @param input - the model-supplied image reference.
  * @param signal - caller cancellation.
  * @param maxBytes - image byte bound.
- * @param options - network policy.
+ * @param options - network and local-file policy.
  * @returns the loaded bytes and sniffed media type.
  */
 export async function loadImage(
@@ -89,9 +95,11 @@ export async function loadImage(
   input: string,
   signal: AbortSignal,
   maxBytes: number,
-  options?: { allowPrivateNetwork?: boolean },
+  options?: { allowPrivateNetwork?: boolean; allowLocalFiles?: boolean; localFileRoots?: readonly string[] },
 ): Promise<LoadedImage> {
   const allowPrivateNetwork = options?.allowPrivateNetwork ?? false
+  const allowLocalFiles = options?.allowLocalFiles ?? false
+  const localFileRoots = options?.localFileRoots ?? []
   const trimmed = input.trim()
   if (trimmed.length === 0) throw new Error('image-mind: image must be a non-empty path, URL, or attachment reference')
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) && !/^https?:\/\//i.test(trimmed)) {
@@ -134,10 +142,19 @@ export async function loadImage(
       + ' is unavailable or has no validated metadata; ask the user to re-send the image',
     )
   }
-  const info = await stat(trimmed, { bigint: false })
+  // Filesystem access is a host capability boundary: denied unless the
+  // deployment opted in and the real path stays inside an allow-listed root.
+  if (!isAuthorizedLocalPath(trimmed, allowLocalFiles, localFileRoots)) {
+    throw new Error(
+      'image-mind: local file paths are disabled for image references; send the image as a session attachment, '
+      + 'or reference it by http(s) URL or attachment id',
+    )
+  }
+  const path = await resolveAuthorizedLocalFile(trimmed, localFileRoots)
+  const info = await stat(path, { bigint: false })
   if (!info.isFile()) throw new Error(`image-mind: image path is not a file: ${trimmed}`)
   assertWithinBound(info.size, maxBytes)
-  const bytes = await readFile(trimmed, { signal })
+  const bytes = await readFile(path, { signal })
   return toImage(bytes, trimmed)
 }
 

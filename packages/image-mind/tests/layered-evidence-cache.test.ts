@@ -15,10 +15,13 @@ const PNG = Buffer.from([
   0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
 ])
 
+let allowedRoots: string[] = []
+
 function imageFile(): string {
   const dir = mkdtempSync(join(tmpdir(), 'dsh-evidence-cache-'))
   const file = join(dir, 'img.png')
   writeFileSync(file, PNG)
+  allowedRoots = [dir]
   return file
 }
 
@@ -36,7 +39,7 @@ function setup() {
   const tool = understandImageTool(
     ctx,
     () => 'describe image',
-    () => ({ maxBytes: 1024 * 1024, allowPrivateNetwork: false }),
+    () => ({ maxBytes: 1024 * 1024, allowPrivateNetwork: false, allowLocalFiles: true, localFileRoots: allowedRoots }),
     cache,
   )
   return { call, tool }

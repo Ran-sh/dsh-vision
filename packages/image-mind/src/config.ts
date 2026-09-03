@@ -17,6 +17,8 @@ import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import type { CredentialRef } from '@deepseek-ai/dsh-credentials'
+import { isLoopbackHostname, validateProviderEndpoint } from './providers/endpoint-policy.ts'
+import { isValidProviderId } from './client/settings/identity.ts'
 
 /** Environment-variable name the API key resolves through when no inline key is configured. */
 export const DEFAULT_API_KEY_ENV = 'VISION_API_KEY'
@@ -38,6 +40,10 @@ export const DEFAULT_API_STYLE: ApiStyle = 'chat-completions'
 export const DEFAULT_RENDER_IMAGE_PREVIEW = true
 /** Whether fetching image URLs on private networks is allowed (SSRF guard). */
 export const DEFAULT_ALLOW_PRIVATE_NETWORK = false
+/** Whether model-supplied local filesystem image paths are allowed at all. Defaults to false — see `media/local-file-policy`. */
+export const DEFAULT_ALLOW_LOCAL_FILES = false
+/** Default allow-list root set when local files are enabled; empty means nothing is readable. */
+export const DEFAULT_LOCAL_FILE_ROOTS: readonly string[] = []
 /** Instruction sent when the model does not pass its own prompt. */
 export const DEFAULT_PROMPT =
   'Analyze this image: describe what is visible factually, transcribe legible text verbatim, and call out layout, notable details, or anything anomalous. Answer in Chinese unless the caller asks otherwise.'
@@ -83,6 +89,15 @@ export interface Config {
   renderImagePreview?: boolean
   /** Whether fetching image URLs on private networks is allowed. Defaults to false (SSRF guard). */
   allowPrivateNetwork?: boolean
+  /**
+   * Whether model-supplied absolute local image paths may be read (host
+   * capability boundary). Defaults to false: only session attachments, http(s)
+   * URLs and attachment ids are valid image references. When true, paths are
+   * still confined to `localFileRoots` via realpath containment.
+   */
+  allowLocalFiles?: boolean
+  /** Absolute directories model-supplied local image paths may read from. Empty = no filesystem reads. */
+  localFileRoots?: string[]
 }
 
 /** Schemastery configuration for the image-mind tool; doubles as the settings-section schema. */
@@ -101,6 +116,8 @@ export const Config: z<Config> = z.object({
   timeoutMs: z.number().min(1).default(DEFAULT_TIMEOUT_MS),
   renderImagePreview: z.boolean().default(DEFAULT_RENDER_IMAGE_PREVIEW),
   allowPrivateNetwork: z.boolean().default(DEFAULT_ALLOW_PRIVATE_NETWORK),
+  allowLocalFiles: z.boolean().default(DEFAULT_ALLOW_LOCAL_FILES),
+  localFileRoots: z.array(z.string()).default(DEFAULT_LOCAL_FILE_ROOTS as string[]),
 })
 
 /** Settings namespace the web GUI's plugin-config card edits. */
@@ -125,6 +142,8 @@ export interface ResolvedConfig {
   timeoutMs: number
   renderImagePreview: boolean
   allowPrivateNetwork: boolean
+  allowLocalFiles: boolean
+  localFileRoots: readonly string[]
 }
 
 /**
@@ -155,6 +174,15 @@ export function resolveProvider(id: string, provider: Provider): ResolvedProvide
       throw new Error(`image-mind: provider ${JSON.stringify(id)} apiKeyEnv ${JSON.stringify(rawEnv)} is not a valid environment-variable name`)
     }
   }
+  // Endpoint policy applies to a real endpoint root only: an empty baseURL is
+  // an incomplete draft (validated at active/use time), never a policy
+  // violation. A non-empty root must be http(s), carry no embedded credentials
+  // or query/hash, and never be a plaintext-http remote that would receive a
+  // key. A credential is required unless the endpoint is a known keyless
+  // local endpoint (or an explicit empty apiKeyEnv marks an intentional
+  // keyless one).
+  const credentialRequired = !isKeylessEndpoint(baseURL)
+  if (baseURL !== '') validateProviderEndpoint(baseURL, credentialRequired)
   const maxOutputTokens = provider.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS
   const apiStyle = provider.apiStyle ?? DEFAULT_API_STYLE
   if (!Number.isSafeInteger(maxOutputTokens) || maxOutputTokens <= 0) {
@@ -180,8 +208,15 @@ export function isProviderComplete(spec: ResolvedProvider): boolean {
  */
 export function resolveConfig(config: Config): ResolvedConfig {
   const rawProviders = config.providers ?? {}
-  const providers: Record<string, ResolvedProvider> = {}
+  // A null-prototype map keeps hostile provider ids like `__proto__` and
+  // `constructor` from polluting Object.prototype through the resolved map.
+  const providers = Object.create(null) as Record<string, ResolvedProvider>
   for (const [id, provider] of Object.entries(rawProviders)) {
+    if (!isValidProviderId(id)) {
+      throw new Error(
+        `image-mind: provider id ${JSON.stringify(id)} is invalid; use a lowercase letter start followed by a-z 0-9 . _ - and no trailing separator`,
+      )
+    }
     providers[id] = resolveProvider(id, provider)
   }
   const active = config.active
@@ -204,6 +239,15 @@ export function resolveConfig(config: Config): ResolvedConfig {
       throw new Error(`image-mind: ${field} must be a positive safe integer`)
     }
   }
+  const allowLocalFiles = config.allowLocalFiles ?? DEFAULT_ALLOW_LOCAL_FILES
+  const rawRoots = config.localFileRoots ?? DEFAULT_LOCAL_FILE_ROOTS
+  const localFileRoots = (allowLocalFiles ? rawRoots : []).map(root => {
+    const trimmed = (root ?? '').trim()
+    if (trimmed.length === 0) {
+      throw new Error('image-mind: localFileRoots entries must be non-empty absolute paths')
+    }
+    return trimmed
+  })
   return {
     providers,
     active: active === undefined ? undefined : active.trim(),
@@ -212,6 +256,8 @@ export function resolveConfig(config: Config): ResolvedConfig {
     timeoutMs,
     renderImagePreview: config.renderImagePreview ?? DEFAULT_RENDER_IMAGE_PREVIEW,
     allowPrivateNetwork: config.allowPrivateNetwork ?? DEFAULT_ALLOW_PRIVATE_NETWORK,
+    allowLocalFiles,
+    localFileRoots,
   }
 }
 
@@ -222,8 +268,7 @@ export function resolveConfig(config: Config): ResolvedConfig {
  */
 export function isKeylessEndpoint(baseURL: string): boolean {
   try {
-    const host = new URL(baseURL).hostname
-    return host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '[::1]'
+    return isLoopbackHostname(new URL(baseURL).hostname)
   } catch {
     return false
   }

@@ -30,6 +30,8 @@ async function loadImagesConcurrent(
   signal: AbortSignal,
   maxBytes: number,
   allowPrivateNetwork: boolean,
+  allowLocalFiles: boolean,
+  localFileRoots: readonly string[],
   factor: number,
 ): Promise<LoadedImage[]> {
   const totalCap = maxBytes * factor
@@ -46,7 +48,11 @@ async function loadImagesConcurrent(
       const index = cursor++
       if (index >= refs.length) return
       try {
-        const image = await loadImage(ctx, refs[index], internal.signal, maxBytes, { allowPrivateNetwork })
+        const image = await loadImage(ctx, refs[index], internal.signal, maxBytes, {
+          allowPrivateNetwork,
+          allowLocalFiles,
+          localFileRoots,
+        })
         total += image.bytes.length
         if (total > totalCap) throw new Error(`image-mind: combined image size exceeds the ${totalCap}-byte bound`)
         images[index] = image
@@ -178,20 +184,27 @@ function cacheOnlyTrace(): VisionTrace {
 export function understandImageTool(
   ctx: Context,
   defaultPrompt: () => string,
-  mediaOptions: () => { maxBytes: number; allowPrivateNetwork: boolean },
+  mediaOptions: () => {
+    maxBytes: number
+    allowPrivateNetwork: boolean
+    allowLocalFiles: boolean
+    localFileRoots: readonly string[]
+  },
   evidenceCache?: VisionCacheStore,
 ): ReturnType<typeof defineTool> {
+  // Filesystem paths are a host capability boundary and are deliberately
+  // never advertised to the model: the description only names session
+  // attachments, http(s) URLs and attachment ids as valid reference forms.
   const DESCRIPTION_HEAD =
     'Inspect one or more images and return visual evidence the main model can reason over. When the current '
     + 'DSH session has uploaded images, omit `image`/`images` and use `sessionBatchOffset` to select a recent '
-    + 'session batch (`0` latest, `1` previous, and so on). Explicit references are also supported: local absolute '
-    + 'paths, http(s) URLs, complete image attachment JSON, or bare attachment ids. Call this for OCR, charts, '
-    + 'screenshots, UI analysis, translation, code/terminal images, documents, comparisons, or photos. Always pass '
-    + 'an explicit `prompt` describing what the user needs. For stable evidence tasks such as OCR/UI/code/documents/'
-    + 'charts, image-mind may reuse task-scoped visual evidence across later questions. If the user explicitly asks '
-    + 'you to look again, re-read/OCR from the pixels, ignore a previous analysis, or verify a detail afresh, set '
-    + '`cache` to `refresh`. Use `no-store` only when the caller specifically needs the result not to enter either '
-    + 'cache layer.'
+    + 'session batch (`0` latest, `1` previous, and so on). Explicit references are also supported: http(s) URLs, '
+    + 'complete image attachment JSON, or bare attachment ids. Call this for OCR, charts, screenshots, UI analysis, '
+    + 'translation, code/terminal images, documents, comparisons, or photos. Always pass an explicit `prompt` '
+    + 'describing what the user needs. For stable evidence tasks such as OCR/UI/code/documents/charts, image-mind '
+    + 'may reuse task-scoped visual evidence across later questions. If the user explicitly asks you to look again, '
+    + 're-read/OCR from the pixels, ignore a previous analysis, or verify a detail afresh, set `cache` to '
+    + '`refresh`. Use `no-store` only when the caller specifically needs the result not to enter either cache layer.'
 
   return defineTool({
     name: 'understand_image',
@@ -294,7 +307,7 @@ export function understandImageTool(
       render: (_args, value) => [{ type: 'text', text: value.text }],
     },
     async execute(args, exec) {
-      const { maxBytes, allowPrivateNetwork } = mediaOptions()
+      const { maxBytes, allowPrivateNetwork, allowLocalFiles, localFileRoots } = mediaOptions()
       const hasSingle = args.image !== undefined && args.image.trim().length > 0
       const hasMany = (args.images ?? []).some(ref => ref.trim().length > 0)
       if (hasSingle && hasMany) throw new Error('image-mind: pass either `image` (single) or `images` (array), not both')
@@ -325,7 +338,7 @@ export function understandImageTool(
       }
       if (refs.length > MAX_IMAGES_PER_REQUEST) throw new Error(`image-mind: at most ${MAX_IMAGES_PER_REQUEST} images per call; got ${refs.length}`)
 
-      const images = await loadImagesConcurrent(ctx, refs, exec.signal, maxBytes, allowPrivateNetwork, MAX_TOTAL_IMAGE_BYTES_FACTOR)
+      const images = await loadImagesConcurrent(ctx, refs, exec.signal, maxBytes, allowPrivateNetwork, allowLocalFiles, localFileRoots, MAX_TOTAL_IMAGE_BYTES_FACTOR)
       const callerPrompt = args.prompt ?? defaultPrompt()
       const task = inferVisionTask(callerPrompt, images.length)
       const { maxOutputTokens } = routeVisionTask(task).policy

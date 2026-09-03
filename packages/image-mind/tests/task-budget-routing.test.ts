@@ -13,10 +13,13 @@ const PNG = Buffer.from([
   0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
 ])
 
+let allowedRoots: string[] = []
+
 function imageFile(): string {
   const dir = mkdtempSync(join(tmpdir(), 'dsh-vision-budget-'))
   const file = join(dir, 'img.png')
   writeFileSync(file, PNG)
+  allowedRoots = [dir]
   return file
 }
 
@@ -24,7 +27,12 @@ function toolWithCall(call: ReturnType<typeof vi.fn>) {
   const ctx = new Context()
   ctx.provide('vision', { call } as never)
   ctx.provide('attachments', {} as never)
-  return understandImageTool(ctx, () => 'describe the image', () => ({ maxBytes: 1024 * 1024, allowPrivateNetwork: false }))
+  return understandImageTool(ctx, () => 'describe the image', () => ({
+    maxBytes: 1024 * 1024,
+    allowPrivateNetwork: false,
+    allowLocalFiles: true,
+    localFileRoots: allowedRoots,
+  }))
 }
 
 describe('understand_image task-aware budgets', () => {

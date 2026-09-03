@@ -32,8 +32,15 @@ interface ConversationSendFace {
   releaseDraftImage(id: string): void
 }
 
-const HOOK_MARKER = '__dshImageMindSendHooked'
+const HOOK_STATE = Symbol.for('dsh.image-mind.send-hook')
 export const PREVIEW_COMMITTED_EVENT = 'dsh-image-mind:preview-committed'
+
+interface SendHookState {
+  /** The wrapper this plugin installed on the conversation face. */
+  readonly wrapper: ConversationSendFace['sendSession']
+  /** The sendSession this plugin replaced (its own original or the prior chain). */
+  readonly original: ConversationSendFace['sendSession']
+}
 
 /**
  * User-visible attachment marker. It deliberately carries no tool-routing
@@ -54,15 +61,18 @@ async function discardFailedRoutingBatch(sessionId: string, batchId: string): Pr
   }
 }
 
-export function installSendHook(conversation: unknown): void {
+export function installSendHook(conversation: unknown): () => void {
   const face = conversation as ConversationSendFace
-  if (face === null || typeof face !== 'object') return
-  if (typeof face.sendSession !== 'function') return
-  if (typeof face.draftImages !== 'function' || typeof face.releaseDraftImage !== 'function') return
-  if ((face as unknown as Record<string, unknown>)[HOOK_MARKER] === true) return
+  const invalid = (): () => void => () => {}
+  if (face === null || typeof face !== 'object') return invalid()
+  if (typeof face.sendSession !== 'function') return invalid()
+  if (typeof face.draftImages !== 'function' || typeof face.releaseDraftImage !== 'function') return invalid()
+
+  const records = face as unknown as { [HOOK_STATE]?: SendHookState }
+  if (records[HOOK_STATE] !== undefined) return invalid()
 
   const original = face.sendSession
-  face.sendSession = async (session, text, imageIds, mode, signal): Promise<void> => {
+  const wrapper: ConversationSendFace['sendSession'] = async (session, text, imageIds, mode, signal): Promise<void> => {
     if (imageIds.length === 0) {
       await original.call(face, session, text, imageIds, mode, signal)
       return
@@ -144,5 +154,17 @@ export function installSendHook(conversation: unknown): void {
       ? '图片已就绪：发送后模型可通过 understand_image 分析'
       : '图片已发送，但历史缩略图暂不可用；模型仍可正常分析')
   }
-  ;(face as unknown as Record<string, unknown>)[HOOK_MARKER] = true
+
+  const state: SendHookState = { wrapper, original }
+  face.sendSession = wrapper
+  records[HOOK_STATE] = state
+
+  // Dispose restores this plugin's own predecessor exactly once and only if
+  // no later plugin has chained another wrapper on top of ours since install.
+  return () => {
+    const current = records[HOOK_STATE]
+    if (current !== state) return
+    if (face.sendSession === wrapper) face.sendSession = original
+    delete records[HOOK_STATE]
+  }
 }

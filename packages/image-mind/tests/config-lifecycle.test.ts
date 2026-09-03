@@ -165,3 +165,36 @@ describe('migration-safe legacy fallback', () => {
     })
   })
 })
+
+describe('provider id identity hardening', () => {
+  it('rejects __proto__, uppercase, whitespace, empty and trailing separators from host resolution', () => {
+    for (const id of ['__proto__', 'UpperCase', 'with space', 'trail-', '.dot', '']) {
+      expect(() => resolveConfig({ providers: { [id]: { baseURL: 'https://x.example/v1', model: 'm' } } })).toThrow(/invalid|non-empty/)
+    }
+  })
+
+  it('accepts a format-valid constructor id safely on the null-prototype map', () => {
+    const config = resolveConfig({ providers: { 'constructor': { baseURL: 'https://x.example/v1', model: 'm' } } })
+    // Format-valid ids are accepted, but they land on a null-prototype map so
+    // they can never shadow Object.prototype members.
+    expect(config.providers['constructor']).toBeDefined()
+    expect(Object.getPrototypeOf(config.providers)).toBeNull()
+    expect((config.providers as unknown as Record<string, unknown>).hasOwnProperty).toBeUndefined()
+  })
+
+  it('accepts valid dotted and dashed provider ids from host resolution', () => {
+    const config = resolveConfig({
+      providers: {
+        'openai-compatible.1': { baseURL: 'https://x.example/v1', model: 'm' },
+        'local-ollama': { baseURL: 'http://localhost:11434/v1', model: 'm' },
+      },
+    })
+    expect(Object.keys(config.providers).sort()).toEqual(['local-ollama', 'openai-compatible.1'])
+  })
+
+  it('resolved provider map is null-prototype (no Object.prototype pollution)', () => {
+    const config = resolveConfig({ providers: { 'safe': { baseURL: 'https://x.example/v1', model: 'm' } } })
+    expect(Object.getPrototypeOf(config.providers)).toBeNull()
+    expect((config.providers as unknown as Record<string, unknown>).toString).toBeUndefined()
+  })
+})

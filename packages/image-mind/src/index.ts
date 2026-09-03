@@ -201,7 +201,12 @@ export function apply(ctx: Context, config: ConfigType = {}): void {
   ctx.tools.register(understandImageTool(
     ctx,
     () => resolved().defaultPrompt,
-    () => ({ maxBytes: resolved().maxBytes, allowPrivateNetwork: resolved().allowPrivateNetwork }),
+    () => ({
+      maxBytes: resolved().maxBytes,
+      allowPrivateNetwork: resolved().allowPrivateNetwork,
+      allowLocalFiles: resolved().allowLocalFiles,
+      localFileRoots: resolved().localFileRoots,
+    }),
     evidenceCacheView,
   ))
 

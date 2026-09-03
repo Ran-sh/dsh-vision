@@ -24,15 +24,10 @@ const PNG = Buffer.from([
   0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
 ])
 
-function imageFiles(count: number): { dir: string; files: string[] } {
-  const dir = mkdtempSync(join(tmpdir(), 'dsh-vision-test-'))
-  const files = Array.from({ length: count }, (_, index) => {
-    const file = join(dir, `img-${index}.png`)
-    writeFileSync(file, PNG)
-    return file
-  })
-  return { dir, files }
-}
+// Behavioral tests write fixture images into a temp dir and intentionally
+// enable the local-file policy confined to that root; production defaults
+// keep local files disabled.
+let allowedRoots: string[] = []
 
 function contextWithVision(called: unknown[] = []): Context {
   const ctx = new Context()
@@ -46,8 +41,24 @@ function contextWithVision(called: unknown[] = []): Context {
   return ctx
 }
 
+function imageFiles(count: number): { dir: string; files: string[] } {
+  const dir = mkdtempSync(join(tmpdir(), 'dsh-vision-test-'))
+  const files = Array.from({ length: count }, (_, index) => {
+    const file = join(dir, `img-${index}.png`)
+    writeFileSync(file, PNG)
+    return file
+  })
+  allowedRoots = [dir]
+  return { dir, files }
+}
+
 function toolFor(ctx: Context, maxBytes = 10 * 1024 * 1024) {
-  return understandImageTool(ctx, () => 'default prompt', () => ({ maxBytes, allowPrivateNetwork: false }))
+  return understandImageTool(ctx, () => 'default prompt', () => ({
+    maxBytes,
+    allowPrivateNetwork: false,
+    allowLocalFiles: true,
+    localFileRoots: allowedRoots,
+  }))
 }
 
 describe('understand_image thinness (structural)', () => {
@@ -194,6 +205,7 @@ describe('understand_image execute (behavioral)', () => {
   it('rejects a combined size above the total byte bound', async () => {
     const ctx = contextWithVision()
     const dir = mkdtempSync(join(tmpdir(), 'dsh-vision-test-'))
+    allowedRoots = [dir]
     const png = Buffer.concat([
       Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
       Buffer.alloc(52),
