@@ -109,16 +109,17 @@ Result Contract. Do not spend provider quota during this pre-publish task.
   merged for the 0.3.0/0.3.1 single-track adaptation; open a new PR only when
   the next change lands).
 
-## Single-track 0.3.1 / DSH 0.1.2-rc.1 boundary (2026-09-03)
+## Single-track 0.3.2 + 0.3.1 / DSH 0.1.2-rc.1 boundary (2026-09-03)
 
-Closed on exact `0.1.2-rc.1`: `0.3.0` and `0.3.1` published to npm (service
-first, then plugin), a pure registry-only install (no
-tgz/workspace/overrides) proven in a disposable DSH_HOME (official add,
-dump-config composition, web boot, `/image-mind` routes 200, official remove
-clean), and a real Chrome session proving the settings card renders in
-设置 → 插件 → 插件配置 with a working add-provider flow that persists to
-`settings.yaml`. Still open — do not convert to PASS without new Result
-Contracts:
+Closed on exact `0.1.2-rc.1`: `@ran-sh/dsh-vision@0.3.1` and
+`dsh-plugin-image-mind@0.3.2` published to npm (service first, then plugin;
+plugin depends on `@ran-sh/dsh-vision@^0.3.1`), a pure registry-only install
+(no tgz/workspace/overrides) proven in a disposable DSH_HOME composing
+0.3.2 + 0.3.1 (official add, dump-config composition, web boot,
+`/image-mind` routes 200, official remove clean), and a real Chrome session
+proving the settings card renders in 设置 → 插件 → 插件配置 with a working
+add-provider flow that persists to `settings.yaml`. Still open — do not
+convert to PASS without new Result Contracts:
 
 - [ ] remaining browser journey items: drag/paste PNG/JPEG/WebP,
   lightbox, exact-eight/ninth-rejected gate, failed-send retry/draft
