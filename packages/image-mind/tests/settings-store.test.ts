@@ -285,7 +285,8 @@ describe('ImageMindSettingsStore persistence', () => {
 
   it('exposes nothing when no settings scope is available', async () => {
     const store = new ImageMindSettingsStore({} as ImageMindClientContext)
-    expect(store.store.getSnapshot().shell.available).toBe(true)
+    // No scope → the card must not paint at all (available tracks ready).
+    expect(store.store.getSnapshot().shell.available).toBe(false)
     expect(store.store.getSnapshot().shell.exposed).toBe(false)
     expect(store.store.getSnapshot().transport).toBe('unavailable')
     store.dispose()

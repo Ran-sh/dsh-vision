@@ -185,18 +185,6 @@ export class ImageMindSettingsStore {
       const next = snapshotFromBoundScope(this.scope)
       if (generation !== this.generation) return
       this.view = next
-      // Batch-describe every referenced credential for the status lamps.
-      const refs = [...new Set(
-        (Object.keys((next.value?.['providers'] ?? {}) as Record<string, unknown>))
-          .map(id => apiKeyEnvOf(next, id))
-          .filter((ref): ref is string => ref !== undefined),
-      )]
-      const states = new Map<string, { configured: boolean; writable: boolean }>()
-      for (const ref of refs) {
-        states.set(ref, await describeCredentialOfficial(this.ctx, ref))
-      }
-      if (generation !== this.generation) return
-      this.credentialState = states
       // Re-derive drafts that were not staged yet.
       for (const id of Object.keys((next.value?.['providers'] ?? {}) as Record<string, unknown>)) {
         if (!this.draft.has(id)) {
@@ -211,6 +199,37 @@ export class ImageMindSettingsStore {
       if (generation !== this.generation) return
       this.view = { status: 'unavailable', value: undefined, base: undefined, user: undefined, revision: undefined, writable: false, mode: 'legacy' }
       this.publish()
+    }
+    // Credential refresh is a SEPARATE concern from the settings scope: a
+    // credential describe failure must never demote a healthy settings view
+    // to unavailable/read-only. It only clears the status lamps.
+    await this.refreshCredentials(generation)
+  }
+
+  /** Refresh credential configured-state lamps without touching the settings view. */
+  private async refreshCredentials(generation: number): Promise<void> {
+    const value = this.view.value
+    const providers = (value?.['providers'] ?? {}) as Record<string, unknown>
+    const refs = [...new Set(
+      (Object.keys(providers))
+        .map(id => apiKeyEnvOf(this.view, id))
+        .filter((ref): ref is string => ref !== undefined),
+    )]
+    if (refs.length === 0) {
+      this.credentialState = new Map()
+      return
+    }
+    try {
+      const states = new Map<string, { configured: boolean; writable: boolean }>()
+      for (const ref of refs) {
+        states.set(ref, await describeCredentialOfficial(this.ctx, ref))
+      }
+      if (generation !== this.generation) return
+      this.credentialState = states
+      this.publish()
+    } catch {
+      // Keep the previous lamp state; the settings view stays authoritative.
+      if (generation !== this.generation) return
     }
   }
 
@@ -293,7 +312,10 @@ export class ImageMindSettingsStore {
       })
     return {
       shell: {
-        available: this.view.status !== 'loading',
+        // The card renders only once the scope mirror is ready — matching the
+        // official rc.1 CardForm (a terminal `unavailable` must not paint as
+        // an editable-but-readonly card).
+        available: this.view.status === 'ready',
         exposed: this.view.status === 'ready',
         writable: this.view.writable,
         dirty: this.dirty(),
