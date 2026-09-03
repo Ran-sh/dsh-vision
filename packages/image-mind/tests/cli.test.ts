@@ -380,7 +380,7 @@ describe('official dsh entry resolution', () => {
   })
 
   it('documents the compatibility target and usage surface', () => {
-    expect(COMPATIBILITY_TARGET).toBe('0.1.1-rc.2')
+    expect(COMPATIBILITY_TARGET).toBe('0.1.2-alpha.5')
     expect(USAGE).toContain('install')
     expect(USAGE).toContain('update')
     expect(USAGE).toContain('status')

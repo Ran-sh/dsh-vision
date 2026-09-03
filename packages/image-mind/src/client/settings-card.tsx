@@ -25,9 +25,9 @@
  */
 
 import type { InjectFace, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-import type { SnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
-import { createSnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { SnapshotStore } from '@deepseek-ai/dsh-client-store'
+import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
+import type { Context } from '@deepseek-ai/cordis'
 import { useEffect, useRef, useState } from 'react'
 import type {} from '@deepseek-ai/dsh-client-ui-settings-plugins/client'
 import { SettingsCard, BooleanField, ChoiceField, ModelField, ValueField, type CardStatus, type FieldProps } from './card-ui.tsx'
@@ -76,10 +76,10 @@ export class ImageMindSettingsCardController {
   private readonly store: SnapshotStore<ImageMindSettingsCardState>
   private readonly host: ImageMindSettingsStore | undefined
 
-  /** @param ctx - the slots-injected client context (carries the connection). */
-  constructor(ctx: ClientContext) {
+  /** @param ctx - the slots-injected client context (carries the settings scope). */
+  constructor(ctx: Context) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const connection = ctx.get('connection') as any
+    const settingsScope = (ctx as any).settingsScope ?? (ctx as any).get?.('settingsScope')
     this.store = createSnapshotStore<ImageMindSettingsCardState>({
       shell: { available: false, exposed: false, writable: false, dirty: false, invalid: false, saving: false, failed: false },
       providers: [],
@@ -88,10 +88,10 @@ export class ImageMindSettingsCardController {
       maxBytes: '',
       timeoutMs: '',
       renderImagePreview: '',
-      transport: connection !== undefined ? 'official' : 'unavailable',
+      transport: settingsScope !== undefined ? 'official' : 'unavailable',
     })
-    this.host = connection !== undefined
-      ? new ImageMindSettingsStore(connection)
+    this.host = settingsScope !== undefined
+      ? new ImageMindSettingsStore(ctx as unknown as import('./settings/transport.ts').ImageMindClientContext)
       : undefined
     if (this.host !== undefined) {
       this.host.store.subscribe(() => {

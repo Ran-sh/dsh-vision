@@ -83,15 +83,15 @@ function packFiles(pkgDir: string): string[] {
 describe('dsh-plugin-image-mind package metadata', () => {
   const pkg = readJson(resolve(IMAGE_MIND_DIR, 'package.json'))
 
-  it('is exactly the 0.2.1 remediation candidate', () => {
-    expect(pkg['version']).toBe('0.2.1')
+  it('is exactly the 0.3.0-alpha.1 adaptation candidate', () => {
+    expect(pkg['version']).toBe('0.3.0-alpha.1')
     const visionPkg = readJson(resolve(VISION_DIR, 'package.json'))
-    expect(visionPkg['version']).toBe('0.2.1')
+    expect(visionPkg['version']).toBe('0.3.0-alpha.1')
   })
 
-  it('depends on the compatible service range @ran-sh/dsh-vision@^0.2.1', () => {
+  it('depends on the exact alpha service 0.3.0-alpha.1', () => {
     const dependencies = pkg['dependencies'] as Record<string, string>
-    expect(dependencies['@ran-sh/dsh-vision']).toBe('^0.2.1')
+    expect(dependencies['@ran-sh/dsh-vision']).toBe('0.3.0-alpha.1')
   })
 
   it('declares a prepack fail-safe guard covering every shipped lib entry', () => {
@@ -176,24 +176,25 @@ describe('@ran-sh/dsh-vision package metadata', () => {
   })
 })
 
-describe('peer dependency ranges admit the exact 0.1.1-rc.2 harness line', () => {
+describe('peer dependency ranges admit the exact 0.1.2-alpha.5 harness line', () => {
   const imageMindPkg = readJson(resolve(IMAGE_MIND_DIR, 'package.json'))
   const imageMindPeer = imageMindPkg['peerDependencies'] as Record<string, string>
   const visionPeer = (readJson(resolve(VISION_DIR, 'package.json'))['peerDependencies']) as Record<string, string>
 
-  it('image-mind peers admit the official 0.1.1-rc.2 family and reject stale/overshoot prereleases', () => {
+  it('image-mind peers admit the official 0.1.2-alpha.5 family and reject the stale rc.2 line', () => {
     const hostPeers = Object.entries(imageMindPeer).filter(([name]) => name !== '@deepseek-ai/cordis')
     expect(hostPeers.length).toBeGreaterThan(0)
     for (const [name, range] of hostPeers) {
-      expect(rangeAdmits('0.1.1-rc.2', range), `${name} ${range} rejects the 0.1.1-rc.2 line`).toBe(true)
-      expect(rangeAdmits('0.1.1-rc.1', range), `${name} ${range} admits the older 0.1.1-rc.1`).toBe(false)
+      expect(rangeAdmits('0.1.2-alpha.5', range), `${name} ${range} rejects the 0.1.2-alpha.5 line`).toBe(true)
+      expect(rangeAdmits('0.1.1-rc.2', range), `${name} ${range} admits the older 0.1.1-rc.2`).toBe(false)
       expect(rangeAdmits('0.2.0', range), `${name} ${range} admits 0.2.0`).toBe(false)
     }
+    expect(imageMindPeer['@deepseek-ai/dsh-client-runtime']).toBeUndefined()
   })
 
-  it('the vision service peer admits the 0.1.1-rc.2 dsh-llm line', () => {
-    expect(rangeAdmits('0.1.1-rc.2', visionPeer['@deepseek-ai/dsh-llm'])).toBe(true)
-    expect(rangeAdmits('0.1.1-rc.1', visionPeer['@deepseek-ai/dsh-llm'])).toBe(false)
+  it('the vision service peer admits the 0.1.2-alpha.5 dsh-llm line', () => {
+    expect(rangeAdmits('0.1.2-alpha.5', visionPeer['@deepseek-ai/dsh-llm'])).toBe(true)
+    expect(rangeAdmits('0.1.1-rc.2', visionPeer['@deepseek-ai/dsh-llm'])).toBe(false)
   })
 })
 

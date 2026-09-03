@@ -10,9 +10,9 @@
 
 import { describe, expect, it, vi, afterEach } from 'vitest'
 import { Context, Service } from '@deepseek-ai/cordis'
-import { SettingsProvider, installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings'
+import { SettingsProvider } from '@deepseek-ai/dsh-settings'
 import type { SettingsNamespace } from '@deepseek-ai/dsh-settings'
-import z from 'schemastery'
+import z from '@deepseek-ai/schemastery'
 import { Config, IMAGE_MIND_SETTINGS_NAMESPACE, resolveConfig, type Config as ImageMindConfig } from '../src/config.ts'
 import { apply } from '../src/index.ts'
 import { VisionRuntime } from '@ran-sh/dsh-vision'
@@ -196,6 +196,6 @@ describe('schema sanity', () => {
     })
     expect(resolved.providers['a'].model).toBe('m')
     expect(Config).toBeDefined()
-    expect(settingsNamespace('image-mind')).toBe(IMAGE_MIND_SETTINGS_NAMESPACE)
+    expect(IMAGE_MIND_SETTINGS_NAMESPACE).toBe('image-mind')
   })
 })
