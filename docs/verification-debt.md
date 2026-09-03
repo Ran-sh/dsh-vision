@@ -105,8 +105,9 @@ Result Contract. Do not spend provider quota during this pre-publish task.
   file/link/workspace dependency (post-publication only).
 - [ ] Service-first then plugin-second npm publication, OTP/secret handling,
   tag/release and a clean post-publish Harness install/remove (maintainer-only).
-- [ ] One unmerged Draft PR with required checks green. PR creation requires a
-  GitHub-authenticated maintainer; the agent must record the blocker if absent.
+- [ ] One clean PR with required checks green for the next gate (PR #68 merged
+  for the 0.3.0 single-track adaptation; open a new PR only when the next
+  change lands).
 
 ## Single-track 0.3.0 / DSH 0.1.2-rc.1 boundary (2026-09-03)
 

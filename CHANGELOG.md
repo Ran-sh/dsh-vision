@@ -6,6 +6,28 @@ is independent of DeepSeek and follows SemVer for its 0.x line.
 
 ## [Unreleased]
 
+## [0.3.0] — single-track latest Harness 0.1.2-rc.1
+
+Both publishable packages move to `0.3.0` (image-mind depends on
+`@ran-sh/dsh-vision@^0.3.0`) and target ONLY the latest Harness
+(`@deepseek-ai/dsh@0.1.2-rc.1`, the `next` tag) with cordis `4.0.2` and
+react 18.2.0. Legacy `0.2.x` / `0.1.1-rc.2` lines are historical only.
+`ctx.vision` is untouched (`packages/vision/src/**` unchanged).
+
+- Host settings registration moves to the injected `settings` service
+  lifecycle (`installSection`); legacy-key migration runs inside it.
+- Browser settings move off `dsh-client-runtime` (no `0.1.2` release exists —
+  the split replaces it) onto `settingsScope.bind` + `remote.credentials`,
+  with store primitives from `dsh-client-store` and types from
+  `dsh-client-ui-settings/client`; client inject roster uses the split
+  packages (`api-remotes`, `api-session-controller`, `client-ui-settings`).
+- `/image-mind` route ownership binds to the webServer disposer via a Cordis
+  effect (WeakSet removed); unload/reload unregisters then re-registers.
+- Client build bundles only `dsh-client-store`; other host client services
+  stay external. Schema import moves to the `@deepseek-ai/schemastery` fork.
+- Lifecycle CLI help header tracks the running package version (no stale
+  hard-coded identity); boot smoke accepts the rc.1 token gate (401 = alive).
+
 - Batch 022 prepares the `0.2.1` remediation candidate after the defective
   public `0.2.0` publication: both publishable packages move to `0.2.1`
   (image-mind depends on `@ran-sh/dsh-vision@^0.2.1`), and a content-hash
