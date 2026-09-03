@@ -190,7 +190,11 @@ async function bootSmoke(): Promise<{ url: string }> {
       const url = match[0].replace(/[/)]+$/, '')
       fetch(`${url}/`)
         .then(async (response) => {
-          if (!response.ok) throw new Error(`GET ${url}/ -> ${response.status}`)
+          // rc.1 gates GET / behind a token (401 = alive with auth gate);
+          // either 200 or 401 proves the web host booted and serves.
+          if (response.status !== 200 && response.status !== 401) {
+            throw new Error(`GET ${url}/ -> ${response.status}`)
+          }
           killTree(child)
           resolveBoot({ url })
         })
