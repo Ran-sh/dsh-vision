@@ -27,8 +27,12 @@ describe('local-file policy', () => {
 
   it('allows an absolute path inside an allowed root', async () => {
     const root = await fixture()
-    const resolved = await resolveAuthorizedLocalFile(join(root, 'media', 'ok.png'), [join(root, 'media')])
-    expect(resolved).toBe(join(root, 'media', 'ok.png'))
+    const input = join(root, 'media', 'ok.png')
+    const resolved = await resolveAuthorizedLocalFile(input, [join(root, 'media')])
+    // Windows CI expands 8.3 short names (RUNNER~1) through realpath, so
+    // compare canonical forms rather than the literal input string.
+    const { realpath } = await import('node:fs/promises')
+    expect(resolved).toBe(await realpath(input))
     await rm(root, { recursive: true, force: true })
   })
 
@@ -87,8 +91,9 @@ describe('local-file policy', () => {
     expect(isAuthorizedLocalPath(abs, true, [])).toBe(false)
     expect(isAuthorizedLocalPath('media/ok.png', true, [join(root, 'media')])).toBe(false)
     // Real root needs to exist for resolveAuthorizedLocalFile realpath to pass.
+    const { realpath } = await import('node:fs/promises')
     const resolved = await resolveAuthorizedLocalFile(abs, [join(root, 'media')])
-    expect(resolved).toBe(abs)
+    expect(resolved).toBe(await realpath(abs))
     await rm(root, { recursive: true, force: true })
   })
 
