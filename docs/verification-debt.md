@@ -109,6 +109,21 @@ Result Contract. Do not spend provider quota during this pre-publish task.
 - [ ] One unmerged Draft PR with required checks green. PR creation requires a
   GitHub-authenticated maintainer; the agent must record the blocker if absent.
 
+## Alpha 0.3.0-alpha.1 / DSH 0.1.2-alpha.5 boundary (2026-09-03)
+
+Closed with isolated local-packed evidence on exact `0.1.2-alpha.5`
+(disposable DSH_HOME, official add, dump-config composition, web boot,
+`/image-mind` catalog/config/previews routes, official remove + clean
+reboot). Still open — do not convert to PASS without new Result Contracts:
+
+- [ ] registry install of published `0.3.0-alpha.1` artifacts (service-first
+  then plugin-second; maintainer-authorized publication only).
+- [ ] full alpha browser journey (settings card render/add/edit/save/delete,
+  drop/paste/lightbox, exact-eight/ninth-rejected gate, retry/draft,
+  session switch/restart) in the real alpha.5 web UI.
+- [ ] hosted-provider quality, quota/413/429 behavior and token-trace
+  reconciliation against real endpoints.
+
 ## Exit rule
 
 The 0.2.0 candidate is pre-publish ready only when the repository/package,

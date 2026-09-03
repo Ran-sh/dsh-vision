@@ -20,11 +20,19 @@ and does not promise compatibility with every future DSH release.
 ## Peer dependency policy
 
 Host-owned DSH runtime packages are declared as **peerDependencies** with a
-bounded range (`^0.1.1-rc.2` / `^4.0.1`), mirroring the official
-`@deepseek-ai/dsh-web-search-exa` convention. image-mind never ships a private
-nested copy of these host packages (the profile tree stays deduped). The
-plugin-owned `@ran-sh/dsh-vision` service and the `schemastery` schema library
-live in `dependencies`.
+bounded range, mirroring the official `@deepseek-ai/dsh-web-search-exa`
+convention. image-mind never ships a private nested copy of these host
+packages (the profile tree stays deduped). The plugin-owned
+`@ran-sh/dsh-vision` service and the schema library live in `dependencies`.
+
+- **Stable 0.2.x line** (`0.2.1` + DSH `0.1.1-rc.2`): host peers use
+  `^0.1.1-rc.2` / cordis `^4.0.1`, react 19.2.x, bare `schemastery`.
+- **Alpha 0.3.x line** (`0.3.0-alpha.1` + DSH `0.1.2-alpha.5`): host peers
+  are exact `0.1.2-alpha.5` (cordis `^4.0.2`), react 18.2.0, the
+  `@deepseek-ai/schemastery` fork, plus the split alpha client packages
+  (`dsh-api-remotes`, `dsh-api-session-controller`, `dsh-client-store`,
+  `dsh-client-ui-settings`); `dsh-client-runtime` is gone. Exact peers keep
+  one alpha candidate from silently claiming an unverified future alpha.
 
 Batch 017 reproduced the prerelease-range mismatch before changing manifests:
 `^0.1.0-rc.7` rejects the `0.1.1-rc.2` family under node-semver's

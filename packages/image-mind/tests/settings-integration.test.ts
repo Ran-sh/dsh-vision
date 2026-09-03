@@ -1,9 +1,10 @@
 /**
  * Settings→adapter integration: a real in-memory SettingsProvider stands in
- * for the DSH settings seam, image-mind registers its section through
- * installSettingsSection, and committed settings changes flow into the next
- * adapter call's snapshot — add provider, set active, change model, and the
- * next request sees the new facts while the in-flight one never changes.
+ * for the DSH settings seam, image-mind registers its section through the
+ * injected `settings` service lifecycle (`installSection`), and committed
+ * settings changes flow into the next adapter call's snapshot — add provider,
+ * set active, change model, and the next request sees the new facts while
+ * the in-flight one never changes.
  * This is the exact task-78 scenario ("settings integration").
  * @vitest-environment node
  */
@@ -112,7 +113,7 @@ describe('settings → adapter snapshot integration', () => {
         b: { baseURL: 'https://b.example/v1', model: 'model-b', apiKeyEnv: 'KEY_B' },
       },
     })
-    // installSettingsSection's onChange re-registers routes from the scope.
+    // The installSection onChange hook re-registers routes from the scope.
     await new Promise(resolve => setTimeout(resolve, 30))
     expect(vision.hasProvider('b')).toBe(true)
     const result = await vision.call({ provider: 'b', prompt: 'p', images: [LOADED_IMAGE] })

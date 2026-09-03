@@ -17,10 +17,10 @@
  * hook sits inside a conditional.
  *
  * Registers into the official `settings.plugin.item` slot (设置 → 插件 → 插件
- * 配置) and reads/writes the `image-mind` section through the OFFICIAL
- * settings seam (`connection.api.settings` describe/mutate); typed keys go
- * into the credential store through `connection.api.credentials.set`, never
- * into `settings.yaml`.
+ * 配置) and reads/writes the `image-mind` section through the alpha settings
+ * scope (`ctx.settingsScope.bind`) with mutations over the shared mirror;
+ * typed keys go into the credential store through `ctx.remote.credentials`,
+ * never into `settings.yaml`.
  * @module dsh-plugin-image-mind/client/settings_card
  */
 
