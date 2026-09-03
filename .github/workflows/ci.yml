@@ -69,9 +69,14 @@ jobs:
 
   # Focused lanes for the packaged dsh-plugin-image-mind lifecycle CLI: help/
   # status parsing, injection-safe process spawning, and the full packed-
-  # artifact install/status/update/uninstall roundtrip against exact
-  # @deepseek-ai/dsh@0.1.1-rc.2 in a disposable DSH_HOME. The HTTP boot smoke
-  # runs on one lane only to bound cost; every lane proves the roundtrip.
+  # artifact install/status/update/uninstall roundtrip in a disposable DSH_HOME.
+  # The stable main line proves this against exact @deepseek-ai/dsh@0.1.1-rc.2.
+  # The 0.3.0-alpha.1 track targets exact @deepseek-ai/dsh@0.1.2-alpha.5 whose
+  # split client packages no longer resolve under the rc.2-era npm lifecycle
+  # harness, so the alpha branch skips this rc.2-pinned lane here; alpha
+  # lifecycle is proven separately (official add/dump/boot/routes/remove on
+  # exact alpha.5, see docs/compatibility.md). The HTTP boot smoke runs on one
+  # lane only to bound cost; every lane proves the roundtrip.
   cli-lifecycle:
     strategy:
       fail-fast: false
@@ -99,7 +104,10 @@ jobs:
       - name: CLI unit tests
         run: npx vitest run tests/cli.test.ts
         working-directory: packages/image-mind
-      - name: Packed CLI lifecycle roundtrip (isolated exact rc.2)
+      - name: Packed CLI lifecycle roundtrip (isolated exact rc.2; skipped on the alpha track)
+        # The alpha track (0.3.0-alpha.1) no longer satisfies the rc.2-era npm
+        # lifecycle harness: skip here, prove alpha lifecycle separately.
+        if: ${{ !contains(github.ref_name, 'alpha') }}
         run: npx vitest run tests/cli-packed-lifecycle.test.ts
         env:
           RUN_CLI_LIFECYCLE: '1'
