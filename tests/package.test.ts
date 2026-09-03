@@ -83,15 +83,15 @@ function packFiles(pkgDir: string): string[] {
 describe('dsh-plugin-image-mind package metadata', () => {
   const pkg = readJson(resolve(IMAGE_MIND_DIR, 'package.json'))
 
-  it('is exactly the 0.3.0 adaptation candidate', () => {
-    expect(pkg['version']).toBe('0.3.2')
+  it('is exactly the 0.3.2/0.3.3 adaptation candidate pair', () => {
+    expect(pkg['version']).toBe('0.3.3')
     const visionPkg = readJson(resolve(VISION_DIR, 'package.json'))
-    expect(visionPkg['version']).toBe('0.3.1')
+    expect(visionPkg['version']).toBe('0.3.2')
   })
 
-  it('depends on the compatible service range @ran-sh/dsh-vision@^0.3.0', () => {
+  it('depends on the compatible service range @ran-sh/dsh-vision@^0.3.2 (admission API)', () => {
     const dependencies = pkg['dependencies'] as Record<string, string>
-    expect(dependencies['@ran-sh/dsh-vision']).toBe('^0.3.1')
+    expect(dependencies['@ran-sh/dsh-vision']).toBe('^0.3.2')
   })
 
   it('declares a prepack fail-safe guard covering every shipped lib entry', () => {
@@ -228,5 +228,28 @@ describe('npm pack output (both packages) — the empty-shell 0.2.0 incident mus
     expect(files.some(entry => /(^|\/)tests\//.test(entry))).toBe(false)
     expect(files.some(entry => /(^|\/)src\//.test(entry))).toBe(false)
     expect(files.some(entry => /\.credentials\.ya?ml$/.test(entry))).toBe(false)
+  })
+})
+
+describe('declared-minimum service dependency compose (R2C-4 semver/API identity)', () => {
+  const visionPkg = readJson(resolve(VISION_DIR, 'package.json'))
+  const pluginPkg = readJson(resolve(IMAGE_MIND_DIR, 'package.json'))
+
+  it('the plugin declares a service range whose minimum carries the admission() API', () => {
+    // R2B added `admission()` to @ran-sh/dsh-vision's VisionCircuitBreaker and
+    // image-mind calls it directly, so the declared dependency minimum must be
+    // a version that actually ships that API — never an older published one.
+    const range = pluginPkg['dependencies']?.['@ran-sh/dsh-vision'] as string
+    expect(range).toBe('^0.3.2')
+    expect(rangeAdmits('0.3.2', range)).toBe(true)
+    // The previously published 0.3.1 (no admission API) must NOT satisfy the
+    // declared range.
+    expect(rangeAdmits('0.3.1', range)).toBe(false)
+  })
+
+  it('the workspace vision version carries the API the plugin source calls', () => {
+    expect(visionPkg['version']).toBe('0.3.2')
+    const pluginSrc = readFileSync(resolve(IMAGE_MIND_DIR, 'src/runtime/provider-reliability.ts'), 'utf8')
+    expect(pluginSrc).toContain('.admission(')
   })
 })

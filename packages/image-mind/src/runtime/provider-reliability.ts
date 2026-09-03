@@ -159,22 +159,24 @@ export function createProviderReliabilityTracker(): ProviderReliabilityTracker {
       .map(item => candidates.find(candidate => candidate.provider === item.provider))
       .filter((candidate): candidate is NonNullable<typeof candidate> => candidate !== undefined)
 
-    // Phase 2: fill at most MAX fallback slots; reserve a half-open probe
-    // (allow()) only for a route that is actually returned. A provider that
-    // just crossed open -> half-open must actually receive its one recovery
-    // probe, so it is placed first and marked no-store so a stale semantic
-    // cache hit cannot consume the exclusive probe without settling it.
+    // Phase 2: fill at most MAX fallback slots. `probe-ready` routes are
+    // ordered first and reserve their exclusive half-open probe here (allow())
+    // only when they are actually returned. A `blocked` candidate — an open
+    // circuit still cooling, or one whose single half-open probe is already
+    // reserved by a concurrent planner — must NEVER enter the plans, not even
+    // as an ordinary `{provider}` fallback, or the exclusive recovery probe
+    // would be duplicated across planners.
     const plans: ProviderFallbackPlan[] = []
     const ordered = [
       ...ranked.filter(candidate => candidate.admission === 'probe-ready'),
-      ...ranked.filter(candidate => candidate.admission !== 'probe-ready'),
+      ...ranked.filter(candidate => candidate.admission === 'closed'),
     ]
     for (const candidate of ordered) {
       if (plans.length >= MAX_RELIABILITY_PROVIDER_FALLBACKS) break
       const provider = candidate.provider
       const state = stateFor(provider)
 
-      if (candidate.admission === 'probe-ready' || state.circuit.snapshot().state === 'open') {
+      if (candidate.admission === 'probe-ready') {
         // This is the commit point for the exclusive probe. If a concurrent
         // planner won the reservation first, skip and keep filling.
         if (!state.circuit.allow()) continue

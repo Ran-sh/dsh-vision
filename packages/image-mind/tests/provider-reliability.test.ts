@@ -224,3 +224,80 @@ describe('half-open reservation at selection (no stranded probes)', () => {
     }
   })
 })
+
+describe('blocked half-open candidates never enter plans (R2C-2)', () => {
+  it('after planner A reserves the half-open probe, planner B returns [] for that provider', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(1000))
+    try {
+      const tracker = createProviderReliabilityTracker()
+      for (const provider of ['first', 'second', 'third']) {
+        tracker.recordFailure(provider, 100)
+        tracker.recordFailure(provider, 100)
+        tracker.recordFailure(provider, 100)
+      }
+      vi.setSystemTime(new Date(1000 + 31_000))
+
+      const planA = tracker.fallbacks(config(), 'primary', {})
+      // X is now half-open (probe reserved). Planner B must not return X at
+      // all — not even as an ordinary {provider}.
+      const planB = tracker.fallbacks(config(), 'primary', {})
+      for (const plan of planA.filter(p => p.cache === 'no-store')) {
+        expect(planB.some(p => p.provider === plan.provider)).toBe(false)
+      }
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('one backup open+half-open reserved => planner B returns [] entirely', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(1000))
+    try {
+      const tracker = createProviderReliabilityTracker()
+      // Only ONE backup provider (config with just first + primary) so no
+      // closed candidates remain after the probe is reserved.
+      const singleConfig = {
+        ...config(),
+        providers: { primary: config().providers['primary'], first: config().providers['first'] },
+      }
+      tracker.recordFailure('first', 100)
+      tracker.recordFailure('first', 100)
+      tracker.recordFailure('first', 100)
+      vi.setSystemTime(new Date(1000 + 31_000))
+
+      const planA = tracker.fallbacks(singleConfig, 'primary', {})
+      expect(planA).toEqual([{ provider: 'first', cache: 'no-store' }])
+      const planB = tracker.fallbacks(singleConfig, 'primary', {})
+      expect(planB).toEqual([])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('settle success/failure before a blocked provider becomes eligible again', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(1000))
+    try {
+      const tracker = createProviderReliabilityTracker()
+      const singleConfig = {
+        ...config(),
+        providers: { primary: config().providers['primary'], first: config().providers['first'] },
+      }
+      tracker.recordFailure('first', 100)
+      tracker.recordFailure('first', 100)
+      tracker.recordFailure('first', 100)
+      vi.setSystemTime(new Date(1000 + 31_000))
+      const planA = tracker.fallbacks(singleConfig, 'primary', {})
+      // While half-open, planner B is empty.
+      expect(tracker.fallbacks(singleConfig, 'primary', {})).toEqual([])
+      // Probe settles with success -> circuit closes -> eligible again as a
+      // normal fallback (no no-store needed).
+      tracker.recordSuccess('first', 50)
+      void planA
+      expect(ids(tracker.fallbacks(singleConfig, 'primary', {}))).toContain('first')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})

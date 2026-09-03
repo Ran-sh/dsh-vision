@@ -63,10 +63,13 @@ function fakeConnection(initial: Record<string, unknown>, opts: { startLoading?:
   credentialStore: Map<string, string>
   /** Make the next credential write fail (settings must stay untouched). */
   failNextCredentialSet: () => void
+  /** Make the next settings mutate throw (simulate a CAS revision conflict). */
+  failNextMutate: () => void
 } {
   const view: Record<string, unknown> = JSON.parse(JSON.stringify(initial))
   const credentials = new Map<string, string>()
   let failNextSet = false
+  let failNextMutate = false
   let revision = 1
   let status: 'loading' | 'ready' = opts.startLoading === true ? 'loading' : 'ready'
   const snapshotOf = () => status === 'loading'
@@ -91,6 +94,10 @@ function fakeConnection(initial: Record<string, unknown>, opts: { startLoading?:
       publish()
     },
     mutate: async (ops: Array<{ op: 'set' | 'unset'; path: readonly string[]; value?: unknown }>) => {
+      if (failNextMutate) {
+        failNextMutate = false
+        throw new Error('settings revision conflict (injected)')
+      }
       for (const op of ops) applyOp(view, op)
       revision += 1
       publish()
@@ -124,6 +131,7 @@ function fakeConnection(initial: Record<string, unknown>, opts: { startLoading?:
     },
     credentialStore: credentials,
     failNextCredentialSet: () => { failNextSet = true },
+    failNextMutate: () => { failNextMutate = true },
   }
 }
 
@@ -401,5 +409,122 @@ describe('ImageMindSettingsStore fail-safe save ordering', () => {
     expect(store2.store.getSnapshot().shell.failed).toBe(true)
     expect(store2.store.getSnapshot().shell.dirty).toBe(true)
     expect(store2.planOps().length).toBeGreaterThan(0)
+  })
+})
+
+describe('ImageMindSettingsStore staged credential refs (R2C-3)', () => {
+  it('endpoint+key change + CAS conflict never overwrites the live credential', async () => {
+    const fake = fakeConnection({
+      providers: { 'sec': { baseURL: 'https://api.a.example/v1', model: 'm1', apiKeyEnv: 'SEC_REF' } },
+      active: 'sec',
+    })
+    fake.credentialStore.set('SEC_REF', 'keyA')
+    const store = new ImageMindSettingsStore(fake.connection)
+    await store.load()
+
+    // User changes endpoint A -> B and types keyB (SEC_REF is committed/live).
+    store.editProvider('sec', 'baseURL', 'https://api.b.example/v1')
+    store.editProvider('sec', 'apiKeyText', 'keyB')
+    const plan = store.stagedCredentialPlan()
+    expect(plan).toHaveLength(1)
+    // The write targets a STAGING ref, not the live SEC_REF.
+    expect(plan[0].ref).not.toBe('SEC_REF')
+    expect(plan[0].ref.endsWith('_STAGING')).toBe(true)
+
+    // Simulate a CAS conflict: the settings mutate throws.
+    fake.failNextMutate()
+    await store.save()
+    expect(store.store.getSnapshot().shell.failed).toBe(true)
+    // Old committed settings + old credential fully intact.
+    expect(storedProvider(fake.view, 'sec')?.['apiKeyEnv']).toBe('SEC_REF')
+    expect(storedProvider(fake.view, 'sec')?.['baseURL']).toBe('https://api.a.example/v1')
+    expect(fake.credentialStore.get('SEC_REF')).toBe('keyA')
+  })
+
+  it('successful CAS atomically switches apiKeyEnv to the staging ref', async () => {
+    const fake = fakeConnection({
+      providers: { 'sec': { baseURL: 'https://api.a.example/v1', model: 'm1', apiKeyEnv: 'SEC_REF' } },
+      active: 'sec',
+    })
+    fake.credentialStore.set('SEC_REF', 'keyA')
+    const store = new ImageMindSettingsStore(fake.connection)
+    await store.load()
+
+    store.editProvider('sec', 'baseURL', 'https://api.b.example/v1')
+    store.editProvider('sec', 'apiKeyText', 'keyB')
+    const plan = store.stagedCredentialPlan()
+    await store.save()
+
+    expect(store.store.getSnapshot().shell.failed).toBe(false)
+    expect(fake.credentialStore.get('SEC_REF')).toBe('keyA') // old key untouched
+    expect(fake.credentialStore.get(plan[0].ref)).toBe('keyB')
+    expect(storedProvider(fake.view, 'sec')?.['apiKeyEnv']).toBe(plan[0].ref)
+    expect(storedProvider(fake.view, 'sec')?.['baseURL']).toBe('https://api.b.example/v1')
+  })
+
+  it('pure key rotation + CAS conflict keeps old key under the old ref', async () => {
+    const fake = fakeConnection({
+      providers: { 'sec': { baseURL: 'https://api.a.example/v1', model: 'm1', apiKeyEnv: 'SEC_REF' } },
+      active: 'sec',
+    })
+    fake.credentialStore.set('SEC_REF', 'keyA')
+    const store = new ImageMindSettingsStore(fake.connection)
+    await store.load()
+
+    store.editProvider('sec', 'apiKeyText', 'keyB')
+    fake.failNextMutate() // CAS conflict
+    await store.save()
+    expect(store.store.getSnapshot().shell.failed).toBe(true)
+    expect(fake.credentialStore.get('SEC_REF')).toBe('keyA')
+  })
+
+  it('retry reuses the same staging ref (no orphan churn)', async () => {
+    const fake = fakeConnection({
+      providers: { 'sec': { baseURL: 'https://api.a.example/v1', model: 'm1', apiKeyEnv: 'SEC_REF' } },
+      active: 'sec',
+    })
+    fake.credentialStore.set('SEC_REF', 'keyA')
+    const store = new ImageMindSettingsStore(fake.connection)
+    await store.load()
+
+    store.editProvider('sec', 'apiKeyText', 'keyB')
+    const first = store.stagedCredentialPlan()[0].ref
+    fake.failNextMutate() // fail
+    await store.save()
+    const second = store.stagedCredentialPlan()[0].ref
+    expect(second).toBe(first)
+  })
+
+  it('credential set failure keeps old settings + old credential intact', async () => {
+    const fake = fakeConnection({
+      providers: { 'sec': { baseURL: 'https://api.a.example/v1', model: 'm1', apiKeyEnv: 'SEC_REF' } },
+      active: 'sec',
+    })
+    fake.credentialStore.set('SEC_REF', 'keyA')
+    const store = new ImageMindSettingsStore(fake.connection)
+    await store.load()
+
+    store.editProvider('sec', 'apiKeyText', 'keyB')
+    fake.failNextCredentialSet()
+    await store.save()
+    expect(store.store.getSnapshot().shell.failed).toBe(true)
+    expect(storedProvider(fake.view, 'sec')?.['apiKeyEnv']).toBe('SEC_REF')
+    expect(fake.credentialStore.get('SEC_REF')).toBe('keyA')
+  })
+
+  it('a new provider with no live ref still writes the derived ref directly', async () => {
+    const fake = fakeConnection({})
+    const store = new ImageMindSettingsStore(fake.connection)
+    await store.load()
+    store.addProvider({
+      id: 'brandnew', displayName: 'Brand New',
+      preset: { baseURL: 'https://api.n.example/v1', model: 'm1', apiKeyEnv: '' },
+    })
+    store.editProvider('brandnew', 'apiKeyText', 'keyN')
+    const plan = store.stagedCredentialPlan()
+    expect(plan[0].ref).toBe(deriveKeyRef('brandnew'))
+    expect(plan[0].ref.endsWith('_STAGING')).toBe(false)
+    await store.save()
+    expect(storedProvider(fake.view, 'brandnew')?.['apiKeyEnv']).toBe(deriveKeyRef('brandnew'))
   })
 })

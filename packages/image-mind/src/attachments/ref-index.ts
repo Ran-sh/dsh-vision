@@ -56,6 +56,42 @@ function emptyIndex(): PersistedIndex {
   return { version: INDEX_VERSION, refs: emptyRecord(), sessions: emptyRecord() }
 }
 
+/** Deep-clone a string map into a fresh null-prototype record. */
+function cloneStringRecord(source: Record<string, string>): Record<string, string> {
+  const target = emptyRecord<string>()
+  for (const [key, value] of Object.entries(source)) target[key] = value
+  return target
+}
+
+/**
+ * Clone the committed index into a fresh null-prototype tree. A plain
+ * structuredClone would rebuild plain objects and silently drop the
+ * null-prototype guard, letting a `__proto__` session id re-enter legacy
+ * prototype semantics on the next mutation.
+ */
+function cloneIndex(source: PersistedIndex): PersistedIndex {
+  const refs = emptyRecord<ImageAttachmentRef>()
+  for (const [id, ref] of Object.entries(source.refs)) {
+    refs[id] = { ...ref }
+  }
+  const sessions = emptyRecord<SessionRecord>()
+  for (const [id, session] of Object.entries(source.sessions)) {
+    sessions[id] = {
+      batchId: session.batchId,
+      count: session.count,
+      refs: cloneStringRecord(session.refs),
+      updatedAt: session.updatedAt,
+      history: session.history.map(batch => ({
+        batchId: batch.batchId,
+        count: batch.count,
+        refs: cloneStringRecord(batch.refs),
+        updatedAt: batch.updatedAt,
+      })),
+    }
+  }
+  return { version: INDEX_VERSION, refs, sessions }
+}
+
 interface IndexState {
   value: PersistedIndex
   /** Cold-load singleflight: one load per path; concurrent callers await it. */
@@ -174,7 +210,7 @@ function runMutation<T>(
 
   void ensureLoaded(ctx).then((holder) => {
     const operation = holder.state.opTail.then(async () => {
-      const draft = structuredClone(holder.state.value)
+      const draft = cloneIndex(holder.state.value)
       const { result, changed } = mutate(draft)
       if (changed) {
         if (holder.path !== undefined) {

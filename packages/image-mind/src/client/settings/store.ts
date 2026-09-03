@@ -34,6 +34,13 @@ export interface ProviderDraft {
   apiKeyMask: string
   /** Whether this provider needs no credential (local endpoints, explicit config). */
   keyless: boolean
+  /**
+   * Stable staging credential ref for a typed key that would otherwise
+   * overwrite a live credential still referenced by the committed settings.
+   * Created once per draft and reused across retries so a CAS conflict never
+   * rotates the old credential before the new settings commit.
+   */
+  stagingRef?: string
 }
 
 /** One provider row the renderer consumes. */
@@ -104,7 +111,13 @@ export function draftOf(id: string, record: Record<string, unknown> | undefined,
     apiKeyConfigured: configured,
     apiKeyMask: mask,
     keyless: typeof provider['keyless'] === 'boolean' ? provider['keyless'] : isKeylessBaseURL(rawBaseURL),
+    stagingRef: undefined,
   }
+}
+
+/** One stable per-draft staging ref for a provider route. */
+function stagingRefFor(id: string): string {
+  return `${deriveKeyRef(id)}_STAGING`
 }
 
 /** One provider record as stored (loose, from the wire view). */
@@ -426,18 +439,17 @@ export class ImageMindSettingsStore {
   }
 
   /** Compute path ops carrying the staged draft over the loaded view. */
-  planOps(includeDerivedRefs = true): SettingsOp[] {
+  planOps(): SettingsOp[] {
     const ops: SettingsOp[] = []
     const providers = (this.view.value?.['providers'] ?? {}) as Record<string, unknown>
     const ids = new Set([...Object.keys(providers), ...this.draft.keys()])
-    const derivedRefs = new Map<string, string>()
+    const settingsRefs = new Map<string, string>()
 
-    for (const write of this.pendingCredentialWrites()) {
-      // A typed key with no explicit apiKeyEnv stores under a derived ref; the
-      // settings mutation below must reference that same ref in one commit.
-      if (write.id !== undefined && write.ref === deriveKeyRef(write.id)) {
-        derivedRefs.set(write.id, write.ref)
-      }
+    // The credential plan already resolves staging: every typed key maps to the
+    // exact ref the settings commit must reference (derived ref for new
+    // providers, stable staging ref when the target is live).
+    for (const write of this.stagedCredentialPlan()) {
+      settingsRefs.set(write.id, write.settingsRef)
     }
 
     for (const id of ids) {
@@ -448,7 +460,10 @@ export class ImageMindSettingsStore {
         continue
       }
       const original = draftOf(id, record, this.credentialConfigured(id), this.credentialMask(id))
-      const effectiveEnv = d.apiKeyEnv.trim().length > 0 ? d.apiKeyEnv.trim() : (derivedRefs.get(id) ?? '')
+      // Staging wins when a typed key must not overwrite a live credential:
+      // the settings commit switches apiKeyEnv to the staging ref atomically.
+      const staged = settingsRefs.get(id)
+      const effectiveEnv = staged !== undefined ? staged : d.apiKeyEnv.trim()
       if (record === undefined) {
         ops.push({
           op: 'set',
@@ -502,16 +517,35 @@ export class ImageMindSettingsStore {
     return ops
   }
 
-  /** The credential refs that need storing when the card saves a typed key. */
-  pendingCredentialWrites(): Array<{ id: string; ref: string; value: string }> {
-    const writes: Array<{ id: string; ref: string; value: string }> = []
+  /**
+   * The credential writes needed when the card saves a typed key, plus the
+   * ref the settings mutation must point the provider at. The destination ref
+   * is a stable staging ref whenever the target is already referenced by the
+   * committed settings: overwriting a live credential before the settings
+   * commit would let a CAS conflict pair the old endpoint with the new key.
+   */
+  stagedCredentialPlan(): Array<{ id: string; ref: string; value: string; settingsRef: string }> {
+    const writes: Array<{ id: string; ref: string; value: string; settingsRef: string }> = []
     for (const [id, draft] of this.draft) {
-      if (draft.apiKeyText.length > 0 && !/^\*+$/.test(draft.apiKeyText)) {
-        const ref = draft.apiKeyEnv.trim().length > 0 ? draft.apiKeyEnv.trim() : deriveKeyRef(id)
-        writes.push({ id, ref, value: draft.apiKeyText })
-      }
+      if (draft.apiKeyText.length === 0 || /^\*+$/.test(draft.apiKeyText)) continue
+      const explicitEnv = draft.apiKeyEnv.trim()
+      const baseRef = explicitEnv.length > 0 ? explicitEnv : deriveKeyRef(id)
+      const committedRef = apiKeyEnvOf(this.view, id)
+      // If the committed settings already reference this ref (or the ref is a
+      // conventional derived one another provider may share), never overwrite
+      // it in place — stage under a stable ref that the settings CAS will
+      // atomically switch to.
+      const live = committedRef !== undefined && committedRef === baseRef
+      const settingsRef = live ? (draft.stagingRef ?? stagingRefFor(id)) : baseRef
+      if (live) this.draft.set(id, { ...draft, stagingRef: settingsRef })
+      writes.push({ id, ref: settingsRef, value: draft.apiKeyText, settingsRef })
     }
     return writes
+  }
+
+  /** The credential refs that need storing when the card saves a typed key. */
+  pendingCredentialWrites(): Array<{ id: string; ref: string; value: string }> {
+    return this.stagedCredentialPlan().map(({ id, ref, value }) => ({ id, ref, value }))
   }
 
   /** Save staged drafts with a fail-safe ordering: credentials first, the

@@ -244,3 +244,36 @@ describe('attachment index concurrency and durability', () => {
     expect(batch.map(r => r.attachmentId)).toEqual([a.attachmentId])
   })
 })
+
+describe('hostile session ids across a REAL module-restart reload', () => {
+  it('__proto__ session id survives a real disk reload (fresh module state)', async () => {
+    const root = await freshRoot()
+    const ctx = ctxFor(root)
+    const protoRef = ref('e')
+
+    // Write through the real module.
+    const mod1 = await import('../src/attachments/ref-index.ts')
+    await mod1.rememberAttachmentRef(ctx, protoRef, {
+      sessionId: '__proto__', batchId: 'b1', batchIndex: 0, batchCount: 1,
+    })
+
+    // Inspect the actual on-disk JSON: __proto__ must be a plain own key.
+    const onDisk = JSON.parse(await realFs('readFile')(indexFileFor(root), 'utf8'))
+    expect(Object.hasOwn(onDisk.sessions, '__proto__')).toBe(true)
+
+    // Simulate a real restart: fresh module state (new in-memory `states` map)
+    // and a fresh Context — this is what actually forces a cold disk reload.
+    vi.resetModules()
+    const mod2 = await import('../src/attachments/ref-index.ts')
+    const ctx2 = ctxFor(root)
+    const again = await mod2.latestSessionAttachmentRefs(ctx2, '__proto__')
+    expect(again.map(r => r.attachmentId)).toEqual([protoRef.attachmentId])
+
+    // constructor / prototype-like ids are plain data too.
+    const ctorRef = ref('f')
+    await mod2.rememberAttachmentRef(ctx2, ctorRef, {
+      sessionId: 'constructor', batchId: 'b2', batchIndex: 0, batchCount: 1,
+    })
+    expect((await mod2.latestSessionAttachmentRefs(ctx2, 'constructor')).map(r => r.attachmentId)).toEqual([ctorRef.attachmentId])
+  })
+})
