@@ -111,13 +111,14 @@ Result Contract. Do not spend provider quota during this pre-publish task.
 
 ## Single-track 0.3.0 / DSH 0.1.2-rc.1 boundary (2026-09-03)
 
-Closed with isolated local-packed evidence on exact `0.1.2-rc.1`
-(disposable DSH_HOME, official add, dump-config composition, web boot,
-`/image-mind` catalog/config/previews routes, official remove + clean
-reboot). Still open — do not convert to PASS without new Result Contracts:
+Closed with isolated registry evidence on exact `0.1.2-rc.1`: `0.3.0`
+published to npm (service first, then plugin), then a pure registry-only
+install (no tgz/workspace/overrides) of `dsh-plugin-image-mind@0.3.0` in a
+disposable DSH_HOME — official add, dump-config composition
+(`vision-runtime` + `image-mind`), web boot, `/image-mind`
+catalog/config/previews routes 200, official remove + clean reboot (no stale
+layer). Still open — do not convert to PASS without new Result Contracts:
 
-- [ ] registry install of published `0.3.0` artifacts (service-first
-  then plugin-second; maintainer-authorized publication only).
 - [ ] full browser journey (settings card render/add/edit/save/delete,
   drop/paste/lightbox, exact-eight/ninth-rejected gate, retry/draft,
   session switch/restart) in the real `0.1.2-rc.1` web UI.
