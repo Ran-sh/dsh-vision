@@ -81,7 +81,7 @@ export function hasOfficialSettings(ctx: ImageMindClientContext | undefined): bo
 }
 
 /** Build a card snapshot from a scope snapshot. */
-function snapshotFromScope(
+export function snapshotFromScope(
   snapshot: SettingsScopeSnapshot<Record<string, unknown>>,
   mode: 'host' | 'memory',
 ): SettingsSnapshot {
@@ -105,6 +105,26 @@ function snapshotFromScope(
     writable: snapshot.writable,
     mode,
   }
+}
+
+/** Read the image-mind namespace through a bound scope (mirror snapshot). */
+export function snapshotFromBoundScope(scope: SettingsScope<Record<string, unknown>>): SettingsSnapshot {
+  return snapshotFromScope(scope.getSnapshot(), 'host')
+}
+
+/** Apply path ops through a bound scope; the scope mirror is the source of truth. */
+export async function writeThroughScope(
+  scope: SettingsScope<Record<string, unknown>>,
+  ops: readonly SettingsOp[],
+  expectedRevision?: number,
+): Promise<SettingsSnapshot> {
+  try {
+    await scope.mutate(ops, expectedRevision)
+  } catch (error) {
+    const message = (error as Error).message
+    throw new Error(/conflict/i.test(message) ? '设置已被其他窗口修改，请刷新后重试' : message)
+  }
+  return snapshotFromScope(scope.getSnapshot(), 'host')
 }
 
 /** Read the image-mind namespace through the bound scope. */
