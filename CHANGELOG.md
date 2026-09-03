@@ -6,6 +6,32 @@ is independent of DeepSeek and follows SemVer for its 0.x line.
 
 ## [Unreleased]
 
+## [0.3.1] — rc.1 browser lifecycle fixes
+
+Both publishable packages move to `0.3.1` (image-mind depends on
+`@ran-sh/dsh-vision@^0.3.0`). 0.3.0 shipped the rc.1 split-client
+architecture; the real rc.1 browser journey then found two client bugs,
+fixed here and verified in a real Chrome session against the exact
+`0.1.2-rc.1` web:
+
+- Settings card never appeared in 设置 → 插件 → 插件配置: the settings store
+  treated the bound `SettingsScope` as a one-shot getter, so a `loading`
+  first snapshot left the card unexposed forever. The store now binds once
+  and subscribes to the scope mirror, following it into `ready` and through
+  later document updates (the official rc.1 controller pattern).
+- Card showed "本部署的设置为只读" with actions disabled: the credential
+  transport spoke the pre-rc.1 wrapper shape (`{refs}` / `{ref,value}` /
+  `result.ok`) while rc.1 `remote.credentials` is positional
+  (`describe([ref])` / `set(ref, value)` / `response.ok`), so every
+  credential describe failed inside `load()` and demoted the whole settings
+  view to `unavailable/writable:false`. The transport now uses the rc.1
+  positional contract; credential refresh is isolated from the settings view;
+  `shell.available` tracks `ready` like the official CardForm.
+
+Real-browser verification: the image-mind card renders with its full
+provider UI, the add-provider catalog opens, adding Opencode Go and saving
+persists to `settings.yaml`, and no readonly banner appears.
+
 ## [0.3.0] — single-track latest Harness 0.1.2-rc.1
 
 Both publishable packages move to `0.3.0` (image-mind depends on

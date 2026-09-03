@@ -105,23 +105,28 @@ Result Contract. Do not spend provider quota during this pre-publish task.
   file/link/workspace dependency (post-publication only).
 - [ ] Service-first then plugin-second npm publication, OTP/secret handling,
   tag/release and a clean post-publish Harness install/remove (maintainer-only).
-- [ ] One clean PR with required checks green for the next gate (PR #68 merged
-  for the 0.3.0 single-track adaptation; open a new PR only when the next
-  change lands).
+- [ ] One clean PR with required checks green for the next gate (PRs #68–#73
+  merged for the 0.3.0/0.3.1 single-track adaptation; open a new PR only when
+  the next change lands).
 
-## Single-track 0.3.0 / DSH 0.1.2-rc.1 boundary (2026-09-03)
+## Single-track 0.3.1 / DSH 0.1.2-rc.1 boundary (2026-09-03)
 
-Closed with isolated registry evidence on exact `0.1.2-rc.1`: `0.3.0`
-published to npm (service first, then plugin), then a pure registry-only
-install (no tgz/workspace/overrides) of `dsh-plugin-image-mind@0.3.0` in a
-disposable DSH_HOME — official add, dump-config composition
-(`vision-runtime` + `image-mind`), web boot, `/image-mind`
-catalog/config/previews routes 200, official remove + clean reboot (no stale
-layer). Still open — do not convert to PASS without new Result Contracts:
+Closed on exact `0.1.2-rc.1`: `0.3.0` and `0.3.1` published to npm (service
+first, then plugin), a pure registry-only install (no
+tgz/workspace/overrides) proven in a disposable DSH_HOME (official add,
+dump-config composition, web boot, `/image-mind` routes 200, official remove
+clean), and a real Chrome session proving the settings card renders in
+设置 → 插件 → 插件配置 with a working add-provider flow that persists to
+`settings.yaml`. Still open — do not convert to PASS without new Result
+Contracts:
 
-- [ ] full browser journey (settings card render/add/edit/save/delete,
-  drop/paste/lightbox, exact-eight/ninth-rejected gate, retry/draft,
-  session switch/restart) in the real `0.1.2-rc.1` web UI.
+- [ ] remaining browser journey items: drag/paste PNG/JPEG/WebP,
+  lightbox, exact-eight/ninth-rejected gate, failed-send retry/draft
+  retention, session switch/restart and client reload, committed-preview
+  survival — in the real `0.1.2-rc.1` web UI (Batch 017 proved these on the
+  historical rc.2 line only).
+- [ ] real `understand_image` → vision → main-conversation routing through
+  the rc.1 web UI with the published 0.3.1 packages and a hosted provider.
 - [ ] hosted-provider quality, quota/413/429 behavior and token-trace
   reconciliation against real endpoints.
 
