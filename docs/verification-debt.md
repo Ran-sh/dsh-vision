@@ -27,31 +27,27 @@ be corrected before completion.
 
 ## Browser and exact-host boundary
 
-These remain external or partial unless the current isolated exact-rc.1 run
-proves them. Do not mark them green from a local mock:
+These remain external or partial unless the current isolated exact-`0.1.2-rc.1`
+run proves them. Do not mark them green from a local mock:
 
 - [ ] model-only routing in a real DSH conversation (image-only and vague
   prompts must call `understand_image`); the host prompt seam is separate from
   user-bubble secrecy.
 - [ ] drag/paste PNG, JPEG and WebP, failed-send draft retention, retry,
-  preview/lightbox, session switch and restart/reopen in the exact rc.1 web UI.
+  preview/lightbox, session switch and restart/reopen in the exact `0.1.2-rc.1`
+  web UI.
 - [ ] route/RPC/settings reachability and official add/remove with exact
-  `@deepseek-ai/dsh@0.1.1-rc.1`; Batch 016 may close this only with a
-  task-owned profile and local-packed 0.2.0 packages.
-  **Closed for exact rc.2 by Batch 017**: with a task-owned profile and
-  local-packed 0.2.0 packages, official add/boot/remove, `/image-mind` route
-  reachability, settings writes, the keyless visual challenge and restart
-  recovery all pass against `@deepseek-ai/dsh@0.1.1-rc.2` (see
-  `docs/compatibility.md`); the Batch 008 `/image-mind/*` route gap observed on
-  rc.1 does not reproduce on rc.2. The exact rc.2 browser run also closed the
-  rendered attachment/settings, PNG/JPEG/WebP drop/paste/lightbox,
-  exact-eight/ninth-rejected fail-fast, neutral-marker, real
-  `understand_image`→vision→main, failed-send retry/draft-retention,
-  session-switch/restart and cache/refocus gates.
+  `@deepseek-ai/dsh@0.1.2-rc.1` beyond the isolated composition/routes gate
+  already proven (see `docs/compatibility.md`).
 - [ ] lifecycle observer records in a real host contain no prompt/path/key/
   response text, and an observer failure does not change the request result.
 - [ ] long 1440px screenshots and browser memory/OCR quality at the intended
   pixel budget.
+
+Historical note: exact `0.1.1-rc.1` (Batches 006–016) and exact `0.1.1-rc.2`
+(Batch 017, incl. the full browser journey) evidence stays in history; the
+Batch 008 `/image-mind/*` route gap observed on rc.1 does not reproduce on
+later lines. Only the current `0.3.0` / `0.1.2-rc.1` gates are active.
 
 ## Lifecycle CLI boundary
 

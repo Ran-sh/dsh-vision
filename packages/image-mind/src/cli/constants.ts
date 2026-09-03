@@ -47,7 +47,8 @@ export function isCliCommand(value: string): value is CliCommand {
   return (VALID_COMMANDS as readonly string[]).includes(value)
 }
 
-export const USAGE = `dsh-plugin-image-mind lifecycle CLI (v0.2.0)
+export function usage(runningVersion: string): string {
+  return `dsh-plugin-image-mind lifecycle CLI (v${runningVersion})
 
 Manage this plugin in a DeepSeek Harness profile through OFFICIAL DSH
 plugin lifecycle commands. All profile mutations are delegated; nothing
@@ -78,3 +79,4 @@ Examples:
   npx dsh-plugin-image-mind uninstall --profile web
 
 Compatibility target: @deepseek-ai/dsh@${COMPATIBILITY_TARGET} (exact).`
+}
