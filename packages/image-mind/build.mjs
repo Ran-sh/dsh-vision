@@ -30,7 +30,7 @@ await build({
   platform: 'node',
   target: 'es2024',
   sourcemap: true,
-  external: ['@deepseek-ai/*', '@ran-sh/dsh-vision', 'schemastery'],
+  external: ['@deepseek-ai/*', '@ran-sh/dsh-vision'],
   // Some source/dependency paths intentionally use runtime require() for Node
   // built-ins. esbuild's ESM helper can only service those calls when a native
   // require binding exists. DSH imports this bundle as ESM, so provide the
@@ -51,7 +51,23 @@ await build({
   target: 'es2022',
   jsx: 'automatic',
   sourcemap: true,
-  external: ['react', 'react/*', 'react-dom', 'react-dom/*', '@deepseek-ai/*'],
+  // @deepseek-ai/dsh-client-store is a pure store library (no dsh.client
+  // manifest, no service to inject) — bundle it so the ModuleLoader never
+  // has to resolve a library module at runtime. Every other @deepseek-ai/*
+  // client package stays external: the host profile tree provides them.
+  // esbuild `external` accepts only strings, so the split is expressed as a
+  // resolver plugin instead of a regex.
+  external: ['react', 'react/*', 'react-dom', 'react-dom/*'],
+  plugins: [{
+    name: 'image-mind-harness-external',
+    setup(build) {
+      build.onResolve({ filter: /^@deepseek-ai\// }, (args) => {
+        if (args.path === '@deepseek-ai/dsh-client-store') return undefined
+        return { path: args.path, external: true }
+      })
+      build.onResolve({ filter: /^@ran-sh\// }, (args) => ({ path: args.path, external: true }))
+    },
+  }],
   banner: {
     js: `var module = { exports: {} }; var exports = module.exports;`
       + `\nwindow.__ModuleLoader__.load({ id: ${JSON.stringify(PKG)}, factory: (require) => {`,

@@ -17,11 +17,11 @@ export const SERVICE_PACKAGE = '@ran-sh/dsh-vision'
 export const DEFAULT_PROFILE = 'web'
 
 /**
- * Exact Harness release line this 0.2.0 candidate is validated against. The
+ * Exact Harness release line this 0.3.0 candidate is validated against. The
  * CLI reports this as its compatibility target; it never silently claims
  * compatibility with untested Harness versions.
  */
-export const COMPATIBILITY_TARGET = '0.1.1-rc.2'
+export const COMPATIBILITY_TARGET = '0.1.2-rc.1'
 
 /** Environment variable that relocates the DeepSeek Harness home (official). */
 export const DSH_HOME_ENV = 'DSH_HOME'

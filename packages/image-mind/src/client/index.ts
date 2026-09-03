@@ -8,9 +8,12 @@
  * @module dsh-plugin-image-mind/client
  */
 
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
+import type {} from '@deepseek-ai/dsh-api-session-controller/client'
+import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
+import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import { installSendHook } from './send-hook.ts'
 import { installConversationImagePreview, type ConversationImagePreview } from './preview.ts'
 import { installConversationImageHistoryPreview } from './history-preview.ts'
@@ -26,7 +29,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 export const name = 'image-mind'
 
 /** Runtime provides the active-session observable used by safe history previews. */
-export const inject = ['conversation', 'slots', 'locale', 'connection', 'sessions']
+export const inject = ['conversation', 'slots', 'locale', 'sessions', 'settingsScope', 'remote']
 
 export const NS = 'image-mind'
 
@@ -40,11 +43,11 @@ export function setPreviewToggle(enabled: boolean): void {
   previewToggle = enabled
 }
 
-export function apply(ctx: ClientContext): void {
+export function apply(ctx: Context): void {
   ctx.effect(() => mirrorDocumentLanguage(), 'dsh-plugin-image-mind: language mirror')
   ctx.effect(() => ctx.locale.register(NS, localeDictionaries), 'dsh-plugin-image-mind: card dictionaries')
 
-  ctx.inject(['conversation'], (scope: ClientContext) => {
+  ctx.inject(['conversation'], (scope: Context) => {
     installSendHook(scope.conversation)
   })
 
@@ -63,7 +66,7 @@ export function apply(ctx: ClientContext): void {
   // marker, while the selected session id addresses a separate committed
   // preview ledger. No attachment id or raw URL is written into conversation
   // text to make this work.
-  ctx.inject(['sessions'], (scope: ClientContext) => {
+  ctx.inject(['sessions'], (scope: Context) => {
     const sessions = scope.get('sessions')
     if (sessions === undefined) return
     const handle = installConversationImageHistoryPreview(
@@ -77,10 +80,12 @@ export function apply(ctx: ClientContext): void {
     }, 'dsh-plugin-image-mind: committed conversation image preview')
   })
 
-  ctx.inject(['slots'], (slotsCtx: ClientContext) => {
+  ctx.inject(['slots'], (slotsCtx: Context) => {
     const controller = new ImageMindSettingsCardController(slotsCtx)
-    slotsCtx.slots.inject('settings.plugin.item', () =>
-      slotsCtx.slots.register({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const slots = (slotsCtx as any).slots
+    slots.inject('settings.plugin.item', () =>
+      slots.register({
         name: 'settings.plugin.item',
         key: 'image-mind',
         locale: NS,

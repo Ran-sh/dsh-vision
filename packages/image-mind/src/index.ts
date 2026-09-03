@@ -9,7 +9,6 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
-import { installSettingsSection } from '@deepseek-ai/dsh-settings'
 import type {} from '@ran-sh/dsh-vision'
 import { VisionError, createMemoryVisionCache } from '@ran-sh/dsh-vision'
 import type { VisionCacheStore, VisionRequest } from '@ran-sh/dsh-vision'
@@ -138,28 +137,56 @@ export function apply(ctx: Context, config: ConfigType = {}): void {
   }
   ensureDirectory()
 
-  installSettingsSection(ctx, IMAGE_MIND_SETTINGS_NAMESPACE, Config, config, {
-    setSource: (source) => { current = source },
-    onChange: () => {
-      try {
-        resolved()
-        ensureRegistration()
-        ensureDirectory()
-        // Provider/model/policy changes invalidate reusable evidence. Exact
-        // semantic request cache remains adapter-owned and key-scoped.
-        resetEvidenceCache()
-      } catch (error) {
-        ctx.logger.error('image-mind: keeping the previously registered vision routes after a refused settings update')
-        ctx.logger.error(error)
+  // Settings registration rides the alpha `settings` service lifecycle:
+  // the section installs once the provider is mountable, and the legacy-key
+  // migration runs inside the same lifecycle so a "service not yet present"
+  // state is never mistaken for a permanent failure.
+  ;(ctx as unknown as {
+    inject(names: string[], callback: (injected: Context & {
+      settings: {
+        installSection<T>(
+          owner: Context,
+          ns: string,
+          schema: unknown,
+          entry: T,
+          hooks: {
+            setSource: (current: () => T) => void
+            onChange: () => void
+            validate?: (value: T) => void
+          },
+        ): void
       }
-    },
-    validate: (value) => {
-      const hasProviders = value.providers !== undefined && Object.keys(value.providers).length > 0
-      if (hasProviders || value.active !== undefined) resolveConfig(value)
-    },
-  })
+    }) => void): void
+  }).inject(['settings'], (settingsCtx) => {
+    settingsCtx.settings.installSection(
+      ctx,
+      IMAGE_MIND_SETTINGS_NAMESPACE,
+      Config,
+      config,
+      {
+        setSource: (source: () => ConfigType) => { current = source },
+        onChange: () => {
+          try {
+            resolved()
+            ensureRegistration()
+            ensureDirectory()
+            // Provider/model/policy changes invalidate reusable evidence. Exact
+            // semantic request cache remains adapter-owned and key-scoped.
+            resetEvidenceCache()
+          } catch (error) {
+            ctx.logger.error('image-mind: keeping the previously registered vision routes after a refused settings update')
+            ctx.logger.error(error)
+          }
+        },
+        validate: (value: ConfigType) => {
+          const hasProviders = value.providers !== undefined && Object.keys(value.providers).length > 0
+          if (hasProviders || value.active !== undefined) resolveConfig(value)
+        },
+      },
+    )
 
-  void migrateLegacyInlineKeys(ctx, current().providers)
+    void migrateLegacyInlineKeys(ctx, current().providers)
+  })
 
   // DSH treats systemPrompt as an optional composition seam. Register the
   // model-only routing guidance whenever that service is available, without
@@ -180,10 +207,11 @@ export function apply(ctx: Context, config: ConfigType = {}): void {
 
   // Routes ride the webServer service lifecycle instead of a bounded timer
   // poll: registration lands immediately when the server already exists,
-  // whenever it first appears, and again if its implementation is replaced —
-  // once per server instance (observeWebServerLifecycle deduplicates).
+  // whenever it first appears, and again if its implementation is replaced.
+  // The returned disposer unregisters the route when this fiber unloads, so
+  // unload/reload never leaks a stale route or skips a re-registration.
   observeWebServerLifecycle(ctx, (injected) => {
-    registerAttachRoute(injected, {
+    return registerAttachRoute(injected, {
       readMaxBytes: () => current().maxBytes ?? DEFAULT_MAX_BYTES,
       readConfigView: () => readConfigView(ctx),
       writeConfigView: (body) => writeConfigView(ctx, body),

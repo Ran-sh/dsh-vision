@@ -6,6 +6,8 @@ and does not promise compatibility with every future DSH release.
 
 | Plugin version | Vision version | DSH (CLI) | DSH runtime (@deepseek-ai/dsh-*) | Status | Date | Notes |
 |---|---|---|---|---|---|---|
+| 0.3.0 | 0.3.0 | 0.1.2-rc.1 | exact `0.1.2-rc.1` family / cordis 4.0.2 / react 18.2.0 | KNOWN_GOOD (isolated lifecycle) | 2026-09-03 | Current single-track target: latest Harness `0.1.2-rc.1` (`next` tag). Proven in a disposable DSH_HOME on exact 0.1.2-rc.1: official `plugin --profile web add <tgz>` with a pnpm-workspace overrides seam for the unpublished service tarball, `--dump-config` composes `vision-runtime` + `image-mind`, web boots (GET / 401 token gate = alive), `/image-mind/catalog` 200 with real catalog JSON, `/image-mind/config` 200 with resolved defaults, `/image-mind/previews` 200, official `remove` prunes both layers from dump-config and reboot answers 404 on `/image-mind/catalog`. Migrates Host settings to `ctx.settings.installSection`, Client settings to `ctx.settingsScope` + `remote.credentials`, removes `dsh-client-runtime`, uses the split client packages, and binds `/image-mind` route ownership to the webServer disposer. Registry install, hosted-provider quality and full browser-journey acceptance remain PARTIAL (not implied). |
+|---|---|---|---|---|---|---|
 | 0.2.0 | 0.2.0 | 0.1.1-rc.2 | exact `^0.1.1-rc.2` peer family, react 19.2.8 host | KNOWN_GOOD (isolated lifecycle + browser) — REPOSITORY CANDIDATE ONLY; the npm-published 0.2.0 tarballs are DEFECTIVE empty shells (Batch 021) | 2026-08-23 | Batch 017 exact `@deepseek-ai/dsh@0.1.1-rc.2` isolated acceptance: official add (`dsh plugin --profile web add <tgz>` with a pnpm overrides seam in the task-owned profile), boot reaches HTTP 200 on a task-owned port, both bundle layers compose, `/image-mind` catalog/config/previews/raw/preview routes answer (the rc.1 route gap from Batch 008 does not reproduce), keyless visual challenge passes against a deterministic local OpenAI-compatible stub (`visualVerified: true`), model discovery reads the endpoint, PNG/JPEG/WebP attachment journey stores and serves byte-identical raws with preview batches/commit, restart recovery keeps the committed batch, and official remove/re-add/remove fully prunes the layers. The same exact rc.2 run also exercised the rendered plugin/settings UI, PNG/JPEG/WebP drop/paste/lightbox, the exact-eight/ninth-rejected browser gate, neutral markers, real `understand_image`鈫抳ision鈫抦ain routing, failed-send retry/draft retention, session switch/restart and cache/refocus. Real-provider quality and registry install remain outside this isolated gate (see docs/verification-debt.md). Batch 019 adds the packaged lifecycle CLI (`npx dsh-plugin-image-mind install/update/status/uninstall`, npm bin `lib/cli.js`) and proves it against exact rc.2 from packed artifacts in disposable DSH_HOME state: install → status → idempotent second install → same-version no-op update → older→current convergence → composition dump → HTTP boot smoke on a task-owned port → shared-service-retaining uninstall → absent status, all delegating to official `dsh plugin` operations; dedicated Linux/Windows/macOS CI lanes keep the roundtrip green. |
 | 0.2.0 | 0.2.0 | 0.1.1-rc.1 | source-built/local-packed host path exercised | PARTIAL (pre-publish evidence; registry target unavailable) | 2026-08-22 | Batches 013鈥?15 used the exact rc.1 CLI, official add/boot/remove, local-packed 0.2.0 service/plugin artifacts, deterministic local stubs, built bundle and browser/settings seams. No registry install or hosted-provider quality is implied. Batch 016's repeat was not allowed to touch a pre-existing listener on port 3080, so this row remains partial rather than claiming a new isolated run. |
 | 0.1.1 | 0.1.0 | 0.1.1-rc.1 | published 0.1.x line | KNOWN_GOOD (isolated lifecycle) | 2026-08-21 | exact rc.1 + published `dsh-plugin-image-mind@0.1.1` / `@ran-sh/dsh-vision@0.1.0`: official add PASS, both bundle layers compose, web reaches HTTP 200, `understand_image` registration is present in the loaded published bundle, official remove fully prunes the isolated install. Real provider image call remained PARTIAL because provider provenance could not be established without reading forbidden real Harness settings. |
@@ -18,11 +20,18 @@ and does not promise compatibility with every future DSH release.
 ## Peer dependency policy
 
 Host-owned DSH runtime packages are declared as **peerDependencies** with a
-bounded range (`^0.1.1-rc.2` / `^4.0.1`), mirroring the official
-`@deepseek-ai/dsh-web-search-exa` convention. image-mind never ships a private
-nested copy of these host packages (the profile tree stays deduped). The
-plugin-owned `@ran-sh/dsh-vision` service and the `schemastery` schema library
-live in `dependencies`.
+bounded range, mirroring the official `@deepseek-ai/dsh-web-search-exa`
+convention. image-mind never ships a private nested copy of these host
+packages (the profile tree stays deduped). The plugin-owned
+`@ran-sh/dsh-vision` service and the schema library live in `dependencies`.
+
+- **Current single-track line** (`0.3.0` + DSH `0.1.2-rc.1`, the `next` tag):
+  host peers use `^0.1.2-rc.1` (cordis `^4.0.2`), react 18.2.0, the
+  `@deepseek-ai/schemastery` fork, plus the split client packages
+  (`dsh-api-remotes`, `dsh-api-session-controller`, `dsh-client-store`,
+  `dsh-client-ui-settings`); `dsh-client-runtime` is gone (no
+  `0.1.2-rc.1` ever published — the split replaces it). Older `0.2.x` /
+  `0.1.1-rc.2` rows below are historical only.
 
 Batch 017 reproduced the prerelease-range mismatch before changing manifests:
 `^0.1.0-rc.7` rejects the `0.1.1-rc.2` family under node-semver's

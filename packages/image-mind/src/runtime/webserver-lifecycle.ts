@@ -18,25 +18,22 @@ export interface PrefixRouteServer {
     kind: 'prefix'
     path: string
     handler: (req: IncomingMessage, res: ServerResponse) => void | Promise<void>
-  }): unknown
+  }): () => void
 }
 
 /**
- * Re-run `attach` for every distinct webServer instance exposed by the
- * Cordis lifecycle. The callback receives the injected context (the service
- * is guaranteed available inside). Registration is idempotent per server
- * lifecycle: the host route registry rejects duplicate `(kind, path)`
- * patterns, so a re-fire for an already-attached instance (the owning fiber
- * can restart while returning the same server) must not call `attach` twice.
+ * Re-run `attach` for every webServer lifecycle exposed by Cordis. The
+ * callback receives the injected context (the service is guaranteed
+ * available inside) and may return a disposer that tears down what it
+ * registered. Route ownership belongs to the fiber/disposer — not to object
+ * identity — so an unload/reload cycle on the same server instance
+ * unregisters then re-registers cleanly instead of leaking a stale route
+ * or skipping the re-registration.
  */
-export function observeWebServerLifecycle(ctx: Context, attach: (injected: Context) => void): void {
-  const attached = new WeakSet<object>()
+export function observeWebServerLifecycle(ctx: Context, attach: (injected: Context) => (() => void) | void): void {
   ;(ctx as unknown as {
     inject(names: string[], callback: (injected: Context) => void): void
   }).inject(['webServer'], (injected) => {
-    const server = injected.get('webServer') as PrefixRouteServer | undefined
-    if (server === undefined || attached.has(server)) return
-    attached.add(server)
-    attach(injected)
+    injected.effect(() => attach(injected) ?? (() => {}), 'image-mind: /image-mind routes')
   })
 }

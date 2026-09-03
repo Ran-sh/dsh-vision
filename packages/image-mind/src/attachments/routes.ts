@@ -168,10 +168,14 @@ export function registerAttachRoute(
       | { ok: false; message: string }>
     catalog: () => unknown
   },
-): void {
-  const webserver = ctx.get('webServer')
-  if (webserver === undefined) return
-  webserver.register({
+): () => void {
+  const webserver = ctx.get('webServer') as
+    | {
+      register(route: { kind: 'prefix'; path: string; handler: (req: IncomingMessage, res: ServerResponse) => Promise<void> }): () => void
+    }
+    | undefined
+  if (webserver === undefined) return () => {}
+  return webserver.register({
     kind: 'prefix',
     path: ROUTE_PREFIX,
     handler: async (req: IncomingMessage, res: ServerResponse): Promise<void> => {

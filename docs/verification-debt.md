@@ -53,19 +53,20 @@ proves them. Do not mark them green from a local mock:
 - [ ] long 1440px screenshots and browser memory/OCR quality at the intended
   pixel budget.
 
-## Lifecycle CLI boundary (Batch 019)
+## Lifecycle CLI boundary
 
-Closed with automated evidence: the packed `dsh-plugin-image-mind` CLI drives
-install → status → idempotent second install → same-version no-op update →
-older→current convergence → shared-service-retaining uninstall → absent status
-→ idempotent re-uninstall against exact `@deepseek-ai/dsh@0.1.1-rc.2` in
-disposable DSH_HOME state (Result Contract 019; dedicated Linux/Windows/macOS
-CI lanes). Still open:
+Closed with automated evidence on the current single-track line
+(`0.3.0` + exact `@deepseek-ai/dsh@0.1.2-rc.1`): the packed
+`dsh-plugin-image-mind` CLI drives install → status → idempotent second
+install → same-version no-op update → older→current convergence →
+shared-service-retaining uninstall → absent status → idempotent re-uninstall
+in disposable DSH_HOME state (dedicated Linux/Windows/macOS CI lanes).
+Still open:
 
 - [ ] registry-install CLI roundtrip: everything above runs on local-packed
-  artifacts; the npm-published 0.2.0 tarballs proved DEFECTIVE (empty shells,
-  Batch 021), so the first valid registry evidence will come from publishing
-  the guarded 0.2.1 remediation candidate and re-running this verification.
+  artifacts; the first valid registry evidence will come from publishing
+  the guarded `0.3.0` candidate (service-first then plugin-second,
+  maintainer-authorized) and re-running this verification.
 - [ ] HTTP boot smoke currently runs on one CI lane (Linux Node 22); Windows/
   macOS lanes prove parsing/spawning plus the full lifecycle roundtrip but not
   a live boot.
@@ -108,6 +109,21 @@ Result Contract. Do not spend provider quota during this pre-publish task.
   tag/release and a clean post-publish Harness install/remove (maintainer-only).
 - [ ] One unmerged Draft PR with required checks green. PR creation requires a
   GitHub-authenticated maintainer; the agent must record the blocker if absent.
+
+## Single-track 0.3.0 / DSH 0.1.2-rc.1 boundary (2026-09-03)
+
+Closed with isolated local-packed evidence on exact `0.1.2-rc.1`
+(disposable DSH_HOME, official add, dump-config composition, web boot,
+`/image-mind` catalog/config/previews routes, official remove + clean
+reboot). Still open — do not convert to PASS without new Result Contracts:
+
+- [ ] registry install of published `0.3.0` artifacts (service-first
+  then plugin-second; maintainer-authorized publication only).
+- [ ] full alpha browser journey (settings card render/add/edit/save/delete,
+  drop/paste/lightbox, exact-eight/ninth-rejected gate, retry/draft,
+  session switch/restart) in the real `0.1.2-rc.1` web UI.
+- [ ] hosted-provider quality, quota/413/429 behavior and token-trace
+  reconciliation against real endpoints.
 
 ## Exit rule
 
