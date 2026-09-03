@@ -107,7 +107,8 @@ jobs:
       - name: Packed CLI lifecycle roundtrip (isolated exact rc.2; skipped on the alpha track)
         # The alpha track (0.3.0-alpha.1) no longer satisfies the rc.2-era npm
         # lifecycle harness: skip here, prove alpha lifecycle separately.
-        if: ${{ !contains(github.ref_name, 'alpha') }}
+        # github.head_ref is the PR source branch; fall back to ref_name for pushes.
+        if: ${{ !contains(github.head_ref || github.ref_name, 'alpha') }}
         run: npx vitest run tests/cli-packed-lifecycle.test.ts
         env:
           RUN_CLI_LIFECYCLE: '1'
