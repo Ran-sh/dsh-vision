@@ -6,6 +6,15 @@ is independent of DeepSeek and follows SemVer for its 0.x line.
 
 ## [Unreleased]
 
+## [0.3.2] — dependency alignment
+
+`dsh-plugin-image-mind` moves to `0.3.2` and depends on
+`@ran-sh/dsh-vision@^0.3.1`: a fresh registry install now composes
+`0.3.2` + `0.3.1` instead of reusing the cached `0.3.0` service
+(`^0.3.0` let pnpm keep the older tarball). Verified with a pure
+registry-only install on exact `0.1.2-rc.1` (official add, boot,
+`/image-mind` routes 200).
+
 ## [0.3.1] — rc.1 browser lifecycle fixes
 
 Both publishable packages move to `0.3.1` (image-mind depends on
