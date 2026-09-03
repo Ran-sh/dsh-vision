@@ -6,7 +6,7 @@ DeepSeek Harness（DSH）的社区视觉插件，与 DeepSeek 官方无隶属关
 
 ## 安装
 
-需要已安装 `@deepseek-ai/dsh@0.1.1-rc.2`。`web` 是默认浏览器配置；使用其他 profile 时替换命令中的名称。
+需要已安装 `@deepseek-ai/dsh@0.1.2-rc.1`。`web` 是默认浏览器配置；使用其他 profile 时替换命令中的名称。
 
 ```sh
 npx dsh-plugin-image-mind@latest install --profile web
@@ -22,7 +22,7 @@ npx dsh-plugin-image-mind@latest update --profile web
 npx dsh-plugin-image-mind@latest uninstall --profile web
 ```
 
-> 请使用 `dsh-plugin-image-mind@0.2.1` 或更高版本。`0.2.0` 缺少构建产物，已弃用。
+> 请使用 `dsh-plugin-image-mind@0.3.0` 或更高版本。
 
 ## 功能
 

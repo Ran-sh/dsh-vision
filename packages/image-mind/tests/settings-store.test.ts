@@ -10,9 +10,9 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-// The real package is browser-only (requires `window`); the store only needs
+// The real store package is browser-bundled; the settings store only needs
 // its snapshot primitive, which this fake implements faithfully.
-vi.mock('@deepseek-ai/dsh-client-runtime/client', () => ({
+vi.mock('@deepseek-ai/dsh-client-store', () => ({
   createSnapshotStore: (initial: unknown) => {
     let snapshot = initial
     const listeners = new Set<() => void>()
@@ -30,7 +30,7 @@ vi.mock('@deepseek-ai/dsh-client-runtime/client', () => ({
   },
 }))
 
-import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client'
+import type { ImageMindClientContext } from '../src/client/settings/transport.ts'
 import { ImageMindSettingsStore } from '../src/client/settings/store.ts'
 
 /** Apply one path op to a nested plain-object value. */
@@ -52,27 +52,47 @@ function applyOp(value: Record<string, unknown>, op: { op: 'set' | 'unset'; path
   else delete node[leaf]
 }
 
-/** An in-memory fake of the official settings + credentials wire. */
-function fakeConnection(initial: Record<string, unknown>): { connection: ConnectionHandle; view: Record<string, unknown> } {
+/** An in-memory fake of the alpha settings scope + credentials faces. */
+function fakeConnection(initial: Record<string, unknown>): { connection: ImageMindClientContext; view: Record<string, unknown> } {
   const view: Record<string, unknown> = JSON.parse(JSON.stringify(initial))
   const credentials = new Map<string, string>()
   let revision = 1
-  const connection = {
-    isLoopback: true,
-    api: {
-      settings: {
-        describe: async () => ({
-          result: {
-            ok: true,
-            value: { namespaces: [{ ns: 'image-mind', value: view, revision }], writable: true },
-          },
-        }),
-        mutate: async (request: { ns: string; ops: Array<{ op: 'set' | 'unset'; path: readonly string[]; value?: unknown }> }) => {
-          for (const op of request.ops) applyOp(view, op)
-          revision += 1
-          return { result: { ok: true, value: { ns: request.ns, value: view, revision } } }
-        },
-      },
+  const snapshotOf = (): { status: 'ready'; value: Record<string, unknown>; base: unknown; user: unknown; revision: number; writable: boolean; mode: 'host' } => ({
+    status: 'ready',
+    value: JSON.parse(JSON.stringify(view)) as Record<string, unknown>,
+    base: undefined,
+    user: JSON.parse(JSON.stringify(view)) as Record<string, unknown>,
+    revision,
+    writable: true,
+    mode: 'host',
+  })
+  const listeners = new Set<() => void>()
+  const publish = (): void => { for (const listener of listeners) listener() }
+  const scope = {
+    getSnapshot: () => snapshotOf(),
+    subscribe: (listener: () => void) => {
+      listeners.add(listener)
+      return () => { listeners.delete(listener) }
+    },
+    set: async (field: string, value: unknown) => {
+      view[field] = value
+      revision += 1
+      publish()
+    },
+    unset: async (field: string) => {
+      delete view[field]
+      revision += 1
+      publish()
+    },
+    mutate: async (ops: Array<{ op: 'set' | 'unset'; path: readonly string[]; value?: unknown }>) => {
+      for (const op of ops) applyOp(view, op)
+      revision += 1
+      publish()
+    },
+  }
+  const connection: ImageMindClientContext = {
+    settingsScope: { bind: () => scope as unknown as ReturnType<ImageMindClientContext['settingsScope']['bind']> },
+    remote: {
       credentials: {
         set: async (request: { ref: string; value: string }) => {
           credentials.set(request.ref, request.value)
@@ -88,7 +108,7 @@ function fakeConnection(initial: Record<string, unknown>): { connection: Connect
         }),
       },
     },
-  } as unknown as ConnectionHandle
+  }
   return { connection, view }
 }
 
@@ -101,7 +121,7 @@ function storedProvider(view: Record<string, unknown>, id: string): Record<strin
 }
 
 describe('ImageMindSettingsStore persistence', () => {
-  let connection: ConnectionHandle
+  let connection: ImageMindClientContext
   let view: Record<string, unknown>
 
   beforeEach(() => {

@@ -2,14 +2,14 @@
  * Packed-artifact lifecycle acceptance for the dsh-plugin-image-mind CLI
  * (`RUN_CLI_LIFECYCLE=1 vitest run tests/cli-packed-lifecycle.test.ts`).
  *
- * Runs the REAL official @deepseek-ai/dsh@0.1.1-rc.2 plugin forwarder against
+ * Runs the REAL official @deepseek-ai/dsh@0.1.2-rc.1 plugin forwarder against
  * a disposable DSH_HOME: both workspace packages are actually packed, the
  * CLI is installed FROM THE PACKED TARBALL (npm prefix layout), and every
  * user-facing lifecycle command is invoked through genuine npx/npm-exec bin
  * resolution before its mutations flow through official
  * `dsh plugin --profile <name> add|remove` operations. A pnpm overrides seam
  * inside each TASK-OWNED profile redirects @ran-sh/dsh-vision resolution to
- * the local vision tarball because the 0.2.1 remediation candidate is intentionally unpublished at test time.
+ * the local vision tarball because the 0.3.0 candidate is intentionally unpublished at test time.
  *
  * Nothing here touches the user's real Harness: DSH_HOME always points into
  * a mkdtemp directory, and cleanup removes it wholesale.
@@ -190,7 +190,11 @@ async function bootSmoke(): Promise<{ url: string }> {
       const url = match[0].replace(/[/)]+$/, '')
       fetch(`${url}/`)
         .then(async (response) => {
-          if (!response.ok) throw new Error(`GET ${url}/ -> ${response.status}`)
+          // rc.1 gates GET / behind a token (401 = alive with auth gate);
+          // either 200 or 401 proves the web host booted and serves.
+          if (response.status !== 200 && response.status !== 401) {
+            throw new Error(`GET ${url}/ -> ${response.status}`)
+          }
           killTree(child)
           resolveBoot({ url })
         })
@@ -212,7 +216,7 @@ async function bootSmoke(): Promise<{ url: string }> {
   })
 }
 
-describe.skipIf(!RUN)('packed dsh-plugin-image-mind CLI lifecycle (isolated exact rc.2)', () => {
+describe.skipIf(!RUN)('packed dsh-plugin-image-mind CLI lifecycle (isolated exact rc.1)', () => {
   beforeAll(() => {
     const pnpm = runCapture('pnpm', ['--version'])
     expect(pnpm.status, 'pnpm must be on PATH for the official plugin forwarder').toBe(0)
@@ -230,7 +234,7 @@ describe.skipIf(!RUN)('packed dsh-plugin-image-mind CLI lifecycle (isolated exac
     imageMindTgz = packPackage(join(repoRoot, 'packages', 'image-mind'))
 
     // Co-installing BOTH packed tarballs lets npm satisfy the plugin's
-    // @ran-sh/dsh-vision@^0.2.0 dependency from the local vision artifact 鈥?
+    // @ran-sh/dsh-vision@^0.3.0 dependency from the local vision artifact 鈥?
     // the public registry does not carry the unreleased candidate yet.
     const install = runCapture('npm', ['install', '--prefix', cliPrefix, imageMindTgz, visionTgz])
     expect(install.status, install.stderr).toBe(0)

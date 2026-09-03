@@ -17,11 +17,11 @@ export const SERVICE_PACKAGE = '@ran-sh/dsh-vision'
 export const DEFAULT_PROFILE = 'web'
 
 /**
- * Exact Harness release line this 0.2.0 candidate is validated against. The
+ * Exact Harness release line this 0.3.0 candidate is validated against. The
  * CLI reports this as its compatibility target; it never silently claims
  * compatibility with untested Harness versions.
  */
-export const COMPATIBILITY_TARGET = '0.1.1-rc.2'
+export const COMPATIBILITY_TARGET = '0.1.2-rc.1'
 
 /** Environment variable that relocates the DeepSeek Harness home (official). */
 export const DSH_HOME_ENV = 'DSH_HOME'
@@ -47,7 +47,8 @@ export function isCliCommand(value: string): value is CliCommand {
   return (VALID_COMMANDS as readonly string[]).includes(value)
 }
 
-export const USAGE = `dsh-plugin-image-mind lifecycle CLI (v0.2.0)
+export function usage(runningVersion: string): string {
+  return `dsh-plugin-image-mind lifecycle CLI (v${runningVersion})
 
 Manage this plugin in a DeepSeek Harness profile through OFFICIAL DSH
 plugin lifecycle commands. All profile mutations are delegated; nothing
@@ -78,3 +79,4 @@ Examples:
   npx dsh-plugin-image-mind uninstall --profile web
 
 Compatibility target: @deepseek-ai/dsh@${COMPATIBILITY_TARGET} (exact).`
+}

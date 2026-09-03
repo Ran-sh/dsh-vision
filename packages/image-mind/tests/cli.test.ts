@@ -8,11 +8,11 @@
  * @vitest-environment node
  */
 
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, afterAll } from 'vitest'
-import { COMPATIBILITY_TARGET, DEFAULT_PROFILE, PLUGIN_PACKAGE, SERVICE_PACKAGE, USAGE } from '../src/cli/constants.ts'
+import { COMPATIBILITY_TARGET, DEFAULT_PROFILE, PLUGIN_PACKAGE, SERVICE_PACKAGE, usage } from '../src/cli/constants.ts'
 import { officialDumpConfigArgs, officialPluginArgs, officialVersionArgs, resolveDshEntry } from '../src/cli/dsh.ts'
 import { parseArgv, UsageError } from '../src/cli/main.ts'
 import {
@@ -380,11 +380,18 @@ describe('official dsh entry resolution', () => {
   })
 
   it('documents the compatibility target and usage surface', () => {
-    expect(COMPATIBILITY_TARGET).toBe('0.1.1-rc.2')
-    expect(USAGE).toContain('install')
-    expect(USAGE).toContain('update')
-    expect(USAGE).toContain('status')
-    expect(USAGE).toContain('uninstall')
-    expect(USAGE).toContain('--profile <name>')
+    expect(COMPATIBILITY_TARGET).toBe('0.1.2-rc.1')
+    const manifest = JSON.parse(
+      readFileSync(join(import.meta.dirname, '..', 'package.json'), 'utf8'),
+    ) as { version: string }
+    const help = usage(manifest.version)
+    // The help header must track the running package version (no stale
+    // hard-coded release identity allowed to recur).
+    expect(help).toContain(`(v${manifest.version})`)
+    expect(help).toContain('install')
+    expect(help).toContain('update')
+    expect(help).toContain('status')
+    expect(help).toContain('uninstall')
+    expect(help).toContain('--profile <name>')
   })
 })

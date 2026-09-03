@@ -14,10 +14,9 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
-import z from 'schemastery'
+import z from '@deepseek-ai/schemastery'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import type { CredentialRef } from '@deepseek-ai/dsh-credentials'
-import { settingsNamespace } from '@deepseek-ai/dsh-settings'
 
 /** Environment-variable name the API key resolves through when no inline key is configured. */
 export const DEFAULT_API_KEY_ENV = 'VISION_API_KEY'
@@ -105,7 +104,7 @@ export const Config: z<Config> = z.object({
 })
 
 /** Settings namespace the web GUI's plugin-config card edits. */
-export const IMAGE_MIND_SETTINGS_NAMESPACE = settingsNamespace('image-mind')
+export const IMAGE_MIND_SETTINGS_NAMESPACE = 'image-mind'
 
 /** One resolved, validated provider snapshot. */
 export interface ResolvedProvider {

@@ -54,22 +54,29 @@ describe('webServer service lifecycle seam', () => {
     expect(attaches).toBe(1)
   })
 
-  it('never attaches twice on the same server lifecycle', async () => {
+  it('detaches then re-attaches when the same server instance restarts', async () => {
     const ctx = new Context()
     let attaches = 0
+    let detaches = 0
     const serverA = stubServer('A')
     const first = await ctx.plugin(providesWebServer(serverA))
-    observeWebServerLifecycle(ctx, () => { attaches += 1 })
+    observeWebServerLifecycle(ctx, () => {
+      attaches += 1
+      return () => { detaches += 1 }
+    })
     await flush()
     expect(attaches).toBe(1)
 
     // The providing fiber restarts while handing back the SAME instance:
-    // whether or not the seam refires, the instance must attach once.
+    // the old registration is disposed, then the new fiber attaches again.
+    // Route ownership belongs to the fiber/disposer — not object identity —
+    // so the sequence is attach → detach → attach.
     await first.dispose()
     await flush()
+    expect(detaches).toBe(1)
     const second = await ctx.plugin(providesWebServer(serverA))
     await flush()
-    expect(attaches).toBe(1)
+    expect(attaches).toBe(2)
     await second.dispose()
   })
 
@@ -169,14 +176,18 @@ describe('apply() route lifecycle (composition)', () => {
     await ctx.fiber.dispose()
   })
 
-  it('registers exactly once per server lifecycle across restart churn', async () => {
+  it('unregisters on dispose and re-registers across restart churn', async () => {
     const ctx = await mount({})
     let registrations = 0
+    let unregistrations = 0
     let instance: object | undefined
     const provideOnce = (): (ctx: Context) => void => (provideCtx: Context) => {
       if (instance === undefined) {
         instance = {
-          register(): () => void { registrations += 1; return () => {} },
+          register(): () => void {
+            registrations += 1
+            return () => { unregistrations += 1 }
+          },
         }
       }
       provideCtx.provide('webServer', instance as never)
@@ -184,14 +195,17 @@ describe('apply() route lifecycle (composition)', () => {
     const p1 = await ctx.plugin(provideOnce())
     await flush()
     expect(registrations).toBe(1)
-    // The same instance re-provided through a restarted fiber must not
-    // produce a second registration (host rejects duplicate prefixes).
+    // Disposing the image-mind fiber unregisters its route, so re-providing
+    // the same server instance through a restarted fiber must register again
+    // (dispose → re-register), never leak a stale route.
     await p1.dispose()
     await flush()
     const p2 = await ctx.plugin(provideOnce())
     await flush()
-    expect(registrations).toBe(1)
+    expect(registrations).toBe(2)
     await p2.dispose()
+    await flush()
+    expect(unregistrations).toBe(2)
     await ctx.fiber.dispose()
   })
 })

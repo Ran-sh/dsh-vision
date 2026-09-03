@@ -7,7 +7,7 @@
  * documents the official-command delegation contract.
  */
 
-import { DEFAULT_PROFILE, isCliCommand, USAGE } from './constants.ts'
+import { DEFAULT_PROFILE, isCliCommand, usage } from './constants.ts'
 import { execute } from './execute.ts'
 import type { CommandOutcome } from './execute.ts'
 import { redactError } from './redact.ts'
@@ -124,14 +124,14 @@ export async function main(argv: readonly string[], runningVersion: string): Pro
     invocation = parseArgv(argv)
   } catch (error) {
     if (error instanceof UsageError) {
-      process.stderr.write(`${redactError(error)}\n\n${USAGE}\n`)
+      process.stderr.write(`${redactError(error)}\n\n${usage(runningVersion)}\n`)
       return 1
     }
     throw error
   }
 
   if (invocation.help) {
-    process.stdout.write(`${USAGE}\n`)
+    process.stdout.write(`${usage(runningVersion)}\n`)
     return 0
   }
   if (invocation.version) {
@@ -139,7 +139,7 @@ export async function main(argv: readonly string[], runningVersion: string): Pro
     return 0
   }
   if (invocation.command === undefined) {
-    process.stderr.write(`no command given; expected install | update | status | uninstall\n\n${USAGE}\n`)
+    process.stderr.write(`no command given; expected install | update | status | uninstall\n\n${usage(runningVersion)}\n`)
     return 1
   }
 

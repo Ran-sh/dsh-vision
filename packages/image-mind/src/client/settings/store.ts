@@ -10,11 +10,10 @@
  * @module dsh-plugin-image-mind/client/settings/store
  */
 
-import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client'
-import { createSnapshotStore, type SnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
+import { createSnapshotStore, type SnapshotStore } from '@deepseek-ai/dsh-client-store'
 import {
   describeCredentialOfficial, hasOfficialSettings, readOfficial, setCredentialOfficial,
-  writeOfficial, type SettingsOp, type SettingsSnapshot,
+  writeOfficial, type ImageMindClientContext, type SettingsOp, type SettingsSnapshot,
 } from './transport.ts'
 
 /** One provider as the browser edits it (all string drafts; secret kept write-only). */
@@ -138,26 +137,26 @@ export class ImageMindSettingsStore {
   private failedReason: string | undefined
   private generation = 0
 
-  constructor(private readonly connection: ConnectionHandle) {
+  constructor(private readonly ctx: ImageMindClientContext) {
     this.store = createSnapshotStore(this.projection())
     void this.load()
   }
 
   /** Whether the official settings wire is live for this connection. */
   get transport(): 'official' | 'legacy' | 'unavailable' {
-    return hasOfficialSettings(this.connection) ? 'official' : 'unavailable'
+    return hasOfficialSettings(this.ctx) ? 'official' : 'unavailable'
   }
 
   /** Refresh the snapshot from the host. */
   async load(): Promise<void> {
     const generation = ++this.generation
-    if (!hasOfficialSettings(this.connection)) {
+    if (!hasOfficialSettings(this.ctx)) {
       this.view = { status: 'unavailable', value: undefined, base: undefined, user: undefined, revision: undefined, writable: false, mode: 'legacy' }
       this.publish()
       return
     }
     try {
-      const next = await readOfficial(this.connection)
+      const next = await readOfficial(this.ctx)
       if (generation !== this.generation) return
       this.view = next
       // Batch-describe every referenced credential for the status lamps.
@@ -168,7 +167,7 @@ export class ImageMindSettingsStore {
       )]
       const states = new Map<string, { configured: boolean; writable: boolean }>()
       for (const ref of refs) {
-        states.set(ref, await describeCredentialOfficial(this.connection, ref))
+        states.set(ref, await describeCredentialOfficial(this.ctx, ref))
       }
       if (generation !== this.generation) return
       this.credentialState = states
@@ -408,7 +407,7 @@ export class ImageMindSettingsStore {
         })
         continue
       }
-      const setField = (field: string, value: unknown): void => { ops.push({ op: 'set', path: ['providers', id, field], value }) }
+      const setField = (field: string, value: string | number | boolean): void => { ops.push({ op: 'set', path: ['providers', id, field], value }) }
       const unsetField = (field: string): void => { ops.push({ op: 'unset', path: ['providers', id, field] }) }
       if (original.baseURL !== d.baseURL) setField('baseURL', d.baseURL.trim())
       if (original.model !== d.model) setField('model', d.model.trim())
@@ -428,7 +427,7 @@ export class ImageMindSettingsStore {
       }
     }
 
-    const setTop = (field: string, value: unknown): void => { ops.push({ op: 'set', path: [field], value }) }
+    const setTop = (field: string, value: string | number | boolean): void => { ops.push({ op: 'set', path: [field], value }) }
     const unsetTop = (field: string): void => { ops.push({ op: 'unset', path: [field] }) }
     const activeNow = topText(this.view.value, 'active')
     const activeNext = this.top('active')
@@ -460,7 +459,7 @@ export class ImageMindSettingsStore {
   /** Save the staged drafts as path ops, then store any typed keys. */
   async save(): Promise<void> {
     if (this.saving || !this.dirty()) return
-    if (!hasOfficialSettings(this.connection)) {
+    if (!hasOfficialSettings(this.ctx)) {
       this.failed = true
       this.failedReason = '当前环境不支持官方设置通道'
       this.publish()
@@ -476,16 +475,16 @@ export class ImageMindSettingsStore {
     try {
       const revision = this.view.revision
       if (ops.length > 0) {
-        this.view = await writeOfficial(this.connection, ops, revision)
+        this.view = await writeOfficial(this.ctx, ops, revision)
       }
       for (const write of credentialWrites) {
-        await setCredentialOfficial(this.connection, write.ref, write.value)
+        await setCredentialOfficial(this.ctx, write.ref, write.value)
         // Record the derived ref on the profile so resolution finds it.
         if (write.id !== undefined && apiKeyEnvOf(this.view, write.id) === undefined) {
           const record = providerRecordOf(this.view, write.id)
           const currentEnv = typeof record?.['apiKeyEnv'] === 'string' ? record['apiKeyEnv'] : ''
           if (currentEnv !== write.ref) {
-            this.view = await writeOfficial(this.connection, [{ op: 'set', path: ['providers', write.id, 'apiKeyEnv'], value: write.ref }], this.view.revision)
+            this.view = await writeOfficial(this.ctx, [{ op: 'set', path: ['providers', write.id, 'apiKeyEnv'], value: write.ref }], this.view.revision)
           }
         }
       }
