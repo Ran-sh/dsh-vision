@@ -115,9 +115,37 @@ export function draftOf(id: string, record: Record<string, unknown> | undefined,
   }
 }
 
-/** One stable per-draft staging ref for a provider route. */
-function stagingRefFor(id: string): string {
-  return `${deriveKeyRef(id)}_STAGING`
+/** Stable per-draft staging ref slots for a provider route. Two slots let a
+ * committed staging ref be vacated by the next edit: the selector always picks
+ * a slot that is NOT currently live, so a successful commit followed by a new
+ * edit never overwrites a ref the committed settings still reference. */
+function stagingSlotA(id: string): string {
+  return `${deriveKeyRef(id)}_STAGING_A`
+}
+
+function stagingSlotB(id: string): string {
+  return `${deriveKeyRef(id)}_STAGING_B`
+}
+
+/**
+ * Pick a staging slot that is neither live (referenced by committed settings
+ * or already claimed in this save) nor — when the draft already holds one —
+ * churn to a new slot across retries. Prefer the draft's own slot when it is
+ * still safe; otherwise flip to the other slot of the same provider pair.
+ */
+function pickNonLiveStagingRef(
+  id: string,
+  current: string | undefined,
+  liveRefs: ReadonlySet<string>,
+  usedRefs: ReadonlySet<string>,
+): string {
+  const slotA = stagingSlotA(id)
+  const slotB = stagingSlotB(id)
+  if (current !== undefined && !liveRefs.has(current) && !usedRefs.has(current)) return current
+  if (!liveRefs.has(slotA) && !usedRefs.has(slotA)) return slotA
+  if (!liveRefs.has(slotB) && !usedRefs.has(slotB)) return slotB
+  // Both slots are somehow claimed; the second is the least-bad orphan risk.
+  return slotB
 }
 
 /** One provider record as stored (loose, from the wire view). */
@@ -525,19 +553,30 @@ export class ImageMindSettingsStore {
    * commit would let a CAS conflict pair the old endpoint with the new key.
    */
   stagedCredentialPlan(): Array<{ id: string; ref: string; value: string; settingsRef: string }> {
+    // The set of refs the COMMITTED settings currently reference across ALL
+    // providers — overwriting any of them before the settings commit would
+    // let a CAS conflict pair an unchanged endpoint with a foreign key.
+    const liveRefs = new Set<string>()
+    const committedProviders = (this.view.value?.['providers'] ?? {}) as Record<string, unknown>
+    for (const record of Object.values(committedProviders)) {
+      if (typeof record !== 'object' || record === null) continue
+      const env = (record as Record<string, unknown>)['apiKeyEnv']
+      if (typeof env === 'string' && env.trim().length > 0) liveRefs.add(env.trim())
+    }
+
     const writes: Array<{ id: string; ref: string; value: string; settingsRef: string }> = []
+    const usedRefs = new Set<string>()
     for (const [id, draft] of this.draft) {
       if (draft.apiKeyText.length === 0 || /^\*+$/.test(draft.apiKeyText)) continue
       const explicitEnv = draft.apiKeyEnv.trim()
       const baseRef = explicitEnv.length > 0 ? explicitEnv : deriveKeyRef(id)
-      const committedRef = apiKeyEnvOf(this.view, id)
-      // If the committed settings already reference this ref (or the ref is a
-      // conventional derived one another provider may share), never overwrite
-      // it in place — stage under a stable ref that the settings CAS will
-      // atomically switch to.
-      const live = committedRef !== undefined && committedRef === baseRef
-      const settingsRef = live ? (draft.stagingRef ?? stagingRefFor(id)) : baseRef
-      if (live) this.draft.set(id, { ...draft, stagingRef: settingsRef })
+      const settingsRef = liveRefs.has(baseRef) || usedRefs.has(baseRef)
+        ? pickNonLiveStagingRef(id, draft.stagingRef, liveRefs, usedRefs)
+        : baseRef
+      // Remember the chosen slot on the draft so a retry after a CAS conflict
+      // reuses the exact same (still non-live) staging ref instead of churning.
+      if (settingsRef !== draft.stagingRef) this.draft.set(id, { ...draft, stagingRef: settingsRef })
+      usedRefs.add(settingsRef)
       writes.push({ id, ref: settingsRef, value: draft.apiKeyText, settingsRef })
     }
     return writes

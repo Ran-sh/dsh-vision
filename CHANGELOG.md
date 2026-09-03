@@ -6,6 +6,23 @@ is independent of DeepSeek and follows SemVer for its 0.x line.
 
 ## [Unreleased]
 
+### R2C hardening (candidate 0.3.3 + 0.3.2)
+
+- `@ran-sh/dsh-vision` 0.3.2 adds a side-effect-free circuit-breaker
+  `admission()` primitive so fallback planning never strands a half-open probe.
+- `dsh-plugin-image-mind` 0.3.3 depends on `@ran-sh/dsh-vision@^0.3.2` (the
+  declared minimum is a hard API contract; the published 0.3.1 has no
+  `admission()`).
+- Attachment ref-index is now one serialized transaction: singleflight cold
+  load, commit-after-persist, transient-failure recovery without queue
+  poisoning, and null-prototype maps so hostile session ids survive restart.
+- Settings saves stage typed keys that would overwrite a live credential ref
+  into a stable non-live slot; the single settings CAS atomically switches
+  `apiKeyEnv`, so a conflict never pairs an old endpoint with a new key.
+- Send-hook wrappers self-disable on dispose so stale chains held by later
+  plugins become transparent trampolines.
+- Local-file roots must be absolute when the capability is enabled.
+
 ## [0.3.2] — dependency alignment
 
 `dsh-plugin-image-mind` moves to `0.3.2` and depends on

@@ -47,12 +47,12 @@ run proves them. Do not mark them green from a local mock:
 Historical note: exact `0.1.1-rc.1` (Batches 006–016) and exact `0.1.1-rc.2`
 (Batch 017, incl. the full browser journey) evidence stays in history; the
 Batch 008 `/image-mind/*` route gap observed on rc.1 does not reproduce on
-later lines. Only the current `0.3.0` / `0.1.2-rc.1` gates are active.
+later lines. Only the current `0.3.3` + `0.3.2` / `0.1.2-rc.1` candidate gates are active.
 
 ## Lifecycle CLI boundary
 
 Closed with automated evidence on the current single-track line
-(`0.3.0` + exact `@deepseek-ai/dsh@0.1.2-rc.1`): the packed
+(`0.3.2` + `0.3.3` + exact `@deepseek-ai/dsh@0.1.2-rc.1`): the packed
 `dsh-plugin-image-mind` CLI drives install → status → idempotent second
 install → same-version no-op update → older→current convergence →
 shared-service-retaining uninstall → absent status → idempotent re-uninstall
@@ -61,7 +61,7 @@ Still open:
 
 - [ ] registry-install CLI roundtrip: everything above runs on local-packed
   artifacts; the first valid registry evidence will come from publishing
-  the guarded `0.3.0` candidate (service-first then plugin-second,
+  the guarded `0.3.2`/`0.3.3` candidate pair (service-first then plugin-second,
   maintainer-authorized) and re-running this verification.
 - [ ] HTTP boot smoke currently runs on one CI lane (Linux Node 22); Windows/
   macOS lanes prove parsing/spawning plus the full lifecycle roundtrip but not
@@ -70,7 +70,7 @@ Still open:
   version cannot be exercised before a healthy publication exists.
 
 The known pre-publish registry add blocker is package availability, not a
-plugin runtime failure: `0.3.0` is intentionally unpublished. Use local-packed
+plugin runtime failure: the `0.3.2`/`0.3.3` candidate pair is intentionally unpublished. Use local-packed
 artifacts for this pre-publish gate and keep registry compatibility unverified.
 (Historical note: the defective public `0.2.0` empty-shell incident stays in
 history; do not reinstall it.)
@@ -98,15 +98,15 @@ Result Contract. Do not spend provider quota during this pre-publish task.
 
 ## Release and registry debt
 
-- [ ] `npm view @ran-sh/dsh-vision@0.3.0 name version dist-tags` and the same
-  lookup for `dsh-plugin-image-mind@0.3.0` remain `EXPECTED_NOT_PUBLISHED` until
+- [ ] `npm view @ran-sh/dsh-vision@0.3.2 name version dist-tags` and the same
+  lookup for `dsh-plugin-image-mind@0.3.3` remain `EXPECTED_NOT_PUBLISHED` until
   a maintainer authorizes publication.
-- [ ] Fresh registry install with `npm ls` showing both 0.3.0 packages and no
+- [ ] Fresh registry install with `npm ls` showing both 0.3.2/0.3.3 packages and no
   file/link/workspace dependency (post-publication only).
 - [ ] Service-first then plugin-second npm publication, OTP/secret handling,
   tag/release and a clean post-publish Harness install/remove (maintainer-only).
 - [ ] One clean PR with required checks green for the next gate (PRs #68–#73
-  merged for the 0.3.0/0.3.1 single-track adaptation; open a new PR only when
+  merged for the 0.3.x single-track adaptation; open a new PR only when
   the next change lands).
 
 ## Single-track 0.3.2 + 0.3.1 / DSH 0.1.2-rc.1 boundary (2026-09-03)
@@ -133,7 +133,7 @@ convert to PASS without new Result Contracts:
 
 ## Exit rule
 
-The 0.3.0 candidate is pre-publish ready only when the repository/package,
+The 0.3.2/0.3.3 candidate pair is pre-publish ready only when the repository/package,
 benchmark, focused regression, exact isolated `0.1.2-rc.1` local-packed,
 security and documentation checks pass; open provider, registry-publication
 and authorization debt is listed here rather than silently converted to PASS.

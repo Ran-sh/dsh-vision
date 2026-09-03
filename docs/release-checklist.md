@@ -1,6 +1,6 @@
 ﻿# Release checklist
 
-This checklist describes the `0.3.0` single-track candidate for the latest
+This checklist describes the `0.3.3` + `0.3.2` single-track candidate pair for the latest
 Harness (`0.1.2-rc.1`, the `next` tag). Legacy `0.2.x` / `0.1.1-rc.2` lines are
 historical only and are not maintained. The defective public `0.2.0` tarballs
 (empty shells) must not be used or reinstalled. This is a pre-publication
@@ -21,9 +21,12 @@ npm run test:built
 git diff --check
 ```
 
-Both package manifests and the lockfile must remain on `0.3.0`; the plugin
-must depend on `@ran-sh/dsh-vision@^0.3.0` (never `file:`, `link:` or
-`workspace:`). `packages/vision` and `packages/image-mind` must pass
+Both package manifests and the lockfile must remain on the candidate pair
+(`@ran-sh/dsh-vision@0.3.2`, `dsh-plugin-image-mind@0.3.3`); the plugin must
+depend on `@ran-sh/dsh-vision@^0.3.2` (never `file:`, `link:` or `workspace:`).
+The minimum of `^0.3.2` is a hard contract: image-mind calls the circuit-breaker
+`admission()` API that only vision 0.3.2 ships — the published 0.3.1 service must
+never satisfy the declared range. `packages/vision` and `packages/image-mind` must pass
 `npm pack --dry-run` without `src/`, tests, credentials or private paths.
 Every publishable package carries a prepack fail-safe
 (`scripts/pack-guard.mjs`): packaging rebuilds `lib/**` from current sources
@@ -43,8 +46,8 @@ comparison with a non-zero exit status.
 ## 3. Exact DSH isolated gate
 
 Use only a task-owned temporary DSH state and official Harness lifecycle
-commands. Build and pack both 0.3.0 packages locally because the registry
-versions are not published. Against exact `@deepseek-ai/dsh@0.1.2-rc.1` (the
+commands. Build and pack both candidate packages locally because the registry
+versions are not yet published. Against exact `@deepseek-ai/dsh@0.1.2-rc.1` (the
 current single-track target; older rc.1/rc.2 evidence stays in history),
 verify baseline boot, local-packed add, service/plugin composition,
 web/runtime route and tool smoke, settings/RPC envelopes where available,
@@ -69,8 +72,8 @@ green on Linux (Node 22/24), Windows and macOS.
 Read-only preflight:
 
 ```sh
-npm view @ran-sh/dsh-vision@0.3.0 name version dist-tags
-npm view dsh-plugin-image-mind@0.3.0 name version dist-tags
+npm view @ran-sh/dsh-vision@0.3.2 name version dist-tags
+npm view dsh-plugin-image-mind@0.3.3 name version dist-tags
 ```
 
 If either lookup is absent, record `EXPECTED_NOT_PUBLISHED`. If metadata is
@@ -98,7 +101,7 @@ separate authorized operations.
 
 ## 7. Post-publication (maintainer only)
 
-After publication and a clean registry install, a maintainer may tag `v0.3.0`
+After publication and a clean registry install, a maintainer may tag `v0.3.3` (service `v0.3.2`)
 and create the GitHub release. A separate authorized Harness run may then
 install the published package, execute the real-provider/browser matrix and
 remove it again. Those post-publication actions do not retroactively turn local

@@ -429,7 +429,7 @@ describe('ImageMindSettingsStore staged credential refs (R2C-3)', () => {
     expect(plan).toHaveLength(1)
     // The write targets a STAGING ref, not the live SEC_REF.
     expect(plan[0].ref).not.toBe('SEC_REF')
-    expect(plan[0].ref.endsWith('_STAGING')).toBe(true)
+    expect(plan[0].ref).toMatch(/_STAGING_[AB]$/)
 
     // Simulate a CAS conflict: the settings mutate throws.
     fake.failNextMutate()
@@ -526,5 +526,88 @@ describe('ImageMindSettingsStore staged credential refs (R2C-3)', () => {
     expect(plan[0].ref.endsWith('_STAGING')).toBe(false)
     await store.save()
     expect(storedProvider(fake.view, 'brandnew')?.['apiKeyEnv']).toBe(deriveKeyRef('brandnew'))
+  })
+})
+
+describe('ImageMindSettingsStore dual-slot staging closure (R2C-3 v2)', () => {
+  it('successful switch to STAGING_A then a second edit + CAS conflict never overwrites the committed staging ref', async () => {
+    const fake = fakeConnection({
+      providers: { 'sec': { baseURL: 'https://api.a.example/v1', model: 'm1', apiKeyEnv: 'SEC_REF' } },
+      active: 'sec',
+    })
+    fake.credentialStore.set('SEC_REF', 'keyA')
+    const store = new ImageMindSettingsStore(fake.connection)
+    await store.load()
+
+    // First save: B + keyB -> staging slot (A or B), CAS succeeds.
+    store.editProvider('sec', 'baseURL', 'https://api.b.example/v1')
+    store.editProvider('sec', 'apiKeyText', 'keyB')
+    const firstRef = store.stagedCredentialPlan()[0].ref
+    expect(firstRef).toMatch(/_STAGING_[AB]$/)
+    await store.save()
+    expect(store.store.getSnapshot().shell.failed).toBe(false)
+    expect(storedProvider(fake.view, 'sec')?.['apiKeyEnv']).toBe(firstRef)
+    expect(fake.credentialStore.get(firstRef)).toBe('keyB')
+
+    // Second edit: C + keyC + CAS conflict. The new staging ref must be the
+    // OTHER slot (never the committed firstRef), and firstRef stays keyB.
+    store.editProvider('sec', 'baseURL', 'https://api.c.example/v1')
+    store.editProvider('sec', 'apiKeyText', 'keyC')
+    const secondRef = store.stagedCredentialPlan()[0].ref
+    expect(secondRef).not.toBe(firstRef)
+    expect(secondRef).toMatch(/_STAGING_[AB]$/)
+    fake.failNextMutate()
+    await store.save()
+    expect(store.store.getSnapshot().shell.failed).toBe(true)
+    expect(storedProvider(fake.view, 'sec')?.['apiKeyEnv']).toBe(firstRef)
+    expect(storedProvider(fake.view, 'sec')?.['baseURL']).toBe('https://api.b.example/v1')
+    expect(fake.credentialStore.get(firstRef)).toBe('keyB')
+  })
+
+  it('provider A referencing SHARED_REF is untouched when provider B stages into SHARED_REF + CAS conflict', async () => {
+    const fake = fakeConnection({
+      providers: {
+        'a': { baseURL: 'https://api.a.example/v1', model: 'm1', apiKeyEnv: 'SHARED_REF' },
+        'b': { baseURL: 'https://api.b.example/v1', model: 'm1', apiKeyEnv: 'B_REF' },
+      },
+      active: 'a',
+    })
+    fake.credentialStore.set('SHARED_REF', 'keyA')
+    fake.credentialStore.set('B_REF', 'keyB')
+    const store = new ImageMindSettingsStore(fake.connection)
+    await store.load()
+
+    // User points provider B at SHARED_REF with a new key, then CAS conflicts.
+    store.editProvider('b', 'apiKeyEnv', 'SHARED_REF')
+    store.editProvider('b', 'apiKeyText', 'keyB-new')
+    const plan = store.stagedCredentialPlan()
+    // B's write must NOT overwrite the live SHARED_REF.
+    expect(plan[0].ref).not.toBe('SHARED_REF')
+    expect(plan[0].ref).toMatch(/_STAGING_[AB]$/)
+    fake.failNextMutate()
+    await store.save()
+    expect(store.store.getSnapshot().shell.failed).toBe(true)
+    // A's committed settings + credential fully intact.
+    expect(fake.credentialStore.get('SHARED_REF')).toBe('keyA')
+    expect(storedProvider(fake.view, 'a')?.['apiKeyEnv']).toBe('SHARED_REF')
+  })
+
+  it('retry after a CAS failure reuses the same still-non-live staging ref', async () => {
+    const fake = fakeConnection({
+      providers: { 'sec': { baseURL: 'https://api.a.example/v1', model: 'm1', apiKeyEnv: 'SEC_REF' } },
+      active: 'sec',
+    })
+    fake.credentialStore.set('SEC_REF', 'keyA')
+    const store = new ImageMindSettingsStore(fake.connection)
+    await store.load()
+
+    store.editProvider('sec', 'apiKeyText', 'keyB')
+    const first = store.stagedCredentialPlan()[0].ref
+    fake.failNextMutate()
+    await store.save()
+    // Retry: the draft still holds the chosen slot, and it is not live, so the
+    // same ref is reused (no orphan churn).
+    const second = store.stagedCredentialPlan()[0].ref
+    expect(second).toBe(first)
   })
 })
