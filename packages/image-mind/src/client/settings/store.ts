@@ -426,10 +426,19 @@ export class ImageMindSettingsStore {
   }
 
   /** Compute path ops carrying the staged draft over the loaded view. */
-  planOps(): SettingsOp[] {
+  planOps(includeDerivedRefs = true): SettingsOp[] {
     const ops: SettingsOp[] = []
     const providers = (this.view.value?.['providers'] ?? {}) as Record<string, unknown>
     const ids = new Set([...Object.keys(providers), ...this.draft.keys()])
+    const derivedRefs = new Map<string, string>()
+
+    for (const write of this.pendingCredentialWrites()) {
+      // A typed key with no explicit apiKeyEnv stores under a derived ref; the
+      // settings mutation below must reference that same ref in one commit.
+      if (write.id !== undefined && write.ref === deriveKeyRef(write.id)) {
+        derivedRefs.set(write.id, write.ref)
+      }
+    }
 
     for (const id of ids) {
       const record = providerRecordOf(this.view, id)
@@ -439,6 +448,7 @@ export class ImageMindSettingsStore {
         continue
       }
       const original = draftOf(id, record, this.credentialConfigured(id), this.credentialMask(id))
+      const effectiveEnv = d.apiKeyEnv.trim().length > 0 ? d.apiKeyEnv.trim() : (derivedRefs.get(id) ?? '')
       if (record === undefined) {
         ops.push({
           op: 'set',
@@ -449,7 +459,7 @@ export class ImageMindSettingsStore {
             model: d.model.trim(),
             ...d.apiStyle.trim() !== '' ? { apiStyle: d.apiStyle.trim() } : {},
             ...d.maxOutputTokens.trim() !== '' ? { maxOutputTokens: Number(d.maxOutputTokens.trim()) } : {},
-            ...d.apiKeyEnv.trim() !== '' ? { apiKeyEnv: d.apiKeyEnv.trim() } : {},
+            ...effectiveEnv !== '' ? { apiKeyEnv: effectiveEnv } : {},
             ...d.keyless ? { keyless: true } : {},
           },
         })
@@ -463,8 +473,8 @@ export class ImageMindSettingsStore {
       if (original.maxOutputTokens !== d.maxOutputTokens) {
         d.maxOutputTokens.trim() === '' ? unsetField('maxOutputTokens') : setField('maxOutputTokens', Number(d.maxOutputTokens.trim()))
       }
-      if (original.apiKeyEnv !== d.apiKeyEnv) {
-        d.apiKeyEnv.trim() === '' ? unsetField('apiKeyEnv') : setField('apiKeyEnv', d.apiKeyEnv.trim())
+      if (original.apiKeyEnv !== effectiveEnv) {
+        effectiveEnv === '' ? unsetField('apiKeyEnv') : setField('apiKeyEnv', effectiveEnv)
       }
       if (original.displayName !== d.displayName) {
         const next = d.displayName.trim()
@@ -504,7 +514,11 @@ export class ImageMindSettingsStore {
     return writes
   }
 
-  /** Save the staged drafts as path ops, then store any typed keys. */
+  /** Save staged drafts with a fail-safe ordering: credentials first, the
+   * single settings commit last. A credential write failure leaves settings
+   * untouched (the orphaned secret is safe residue, never a half-published
+   * active config); a settings CAS conflict leaves credentials written but
+   * un-referenced, and a retry converges. */
   async save(): Promise<void> {
     if (this.saving || !this.dirty()) return
     if (this.scope === undefined) {
@@ -521,25 +535,22 @@ export class ImageMindSettingsStore {
     this.failedReason = undefined
     this.publish()
     try {
-      const revision = this.view.revision
-      if (ops.length > 0) {
-        this.view = await writeThroughScope(this.scope, ops, revision)
-      }
+      // Phase 1 — credentials. A failure here leaves settings untouched.
       for (const write of credentialWrites) {
         await setCredentialOfficial(this.ctx, write.ref, write.value)
-        // Record the derived ref on the profile so resolution finds it.
-        if (write.id !== undefined && apiKeyEnvOf(this.view, write.id) === undefined) {
-          const record = providerRecordOf(this.view, write.id)
-          const currentEnv = typeof record?.['apiKeyEnv'] === 'string' ? record['apiKeyEnv'] : ''
-          if (currentEnv !== write.ref) {
-            this.view = await writeThroughScope(this.scope, [{ op: 'set', path: ['providers', write.id, 'apiKeyEnv'], value: write.ref }], this.view.revision)
-          }
-        }
+      }
+      // Phase 2 — the single settings commit (planOps already embeds any
+      // derived apiKeyEnv refs, so one revision transition is enough).
+      if (ops.length > 0) {
+        this.view = await writeThroughScope(this.scope, ops, this.view.revision)
       }
       this.draft.clear()
       this.draftTop.clear()
       await this.load()
     } catch (error) {
+      // Partial state is safe by construction: either credentials exist
+      // un-referenced (retry converges) or settings stayed old. Drafts remain
+      // dirty so the user can retry.
       this.failed = true
       this.failedReason = (error as Error).message
     } finally {

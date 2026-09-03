@@ -133,3 +133,94 @@ describe('provider reliability tracker', () => {
     expect(tracker.fallbacks(config(), 'primary', { model: 'manual-model' })).toEqual([])
   })
 })
+
+describe('half-open reservation at selection (no stranded probes)', () => {
+  it('never reserves more half-open probes than returned fallback plans', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(1000))
+    try {
+      const tracker = createProviderReliabilityTracker()
+      // Open all three backups.
+      for (const provider of ['first', 'second', 'third']) {
+        tracker.recordFailure(provider, 100)
+        tracker.recordFailure(provider, 100)
+        tracker.recordFailure(provider, 100)
+        expect(tracker.snapshot(provider).circuit.state).toBe('open')
+      }
+      // Cooldown expires for all three.
+      vi.setSystemTime(new Date(1000 + 31_000))
+
+      const plans = tracker.fallbacks(config(), 'primary', {})
+      expect(plans).toHaveLength(2)
+
+      // Exactly the two returned providers are half-open; the unselected
+      // third stays open (never stranded in half-open with no request).
+      const halfOpen = ['first', 'second', 'third'].filter(
+        provider => tracker.snapshot(provider).circuit.state === 'half-open',
+      )
+      expect(halfOpen).toHaveLength(2)
+      const unselected = ['first', 'second', 'third'].find(
+        provider => !plans.some(plan => plan.provider === provider),
+      )!
+      expect(tracker.snapshot(unselected).circuit.state).toBe('open')
+      // Every returned recovery plan is no-store.
+      expect(plans.every(plan => plan.cache === 'no-store')).toBe(true)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('an unselected probe-ready provider remains recoverable on a later call', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(1000))
+    try {
+      const tracker = createProviderReliabilityTracker()
+      for (const provider of ['first', 'second', 'third']) {
+        tracker.recordFailure(provider, 100)
+        tracker.recordFailure(provider, 100)
+        tracker.recordFailure(provider, 100)
+      }
+      vi.setSystemTime(new Date(1000 + 31_000))
+
+      const firstPlans = tracker.fallbacks(config(), 'primary', {})
+      // Settle the two probes that were admitted.
+      for (const plan of firstPlans) tracker.recordSuccess(plan.provider, 50)
+
+      // The previously unselected third provider can now get its probe.
+      const unselected = ['first', 'second', 'third'].find(
+        provider => !firstPlans.some(plan => plan.provider === provider),
+      )!
+      const secondPlans = tracker.fallbacks(config(), 'primary', {})
+      expect(secondPlans.some(plan => plan.provider === unselected && plan.cache === 'no-store')).toBe(true)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('concurrent planning admits a half-open provider only once', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(1000))
+    try {
+      const tracker = createProviderReliabilityTracker()
+      for (const provider of ['first', 'second', 'third']) {
+        tracker.recordFailure(provider, 100)
+        tracker.recordFailure(provider, 100)
+        tracker.recordFailure(provider, 100)
+      }
+      vi.setSystemTime(new Date(1000 + 31_000))
+
+      const planA = tracker.fallbacks(config(), 'primary', {})
+      const planB = tracker.fallbacks(config(), 'primary', {})
+
+      // Across two planners, the same provider never appears as a recovery
+      // probe twice.
+      const probeA = new Set(planA.filter(plan => plan.cache === 'no-store').map(plan => plan.provider))
+      const probeB = new Set(planB.filter(plan => plan.cache === 'no-store').map(plan => plan.provider))
+      for (const provider of probeA) expect(probeB.has(provider)).toBe(false)
+      // Together they may still fill the full two-slot fallback budget.
+      expect(planA.length + planB.length).toBeGreaterThanOrEqual(2)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})

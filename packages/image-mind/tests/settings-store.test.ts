@@ -32,6 +32,7 @@ vi.mock('@deepseek-ai/dsh-client-store', () => ({
 
 import type { ImageMindClientContext } from '../src/client/settings/transport.ts'
 import { ImageMindSettingsStore } from '../src/client/settings/store.ts'
+import { deriveKeyRef } from '../src/client/settings/identity.ts'
 
 /** Apply one path op to a nested plain-object value. */
 function applyOp(value: Record<string, unknown>, op: { op: 'set' | 'unset'; path: readonly string[]; value?: unknown }): void {
@@ -58,9 +59,14 @@ function fakeConnection(initial: Record<string, unknown>, opts: { startLoading?:
   view: Record<string, unknown>
   /** Flip the mirror between `loading` and `ready` and notify subscribers. */
   setStatus: (status: 'loading' | 'ready') => void
+  /** The in-memory credential store (configured refs). */
+  credentialStore: Map<string, string>
+  /** Make the next credential write fail (settings must stay untouched). */
+  failNextCredentialSet: () => void
 } {
   const view: Record<string, unknown> = JSON.parse(JSON.stringify(initial))
   const credentials = new Map<string, string>()
+  let failNextSet = false
   let revision = 1
   let status: 'loading' | 'ready' = opts.startLoading === true ? 'loading' : 'ready'
   const snapshotOf = () => status === 'loading'
@@ -94,17 +100,17 @@ function fakeConnection(initial: Record<string, unknown>, opts: { startLoading?:
     settingsScope: { bind: () => scope as unknown as ReturnType<ImageMindClientContext['settingsScope']['bind']> },
     remote: {
       credentials: {
-        set: async (request: { ref: string; value: string }) => {
-          credentials.set(request.ref, request.value)
-          return { result: { ok: true } }
+        set: async (ref: string, value: string) => {
+          if (failNextSet) {
+            failNextSet = false
+            return { ok: false, error: { message: 'credential store rejected the write (injected)' } }
+          }
+          credentials.set(ref, value)
+          return { ok: true }
         },
-        describe: async (request: { refs: string[] }) => ({
-          result: {
-            ok: true,
-            value: {
-              credentials: Object.fromEntries(request.refs.map(ref => [ref, { configured: credentials.has(ref), writable: true }])),
-            },
-          },
+        describe: async (refs: string[]) => ({
+          ok: true,
+          value: Object.fromEntries(refs.map(ref => [ref, { configured: credentials.has(ref), writable: true }])),
         }),
       },
     },
@@ -116,6 +122,8 @@ function fakeConnection(initial: Record<string, unknown>, opts: { startLoading?:
       status = next
       publish()
     },
+    credentialStore: credentials,
+    failNextCredentialSet: () => { failNextSet = true },
   }
 }
 
@@ -290,5 +298,108 @@ describe('ImageMindSettingsStore persistence', () => {
     expect(store.store.getSnapshot().shell.exposed).toBe(false)
     expect(store.store.getSnapshot().transport).toBe('unavailable')
     store.dispose()
+  })
+})
+
+describe('ImageMindSettingsStore fail-safe save ordering', () => {
+  it('writes required credentials before publishing settings that reference them', async () => {
+    const fake = fakeConnection({})
+    const store = new ImageMindSettingsStore(fake.connection)
+    await store.load()
+    store.addProvider({
+      id: 'sec',
+      displayName: 'Secure',
+      preset: { baseURL: 'https://api.sec.example/v1', model: 'm1', apiKeyEnv: 'SEC_REF' },
+    })
+    // Type a real key (not a mask).
+    store.editProvider('sec', 'apiKeyText', 'sk-real-value')
+
+    await store.save()
+    expect(fake.credentialStore.has('SEC_REF')).toBe(true)
+    expect(fake.credentialStore.get('SEC_REF')).toBe('sk-real-value')
+    expect(storedProvider(fake.view, 'sec')?.['apiKeyEnv']).toBe('SEC_REF')
+  })
+
+  it('does not mutate settings when a credential write fails', async () => {
+    const fake = fakeConnection({})
+    const store = new ImageMindSettingsStore(fake.connection)
+    await store.load()
+    store.addProvider({
+      id: 'sec',
+      displayName: 'Secure',
+      preset: { baseURL: 'https://api.sec.example/v1', model: 'm1', apiKeyEnv: 'SEC_REF' },
+    })
+    store.editProvider('sec', 'apiKeyText', 'sk-real-value')
+    fake.failNextCredentialSet()
+
+    await store.save()
+    expect(store.store.getSnapshot().shell.failed).toBe(true)
+    // Settings untouched: the provider was never published.
+    expect(storedProvider(fake.view, 'sec')).toBeUndefined()
+    expect(fake.credentialStore.has('SEC_REF')).toBe(false)
+    // Drafts remain so the user can retry.
+    expect(store.store.getSnapshot().shell.dirty).toBe(true)
+  })
+
+  it('includes the derived apiKeyEnv in the single settings mutation', async () => {
+    const fake = fakeConnection({})
+    const store = new ImageMindSettingsStore(fake.connection)
+    await store.load()
+    // New provider with no explicit apiKeyEnv: typed key derives a ref.
+    store.addProvider({
+      id: 'sec',
+      displayName: 'Secure',
+      preset: { baseURL: 'https://api.sec.example/v1', model: 'm1', apiKeyEnv: '' },
+    })
+    store.editProvider('sec', 'apiKeyText', 'sk-typed')
+
+    const ops = store.planOps()
+    // The derived ref rides inside the single whole-provider `set` op for a
+    // brand-new provider (path = ['providers','sec']), so exactly one op
+    // carries an apiKeyEnv equal to the derived reference.
+    const providerSet = ops.find(op => op.op === 'set' && op.path.length === 2 && op.path[0] === 'providers' && op.path[1] === 'sec')
+    expect(providerSet).toBeDefined()
+    const setValue = (providerSet as { value?: Record<string, unknown> }).value ?? {}
+    expect(setValue['apiKeyEnv']).toBe(deriveKeyRef('sec'))
+    // No separate field-level apiKeyEnv op exists (single mutation).
+    const fieldEnvOps = ops.filter(op => op.path.length === 3 && op.path[2] === 'apiKeyEnv')
+    expect(fieldEnvOps).toHaveLength(0)
+
+    await store.save()
+    // One settings commit carried the derived ref.
+    const env = storedProvider(fake.view, 'sec')?.['apiKeyEnv']
+    expect(typeof env).toBe('string')
+    expect(String(env).length).toBeGreaterThan(0)
+    expect(fake.credentialStore.has(String(env))).toBe(true)
+  })
+
+  it('keeps drafts dirty after a settings revision conflict', async () => {
+    const fake = fakeConnection({})
+    const store = new ImageMindSettingsStore(fake.connection)
+    await store.load()
+    store.editProvider('p1', 'displayName', 'Renamed')
+    // Simulate a conflict: another writer bumps the revision behind the store.
+    store.editProvider('p1', 'displayName', 'Renamed2')
+    // Force a write-through failure by removing the settings face.
+    const broken = new ImageMindSettingsStore({} as never)
+    await expect(broken.save()).resolves.toBeUndefined()
+    // The real store still has a live scope; force conflict by pre-mutating view.
+    fake.view['active'] = 'someone-else'
+    // writeThroughScope in the fake mutate does not conflict-check; emulate via
+    // a store whose scope resolves but whose mutate rejects.
+    const store2 = new ImageMindSettingsStore({
+      settingsScope: { bind: () => ({
+        getSnapshot: () => ({ status: 'ready' as const, value: {}, base: undefined, user: {}, revision: 1, writable: true, mode: 'host' as const }),
+        subscribe: () => () => {},
+        mutate: async () => { throw new Error('revision conflict') },
+      }) },
+      remote: { credentials: { set: async () => ({ ok: true }), describe: async () => ({ ok: true, value: {} }) } },
+    } as never)
+    await store2.load()
+    store2.editProvider('p1', 'displayName', 'Renamed')
+    await store2.save()
+    expect(store2.store.getSnapshot().shell.failed).toBe(true)
+    expect(store2.store.getSnapshot().shell.dirty).toBe(true)
+    expect(store2.planOps().length).toBeGreaterThan(0)
   })
 })

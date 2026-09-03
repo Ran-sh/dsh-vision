@@ -134,39 +134,19 @@ export function createProviderReliabilityTracker(): ProviderReliabilityTracker {
       provider: string
       health: VisionProviderHealthSnapshot
       circuit: ReturnType<VisionCircuitBreaker['snapshot']>
+      admission: 'closed' | 'probe-ready' | 'blocked'
       priority: number
     }> = []
-    const recoveryProbes: string[] = []
     let fallbackIndex = 0
 
     for (const [provider, spec] of Object.entries(config.providers)) {
       if (provider === primaryProvider || !isProviderComplete(spec)) continue
       const state = stateFor(provider)
-      const before = state.circuit.snapshot()
-      const admitted = state.circuit.allow()
-      const circuit = state.circuit.snapshot()
-
-      // `allow()` is the concurrency gate for open/half-open circuits. An
-      // expired open circuit admits exactly one caller and becomes half-open;
-      // concurrent callers must not route another probe to the same provider.
-      if (!admitted && circuit.state !== 'closed') {
-        fallbackIndex += 1
-        continue
-      }
-
-      const recoveryProbe = before.state === 'open' && circuit.state === 'half-open'
-      if (recoveryProbe) {
-        recoveryProbes.push(provider)
-        // The health cooldown duplicates circuit state. Once a real half-open
-        // probe has been reserved, clear the stale health-only cooldown so the
-        // selector does not describe an internally contradictory snapshot.
-        state.health = { ...state.health, openedUntil: undefined }
-      }
-
       candidates.push({
         provider,
         health: state.health,
-        circuit,
+        circuit: state.circuit.snapshot(),
+        admission: state.circuit.admission(),
         // Preserve configuration order as a small stable preference while
         // allowing health to dominate after real observations accumulate.
         priority: Math.max(0, 10 - fallbackIndex),
@@ -175,20 +155,40 @@ export function createProviderReliabilityTracker(): ProviderReliabilityTracker {
     }
 
     const selected = selectVisionProvider({ task: 'general', candidates })
-    const ranked = selected.ranked.map(item => item.provider)
+    const ranked = selected.ranked
+      .map(item => candidates.find(candidate => candidate.provider === item.provider))
+      .filter((candidate): candidate is NonNullable<typeof candidate> => candidate !== undefined)
 
-    // A provider that has just crossed open -> half-open must actually receive
-    // its one recovery probe. It is placed first and marked no-store so a stale
-    // semantic-cache hit cannot consume the exclusive probe without producing
-    // the fresh success/failure needed to settle the circuit.
+    // Phase 2: fill at most MAX fallback slots; reserve a half-open probe
+    // (allow()) only for a route that is actually returned. A provider that
+    // just crossed open -> half-open must actually receive its one recovery
+    // probe, so it is placed first and marked no-store so a stale semantic
+    // cache hit cannot consume the exclusive probe without settling it.
+    const plans: ProviderFallbackPlan[] = []
     const ordered = [
-      ...recoveryProbes,
-      ...ranked.filter(provider => !recoveryProbes.includes(provider)),
+      ...ranked.filter(candidate => candidate.admission === 'probe-ready'),
+      ...ranked.filter(candidate => candidate.admission !== 'probe-ready'),
     ]
-    return ordered.slice(0, MAX_RELIABILITY_PROVIDER_FALLBACKS).map(provider => ({
-      provider,
-      ...(recoveryProbes.includes(provider) ? { cache: 'no-store' as const } : {}),
-    }))
+    for (const candidate of ordered) {
+      if (plans.length >= MAX_RELIABILITY_PROVIDER_FALLBACKS) break
+      const provider = candidate.provider
+      const state = stateFor(provider)
+
+      if (candidate.admission === 'probe-ready' || state.circuit.snapshot().state === 'open') {
+        // This is the commit point for the exclusive probe. If a concurrent
+        // planner won the reservation first, skip and keep filling.
+        if (!state.circuit.allow()) continue
+        // Once a real half-open probe has been reserved, clear the stale
+        // health-only cooldown so the selector does not describe an
+        // internally contradictory snapshot.
+        state.health = { ...state.health, openedUntil: undefined }
+        plans.push({ provider, cache: 'no-store' })
+        continue
+      }
+
+      plans.push({ provider })
+    }
+    return plans
   }
 
   const snapshot = (provider: string): ProviderReliabilitySnapshot => {

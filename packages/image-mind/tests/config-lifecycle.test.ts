@@ -198,3 +198,34 @@ describe('provider id identity hardening', () => {
     expect((config.providers as unknown as Record<string, unknown>).toString).toBeUndefined()
   })
 })
+
+describe('localFileRoots absolute contract', () => {
+  it('rejects relative roots when local-file capability is enabled', () => {
+    expect(() => resolveConfig({
+      providers: {},
+      allowLocalFiles: true,
+      localFileRoots: ['./workspace'],
+    })).toThrow(/absolute/)
+    expect(() => resolveConfig({
+      providers: {},
+      allowLocalFiles: true,
+      localFileRoots: ['relative/path'],
+    })).toThrow(/absolute/)
+  })
+
+  it('ignores and clears stale relative roots while local files are disabled', () => {
+    const resolved = resolveConfig({
+      providers: {},
+      allowLocalFiles: false,
+      localFileRoots: ['./stale-value'],
+    })
+    expect(resolved.localFileRoots).toEqual([])
+    expect(resolved.allowLocalFiles).toBe(false)
+  })
+
+  it('accepts absolute roots when local files are enabled', () => {
+    const root = process.platform === 'win32' ? 'C:/workspace' : '/workspace'
+    const resolved = resolveConfig({ providers: {}, allowLocalFiles: true, localFileRoots: [root] })
+    expect(resolved.localFileRoots).toEqual([root])
+  })
+})

@@ -141,3 +141,67 @@ describe('send-hook lifecycle', () => {
     expect(originalSendSession).not.toHaveBeenCalled()
   })
 })
+
+describe('send-hook self-disable under a downstream wrapper', () => {
+  it('dispose under a later wrapper makes the stale image-mind wrapper transparent', async () => {
+    const { conversation, originalSendSession } = makeConversation()
+    const disposeMine = installSendHook(conversation)
+    const myWrapper = conversation.sendSession
+
+    // Another plugin chains its own wrapper on top.
+    const otherWrapper = vi.fn(async (session: unknown, text: string) => {
+      // It delegates to whatever is underneath — which is still our wrapper.
+      await myWrapper(session, text, ['img-stale'], 'chat')
+    })
+    conversation.sendSession = otherWrapper
+    disposeMine()
+
+    // The stale wrapper is now a transparent trampoline: the image-mind path
+    // must NOT run (no upload, no draft release, no marker), and the original
+    // plain send is reached exactly once.
+    const prompt = vi.fn().mockResolvedValue({ ok: true })
+    await conversation.sendSession({ sessionId: 's', prompt }, 'no images', [], 'chat')
+    void otherWrapper
+    expect(originalSendSession).toHaveBeenCalled()
+    expect(mocks.uploadImage).not.toHaveBeenCalled()
+    expect(mocks.showToast).not.toHaveBeenCalled()
+    expect(prompt).not.toHaveBeenCalled()
+  })
+
+  it('reinstall after dispose under a stale chain yields exactly one active interception', async () => {
+    const { conversation, originalSendSession } = makeConversation()
+    const dispose1 = installSendHook(conversation)
+    const wrapper1 = conversation.sendSession
+    dispose1()
+
+    // A later plugin chained on top of the stale wrapper before reinstall.
+    const laterChain = vi.fn(async (...args: unknown[]) => {
+      // delegates to the stale (now transparent) wrapper
+      return wrapper1(...(args as never))
+    })
+    conversation.sendSession = laterChain as never
+
+    // Reinstall image-mind: it must not see HOOK_STATE (dispose cleared it)
+    // and must install a fresh active wrapper.
+    const dispose2 = installSendHook(conversation)
+    expect(conversation.sendSession).not.toBe(laterChain)
+    expect(conversation.sendSession).not.toBe(wrapper1)
+
+    // Sending with images through the new active wrapper intercepts once.
+    const prompt = vi.fn().mockResolvedValue({ ok: true })
+    await conversation.sendSession(
+      { sessionId: 's', prompt },
+      'look',
+      ['img'],
+      'chat',
+      new AbortController().signal,
+    )
+    expect(mocks.uploadImage).toHaveBeenCalledOnce()
+    expect(conversation.releaseDraftImage).toHaveBeenCalledWith('img')
+    expect(originalSendSession).not.toHaveBeenCalled()
+    dispose2()
+    // Disposing the fresh wrapper restores its CAS predecessor (the later
+    // plugin's chain), not the pre-image-mind original.
+    expect(conversation.sendSession).toBe(laterChain)
+  })
+})

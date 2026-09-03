@@ -72,7 +72,15 @@ export function installSendHook(conversation: unknown): () => void {
   if (records[HOOK_STATE] !== undefined) return invalid()
 
   const original = face.sendSession
+  // A stale wrapper that a later plugin still chains to must become a
+  // transparent trampoline after our own dispose: image-mind behavior is
+  // disabled even though `face.sendSession` no longer points at our wrapper.
+  let active = true
   const wrapper: ConversationSendFace['sendSession'] = async (session, text, imageIds, mode, signal): Promise<void> => {
+    if (!active) {
+      await original.call(face, session, text, imageIds, mode, signal)
+      return
+    }
     if (imageIds.length === 0) {
       await original.call(face, session, text, imageIds, mode, signal)
       return
@@ -159,9 +167,12 @@ export function installSendHook(conversation: unknown): () => void {
   face.sendSession = wrapper
   records[HOOK_STATE] = state
 
-  // Dispose restores this plugin's own predecessor exactly once and only if
-  // no later plugin has chained another wrapper on top of ours since install.
+  // Dispose quiesces this wrapper first (so a later plugin that still chains
+  // to us observes only the transparent trampoline), then restores our own
+  // predecessor exactly once and only if no later plugin has chained another
+  // wrapper on top of ours since install.
   return () => {
+    active = false
     const current = records[HOOK_STATE]
     if (current !== state) return
     if (face.sendSession === wrapper) face.sendSession = original

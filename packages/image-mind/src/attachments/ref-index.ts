@@ -5,9 +5,18 @@
  * metadata plus bounded session routing/preview ledgers so neither model
  * recovery nor conversation previews need raw attachment metadata embedded in
  * user-visible conversation text.
+ *
+ * Concurrency model: the on-disk index is one serialized transaction log.
+ * Every loader call single-flights the first cold load (`loadPromise`), every
+ * mutation runs on a serialized `opTail` queue against a private clone, and
+ * the in-memory state is published only after the durable rename succeeded
+ * (commit-after-persist). A transient write failure therefore never leaves a
+ * half-committed index, never poisons later writes, and never lets a caller
+ * believe a mutation that failed to persist actually took effect.
  */
 
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { randomUUID } from 'node:crypto'
 import { dirname, join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
@@ -38,18 +47,34 @@ interface PersistedIndex {
   sessions: Record<string, SessionRecord>
 }
 
-interface IndexState {
-  value: PersistedIndex
-  loaded: boolean
-  writeTail: Promise<void>
+/** A map without Object.prototype members (`__proto__` session ids etc.). */
+function emptyRecord<T>(): Record<string, T> {
+  return Object.create(null) as Record<string, T>
 }
-
-const volatileState: IndexState = { value: emptyIndex(), loaded: true, writeTail: Promise.resolve() }
-const states = new Map<string, IndexState>()
 
 function emptyIndex(): PersistedIndex {
-  return { version: INDEX_VERSION, refs: {}, sessions: {} }
+  return { version: INDEX_VERSION, refs: emptyRecord(), sessions: emptyRecord() }
 }
+
+interface IndexState {
+  value: PersistedIndex
+  /** Cold-load singleflight: one load per path; concurrent callers await it. */
+  loadPromise?: Promise<void>
+  /** Serialized mutation queue; each link swallows its own error. */
+  opTail: Promise<void>
+}
+
+interface Holder {
+  state: IndexState
+  path?: string
+}
+
+const volatileState: IndexState = {
+  value: emptyIndex(),
+  loadPromise: Promise.resolve(),
+  opTail: Promise.resolve(),
+}
+const states = new Map<string, IndexState>()
 
 function storeRoot(ctx: Context): string | undefined {
   const attachments = ctx.get('attachments') as ({ root?: unknown } | undefined)
@@ -63,15 +88,146 @@ function indexPath(ctx: Context): string | undefined {
   return root === undefined ? undefined : join(root, INDEX_DIR, INDEX_FILE)
 }
 
-function stateFor(ctx: Context): { state: IndexState; path?: string } {
+function stateFor(ctx: Context): Holder {
   const path = indexPath(ctx)
   if (path === undefined) return { state: volatileState }
   let state = states.get(path)
   if (state === undefined) {
-    state = { value: emptyIndex(), loaded: false, writeTail: Promise.resolve() }
+    state = { value: emptyIndex(), opTail: Promise.resolve() }
     states.set(path, state)
   }
   return { state, path }
+}
+
+/** True only for a filesystem "file does not exist" error. */
+function isEnoent(error: unknown): boolean {
+  return error instanceof Error && 'code' in error && error.code === 'ENOENT'
+}
+
+/**
+ * Cold-load the persisted index exactly once per path. A non-ENOENT read
+ * failure (EACCES, EIO, transient FS trouble) is *not* converted into an
+ * empty index — that could let a later successful write overwrite a valid
+ * on-disk index with an empty one. The load is retried on the next call
+ * instead.
+ */
+async function loadIndex(holder: Holder): Promise<void> {
+  if (holder.path === undefined) return
+  try {
+    const text = await readFile(holder.path, 'utf8')
+    holder.state.value = parsePersistedIndex(JSON.parse(text) as unknown)
+  } catch (error) {
+    if (isEnoent(error)) {
+      holder.state.value = emptyIndex()
+      return
+    }
+    if (error instanceof SyntaxError) {
+      // A corrupt file is not a valid index; an empty one is the only
+      // recoverable interpretation (the corrupt bytes are replaced on the
+      // next successful write rather than being re-read forever).
+      holder.state.value = emptyIndex()
+      return
+    }
+    holder.state.loadPromise = undefined
+    throw error
+  }
+}
+
+async function ensureLoaded(ctx: Context): Promise<Holder> {
+  const holder = stateFor(ctx)
+  if (holder.state.loadPromise === undefined) {
+    holder.state.loadPromise = loadIndex(holder)
+  }
+  await holder.state.loadPromise
+  return holder
+}
+
+/** Atomically replace the index file: temp write + rename, temp cleaned up. */
+async function writeSnapshotAtomic(path: string, value: PersistedIndex): Promise<void> {
+  await mkdir(dirname(path), { recursive: true })
+  const temporary = `${path}.${process.pid}.${randomUUID()}.tmp`
+  try {
+    await writeFile(temporary, JSON.stringify(value), { encoding: 'utf8', mode: 0o600 })
+    await rename(temporary, path)
+  } finally {
+    await rm(temporary, { force: true }).catch(() => {})
+  }
+}
+
+/**
+ * Run one serialized mutation: load once, clone the committed state, let
+ * `mutate` produce a result on the private draft, durably persist the draft
+ * when it changed, and only then publish it as the in-memory committed state.
+ * A failed persist rejects the caller and leaves both disk and memory at the
+ * previous committed state.
+ */
+function runMutation<T>(
+  ctx: Context,
+  mutate: (draft: PersistedIndex) => { result: T; changed: boolean },
+): Promise<T> {
+  let resolveResult!: (value: T) => void
+  let rejectResult!: (error: unknown) => void
+  const resultPromise = new Promise<T>((resolve, reject) => {
+    resolveResult = resolve
+    rejectResult = reject
+  })
+
+  void ensureLoaded(ctx).then((holder) => {
+    const operation = holder.state.opTail.then(async () => {
+      const draft = structuredClone(holder.state.value)
+      const { result, changed } = mutate(draft)
+      if (changed) {
+        if (holder.path !== undefined) {
+          await writeSnapshotAtomic(holder.path, draft)
+        }
+        // Commit point: publish only after the durable rename succeeded.
+        holder.state.value = draft
+      }
+      resolveResult(result)
+    })
+
+    // The queue tail always swallows so a single failure cannot poison the
+    // next mutation; the caller still receives this operation's rejection.
+    holder.state.opTail = operation.then(
+      () => undefined,
+      () => undefined,
+    )
+    operation.catch(rejectResult)
+  }, rejectResult)
+
+  return resultPromise
+}
+
+function trimOldest<T extends { updatedAt: number }>(record: Record<string, T>, cap: number): void {
+  const overflow = Object.keys(record).length - cap
+  if (overflow <= 0) return
+  const oldest = Object.entries(record)
+    .sort((a, b) => a[1].updatedAt - b[1].updatedAt)
+    .slice(0, overflow)
+  for (const [key] of oldest) delete record[key]
+}
+
+function isCompleteBatch(batch: SessionBatch): boolean {
+  for (let index = 0; index < batch.count; index += 1) {
+    if (batch.refs[String(index)] === undefined) return false
+  }
+  return true
+}
+
+function trimRefs(index: PersistedIndex): void {
+  const ids = Object.keys(index.refs)
+  if (ids.length <= MAX_REFS) return
+  const pinned = new Set<string>()
+  for (const session of Object.values(index.sessions)) {
+    for (const id of Object.values(session.refs)) pinned.add(id)
+    for (const batch of session.history) {
+      for (const id of Object.values(batch.refs)) pinned.add(id)
+    }
+  }
+  for (const id of ids) {
+    if (Object.keys(index.refs).length <= MAX_REFS) break
+    if (!pinned.has(id)) delete index.refs[id]
+  }
 }
 
 function validSessionBatch(raw: unknown): SessionBatch | undefined {
@@ -85,7 +241,7 @@ function validSessionBatch(raw: unknown): SessionBatch | undefined {
   if (!Number.isSafeInteger(count) || (count as number) <= 0 || (count as number) > 8) return undefined
   if (!Number.isSafeInteger(updatedAt) || (updatedAt as number) < 0) return undefined
   if (typeof refs !== 'object' || refs === null || Array.isArray(refs)) return undefined
-  const cleanRefs: Record<string, string> = {}
+  const cleanRefs = emptyRecord<string>()
   for (const [key, value] of Object.entries(refs as Record<string, unknown>)) {
     if (!/^\d+$/.test(key) || typeof value !== 'string' || !/^sha256:[a-f0-9]{64}$/i.test(value)) continue
     const index = Number(key)
@@ -142,67 +298,6 @@ function parsePersistedIndex(raw: unknown): PersistedIndex {
   return next
 }
 
-async function ensureLoaded(ctx: Context): Promise<{ state: IndexState; path?: string }> {
-  const holder = stateFor(ctx)
-  if (holder.state.loaded) return holder
-  holder.state.loaded = true
-  if (holder.path === undefined) return holder
-  try {
-    const text = await readFile(holder.path, 'utf8')
-    holder.state.value = parsePersistedIndex(JSON.parse(text) as unknown)
-  } catch (error) {
-    if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) {
-      holder.state.value = emptyIndex()
-    }
-  }
-  return holder
-}
-
-function trimOldest<T extends { updatedAt: number }>(record: Record<string, T>, cap: number): void {
-  const overflow = Object.keys(record).length - cap
-  if (overflow <= 0) return
-  const oldest = Object.entries(record)
-    .sort((a, b) => a[1].updatedAt - b[1].updatedAt)
-    .slice(0, overflow)
-  for (const [key] of oldest) delete record[key]
-}
-
-function isCompleteBatch(batch: SessionBatch): boolean {
-  for (let index = 0; index < batch.count; index += 1) {
-    if (batch.refs[String(index)] === undefined) return false
-  }
-  return true
-}
-
-function trimRefs(index: PersistedIndex): void {
-  const ids = Object.keys(index.refs)
-  if (ids.length <= MAX_REFS) return
-  const pinned = new Set<string>()
-  for (const session of Object.values(index.sessions)) {
-    for (const id of Object.values(session.refs)) pinned.add(id)
-    for (const batch of session.history) {
-      for (const id of Object.values(batch.refs)) pinned.add(id)
-    }
-  }
-  for (const id of ids) {
-    if (Object.keys(index.refs).length <= MAX_REFS) break
-    if (!pinned.has(id)) delete index.refs[id]
-  }
-}
-
-async function persist(holder: { state: IndexState; path?: string }): Promise<void> {
-  if (holder.path === undefined) return
-  const path = holder.path
-  const snapshot = JSON.stringify(holder.state.value)
-  holder.state.writeTail = holder.state.writeTail.then(async () => {
-    await mkdir(dirname(path), { recursive: true })
-    const temporary = `${path}.${process.pid}.${Date.now()}.tmp`
-    await writeFile(temporary, snapshot, { encoding: 'utf8', mode: 0o600 })
-    await rename(temporary, path)
-  })
-  await holder.state.writeTail
-}
-
 export interface AttachmentBatchPosition {
   sessionId: string
   batchId: string
@@ -223,29 +318,35 @@ export async function rememberAttachmentRef(
   position?: AttachmentBatchPosition,
 ): Promise<void> {
   registerAttachmentRef(ref)
-  const holder = await ensureLoaded(ctx)
-  holder.state.value.refs[ref.attachmentId] = ref
+  await runMutation(ctx, (draft) => {
+    let changed = false
+    if (draft.refs[ref.attachmentId] === undefined) {
+      draft.refs[ref.attachmentId] = ref
+      changed = true
+    }
 
-  if (position !== undefined) {
-    const previous = holder.state.value.sessions[position.sessionId]
-    const history = previous?.history ?? []
-    const session: SessionRecord = previous?.batchId === position.batchId && previous.count === position.batchCount
-      ? previous
-      : {
-          batchId: position.batchId,
-          count: position.batchCount,
-          refs: {},
-          updatedAt: Date.now(),
-          history,
-        }
-    session.refs[String(position.batchIndex)] = ref.attachmentId
-    session.updatedAt = Date.now()
-    holder.state.value.sessions[position.sessionId] = session
-    trimOldest(holder.state.value.sessions, MAX_SESSIONS)
-  }
+    if (position !== undefined) {
+      const previous = draft.sessions[position.sessionId]
+      const history = previous?.history ?? []
+      const session: SessionRecord = previous?.batchId === position.batchId && previous.count === position.batchCount
+        ? previous
+        : {
+            batchId: position.batchId,
+            count: position.batchCount,
+            refs: emptyRecord(),
+            updatedAt: Date.now(),
+            history,
+          }
+      session.refs[String(position.batchIndex)] = ref.attachmentId
+      session.updatedAt = Date.now()
+      draft.sessions[position.sessionId] = session
+      trimOldest(draft.sessions, MAX_SESSIONS)
+      changed = true
+    }
 
-  trimRefs(holder.state.value)
-  await persist(holder)
+    trimRefs(draft)
+    return { result: undefined as void, changed }
+  })
 }
 
 /** Resolve a complete validated reference by content id, including after restart. */
@@ -282,24 +383,28 @@ export async function commitSessionAttachmentBatch(
   sessionId: string,
   batchId: string,
 ): Promise<boolean> {
-  const holder = await ensureLoaded(ctx)
-  const session = holder.state.value.sessions[sessionId]
-  if (session === undefined || session.batchId !== batchId || !isCompleteBatch(session)) return false
-  if (session.history.some(batch => batch.batchId === batchId)) return true
-  const committed: SessionBatch = {
-    batchId: session.batchId,
-    count: session.count,
-    refs: { ...session.refs },
-    updatedAt: Date.now(),
-  }
-  session.history.push(committed)
-  if (session.history.length > MAX_HISTORY_BATCHES) {
-    session.history.splice(0, session.history.length - MAX_HISTORY_BATCHES)
-  }
-  session.updatedAt = committed.updatedAt
-  trimRefs(holder.state.value)
-  await persist(holder)
-  return true
+  return runMutation(ctx, (draft) => {
+    const session = draft.sessions[sessionId]
+    if (session === undefined || session.batchId !== batchId || !isCompleteBatch(session)) {
+      return { result: false, changed: false }
+    }
+    if (session.history.some(batch => batch.batchId === batchId)) {
+      return { result: true, changed: false }
+    }
+    const committed: SessionBatch = {
+      batchId: session.batchId,
+      count: session.count,
+      refs: { ...session.refs },
+      updatedAt: Date.now(),
+    }
+    session.history.push(committed)
+    if (session.history.length > MAX_HISTORY_BATCHES) {
+      session.history.splice(0, session.history.length - MAX_HISTORY_BATCHES)
+    }
+    session.updatedAt = committed.updatedAt
+    trimRefs(draft)
+    return { result: true, changed: true }
+  })
 }
 
 /**
@@ -313,26 +418,26 @@ export async function discardSessionAttachmentBatch(
   sessionId: string,
   batchId: string,
 ): Promise<boolean> {
-  const holder = await ensureLoaded(ctx)
-  const session = holder.state.value.sessions[sessionId]
-  if (session === undefined || session.batchId !== batchId) return false
-  if (session.history.some(batch => batch.batchId === batchId)) return false
+  return runMutation(ctx, (draft) => {
+    const session = draft.sessions[sessionId]
+    if (session === undefined || session.batchId !== batchId) return { result: false, changed: false }
+    if (session.history.some(batch => batch.batchId === batchId)) return { result: false, changed: false }
 
-  const previous = session.history.at(-1)
-  if (previous === undefined) {
-    delete holder.state.value.sessions[sessionId]
-  } else {
-    holder.state.value.sessions[sessionId] = {
-      batchId: previous.batchId,
-      count: previous.count,
-      refs: { ...previous.refs },
-      updatedAt: previous.updatedAt,
-      history: session.history,
+    const previous = session.history.at(-1)
+    if (previous === undefined) {
+      delete draft.sessions[sessionId]
+    } else {
+      draft.sessions[sessionId] = {
+        batchId: previous.batchId,
+        count: previous.count,
+        refs: { ...previous.refs },
+        updatedAt: previous.updatedAt,
+        history: session.history,
+      }
     }
-  }
-  trimRefs(holder.state.value)
-  await persist(holder)
-  return true
+    trimRefs(draft)
+    return { result: true, changed: true }
+  })
 }
 
 /** Return bounded committed preview batches without exposing attachment ids. */

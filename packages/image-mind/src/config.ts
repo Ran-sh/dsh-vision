@@ -17,6 +17,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import type { CredentialRef } from '@deepseek-ai/dsh-credentials'
+import { isAbsolute } from 'node:path'
 import { isLoopbackHostname, validateProviderEndpoint } from './providers/endpoint-policy.ts'
 import { isValidProviderId } from './client/settings/identity.ts'
 
@@ -241,9 +242,14 @@ export function resolveConfig(config: Config): ResolvedConfig {
   }
   const allowLocalFiles = config.allowLocalFiles ?? DEFAULT_ALLOW_LOCAL_FILES
   const rawRoots = config.localFileRoots ?? DEFAULT_LOCAL_FILE_ROOTS
+  // Roots only carry authorization weight when local files are enabled. A
+  // stale relative/empty root in a deployment that disabled the capability is
+  // ignored (resolved to []), never a startup blocker; when the capability IS
+  // enabled every root must be a non-empty absolute path so the authorization
+  // scope never silently depends on the DSH process cwd.
   const localFileRoots = (allowLocalFiles ? rawRoots : []).map(root => {
     const trimmed = (root ?? '').trim()
-    if (trimmed.length === 0) {
+    if (trimmed.length === 0 || !isAbsolute(trimmed)) {
       throw new Error('image-mind: localFileRoots entries must be non-empty absolute paths')
     }
     return trimmed

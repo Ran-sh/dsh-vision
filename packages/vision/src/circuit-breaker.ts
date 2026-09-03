@@ -6,6 +6,7 @@
  */
 
 export type VisionCircuitState = 'closed' | 'open' | 'half-open'
+export type VisionCircuitAdmission = 'closed' | 'probe-ready' | 'blocked'
 
 export interface VisionCircuitSnapshot {
   state: VisionCircuitState
@@ -26,6 +27,8 @@ const DEFAULT_POLICY: VisionCircuitPolicy = {
 
 export interface VisionCircuitBreaker {
   snapshot(): VisionCircuitSnapshot
+  /** Side-effect-free admission query; `allow()` is the only mutating gate. */
+  admission(now?: number): VisionCircuitAdmission
   allow(now?: number): boolean
   recordSuccess(now?: number): void
   recordFailure(now?: number): void
@@ -66,6 +69,13 @@ export function createVisionCircuitBreaker(
     }
   }
 
+  function admission(now = Date.now()): VisionCircuitAdmission {
+    if (state === 'closed') return 'closed'
+    if (state === 'half-open') return 'blocked'
+    if (openedAt !== null && now >= openedAt + config.cooldownMs) return 'probe-ready'
+    return 'blocked'
+  }
+
   function allow(now = Date.now()): boolean {
     if (state === 'closed') return true
     // A half-open state means the one recovery probe is already admitted.
@@ -96,5 +106,5 @@ export function createVisionCircuitBreaker(
     }
   }
 
-  return { snapshot, allow, recordSuccess, recordFailure }
+  return { snapshot, admission, allow, recordSuccess, recordFailure }
 }
