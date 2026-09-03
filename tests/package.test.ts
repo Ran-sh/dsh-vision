@@ -255,10 +255,19 @@ describe('declared-minimum service dependency compose (R2C-4 semver/API identity
 })
 
 describe('release contract consistency (no manifest/lock/docs drift)', () => {
-  it('manifests, lockfile and release checklist agree on the candidate pair', () => {
+  it('lockfile root mirrors the private workspace root manifest', () => {
+    const rootPkg = readJson(resolve(ROOT, 'package.json'))
+    const rootLock = readJson(resolve(ROOT, 'package-lock.json'))
+    // The private workspace root keeps its own version; the lockfile must
+    // mirror it exactly (never drift to a package version).
+    expect(rootPkg['private']).toBe(true)
+    expect(rootLock['version']).toBe(rootPkg['version'])
+    expect(rootLock['packages']?.['']?.['version']).toBe(rootPkg['version'])
+  })
+
+  it('manifests, lockfile and release checklist agree on the public candidate pair', () => {
     const rootLock = readJson(resolve(ROOT, 'package-lock.json'))
     const checklist = readFileSync(resolve(ROOT, 'docs/release-checklist.md'), 'utf8')
-    expect(rootLock['version']).toBe('0.3.3')
     expect(rootLock['packages']?.['packages/vision']?.['version']).toBe('0.3.2')
     expect(rootLock['packages']?.['packages/image-mind']?.['version']).toBe('0.3.3')
     expect(rootLock['packages']?.['packages/image-mind']?.['dependencies']?.['@ran-sh/dsh-vision']).toBe('^0.3.2')

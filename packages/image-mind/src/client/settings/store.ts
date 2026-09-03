@@ -115,37 +115,37 @@ export function draftOf(id: string, record: Record<string, unknown> | undefined,
   }
 }
 
-/** Stable per-draft staging ref slots for a provider route. Two slots let a
- * committed staging ref be vacated by the next edit: the selector always picks
- * a slot that is NOT currently live, so a successful commit followed by a new
- * edit never overwrites a ref the committed settings still reference. */
-function stagingSlotA(id: string): string {
-  return `${deriveKeyRef(id)}_STAGING_A`
-}
-
-function stagingSlotB(id: string): string {
-  return `${deriveKeyRef(id)}_STAGING_B`
+/**
+ * Draft-stable staging ref prefix for a provider route. Unlike a fixed slot
+ * set, a unique ref generated per draft can never collide with a ref another
+ * committed provider already references: the generated ref is checked against
+ * `liveRefs ∪ usedRefs` before being accepted, and if no safe ref exists the
+ * save fails closed BEFORE any credential write.
+ */
+function stagingRefPrefix(id: string): string {
+  return `${deriveKeyRef(id)}_STAGING_`
 }
 
 /**
- * Pick a staging slot that is neither live (referenced by committed settings
- * or already claimed in this save) nor — when the draft already holds one —
- * churn to a new slot across retries. Prefer the draft's own slot when it is
- * still safe; otherwise flip to the other slot of the same provider pair.
+ * Generate a staging ref that is neither live (referenced by any committed
+ * provider) nor already claimed by this save. Reuses the draft's own ref when
+ * it is still safe (retry after a CAS conflict must not churn); otherwise
+ * generates a fresh unique one. Returns undefined when no safe ref can be
+ * produced — the caller must fail closed with zero credential side effects.
  */
 function pickNonLiveStagingRef(
   id: string,
   current: string | undefined,
   liveRefs: ReadonlySet<string>,
   usedRefs: ReadonlySet<string>,
-): string {
-  const slotA = stagingSlotA(id)
-  const slotB = stagingSlotB(id)
+): string | undefined {
   if (current !== undefined && !liveRefs.has(current) && !usedRefs.has(current)) return current
-  if (!liveRefs.has(slotA) && !usedRefs.has(slotA)) return slotA
-  if (!liveRefs.has(slotB) && !usedRefs.has(slotB)) return slotB
-  // Both slots are somehow claimed; the second is the least-bad orphan risk.
-  return slotB
+  const prefix = stagingRefPrefix(id)
+  for (let attempt = 0; attempt < 16; attempt += 1) {
+    const candidate = `${prefix}${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`
+    if (!liveRefs.has(candidate) && !usedRefs.has(candidate)) return candidate
+  }
+  return undefined
 }
 
 /** One provider record as stored (loose, from the wire view). */
@@ -570,14 +570,21 @@ export class ImageMindSettingsStore {
       if (draft.apiKeyText.length === 0 || /^\*+$/.test(draft.apiKeyText)) continue
       const explicitEnv = draft.apiKeyEnv.trim()
       const baseRef = explicitEnv.length > 0 ? explicitEnv : deriveKeyRef(id)
-      const settingsRef = liveRefs.has(baseRef) || usedRefs.has(baseRef)
-        ? pickNonLiveStagingRef(id, draft.stagingRef, liveRefs, usedRefs)
-        : baseRef
-      // Remember the chosen slot on the draft so a retry after a CAS conflict
-      // reuses the exact same (still non-live) staging ref instead of churning.
-      if (settingsRef !== draft.stagingRef) this.draft.set(id, { ...draft, stagingRef: settingsRef })
-      usedRefs.add(settingsRef)
-      writes.push({ id, ref: settingsRef, value: draft.apiKeyText, settingsRef })
+      if (liveRefs.has(baseRef) || usedRefs.has(baseRef)) {
+        const staged = pickNonLiveStagingRef(id, draft.stagingRef, liveRefs, usedRefs)
+        // Fail closed: no safe (non-live, non-claimed) staging ref exists.
+        // Returning an unsafe ref would overwrite a live credential before the
+        // settings CAS could reject the change — a write must never happen.
+        if (staged === undefined) {
+          throw new Error('image-mind: no safe staging credential reference is available; the save was refused before any credential write')
+        }
+        if (staged !== draft.stagingRef) this.draft.set(id, { ...draft, stagingRef: staged })
+        usedRefs.add(staged)
+        writes.push({ id, ref: staged, value: draft.apiKeyText, settingsRef: staged })
+        continue
+      }
+      usedRefs.add(baseRef)
+      writes.push({ id, ref: baseRef, value: draft.apiKeyText, settingsRef: baseRef })
     }
     return writes
   }
@@ -600,14 +607,18 @@ export class ImageMindSettingsStore {
       this.publish()
       return
     }
-    const ops = this.planOps()
-    const credentialWrites = this.pendingCredentialWrites()
-    if (ops.length === 0 && credentialWrites.length === 0) return
     this.saving = true
     this.failed = false
     this.failedReason = undefined
     this.publish()
     try {
+      // Plan inside the try: planOps/stagedCredentialPlan can fail closed
+      // (e.g. no safe staging ref) BEFORE any credential write, and that must
+      // surface as a failed save with drafts retained, not as an uncaught
+      // rejection that leaves the card in a half-state.
+      const ops = this.planOps()
+      const credentialWrites = this.pendingCredentialWrites()
+      if (ops.length === 0 && credentialWrites.length === 0) return
       // Phase 1 — credentials. A failure here leaves settings untouched.
       for (const write of credentialWrites) {
         await setCredentialOfficial(this.ctx, write.ref, write.value)

@@ -429,7 +429,7 @@ describe('ImageMindSettingsStore staged credential refs (R2C-3)', () => {
     expect(plan).toHaveLength(1)
     // The write targets a STAGING ref, not the live SEC_REF.
     expect(plan[0].ref).not.toBe('SEC_REF')
-    expect(plan[0].ref).toMatch(/_STAGING_[AB]$/)
+    expect(plan[0].ref).toMatch(/_STAGING_[0-9a-f]{12}$/)
 
     // Simulate a CAS conflict: the settings mutate throws.
     fake.failNextMutate()
@@ -543,7 +543,7 @@ describe('ImageMindSettingsStore dual-slot staging closure (R2C-3 v2)', () => {
     store.editProvider('sec', 'baseURL', 'https://api.b.example/v1')
     store.editProvider('sec', 'apiKeyText', 'keyB')
     const firstRef = store.stagedCredentialPlan()[0].ref
-    expect(firstRef).toMatch(/_STAGING_[AB]$/)
+    expect(firstRef).toMatch(/_STAGING_[0-9a-f]{12}$/)
     await store.save()
     expect(store.store.getSnapshot().shell.failed).toBe(false)
     expect(storedProvider(fake.view, 'sec')?.['apiKeyEnv']).toBe(firstRef)
@@ -555,7 +555,7 @@ describe('ImageMindSettingsStore dual-slot staging closure (R2C-3 v2)', () => {
     store.editProvider('sec', 'apiKeyText', 'keyC')
     const secondRef = store.stagedCredentialPlan()[0].ref
     expect(secondRef).not.toBe(firstRef)
-    expect(secondRef).toMatch(/_STAGING_[AB]$/)
+    expect(secondRef).toMatch(/_STAGING_[0-9a-f]{12}$/)
     fake.failNextMutate()
     await store.save()
     expect(store.store.getSnapshot().shell.failed).toBe(true)
@@ -583,7 +583,7 @@ describe('ImageMindSettingsStore dual-slot staging closure (R2C-3 v2)', () => {
     const plan = store.stagedCredentialPlan()
     // B's write must NOT overwrite the live SHARED_REF.
     expect(plan[0].ref).not.toBe('SHARED_REF')
-    expect(plan[0].ref).toMatch(/_STAGING_[AB]$/)
+    expect(plan[0].ref).toMatch(/_STAGING_[0-9a-f]{12}$/)
     fake.failNextMutate()
     await store.save()
     expect(store.store.getSnapshot().shell.failed).toBe(true)
@@ -609,5 +609,64 @@ describe('ImageMindSettingsStore dual-slot staging closure (R2C-3 v2)', () => {
     // same ref is reused (no orphan churn).
     const second = store.stagedCredentialPlan()[0].ref
     expect(second).toBe(first)
+  })
+})
+
+describe('ImageMindSettingsStore staging saturation fail-closed (R2C-3 v3)', () => {
+  it('refuses the save (zero credential writes) when no safe staging ref exists', async () => {
+    // Deterministic saturation: force every generated staging candidate to
+    // collide with a committed ref so pickNonLiveStagingRef exhausts all 16
+    // attempts and must fail closed.
+    const originalUUID = crypto.randomUUID.bind(crypto)
+    vi.spyOn(crypto, 'randomUUID').mockReturnValue('00000000000000000000000000000000' as never)
+    try {
+      const providers: Record<string, unknown> = {
+        // SEC_REF is live; SEC_API_KEY_STAGING_000000000000 is also live.
+        'sec': { baseURL: 'https://api.a.example/v1', model: 'm1', apiKeyEnv: 'SEC_REF' },
+        'poison': { baseURL: 'https://p.example/v1', model: 'm1', apiKeyEnv: 'SEC_API_KEY_STAGING_000000000000' },
+      }
+      const fake = fakeConnection({ providers })
+      fake.credentialStore.set('SEC_REF', 'keyA')
+      const store = new ImageMindSettingsStore(fake.connection)
+      await store.load()
+
+      store.editProvider('sec', 'apiKeyText', 'keyB')
+      const before = new Map(fake.credentialStore)
+      await store.save()
+      expect(store.store.getSnapshot().shell.failed).toBe(true)
+      // Zero credential writes happened; committed settings untouched.
+      expect([...fake.credentialStore.entries()]).toEqual([...before.entries()])
+      expect(storedProvider(fake.view, 'sec')?.['apiKeyEnv']).toBe('SEC_REF')
+    } finally {
+      vi.restoreAllMocks()
+      void originalUUID
+    }
+  })
+
+  it('same-save saturation: two typed-key drafts never alias to one ref', async () => {
+    const fake = fakeConnection({
+      providers: {
+        'a': { baseURL: 'https://api.a.example/v1', model: 'm1', apiKeyEnv: 'A_REF' },
+        'b': { baseURL: 'https://api.b.example/v1', model: 'm1', apiKeyEnv: 'B_REF' },
+      },
+      active: 'a',
+    })
+    fake.credentialStore.set('A_REF', 'keyA')
+    fake.credentialStore.set('B_REF', 'keyB')
+    const store = new ImageMindSettingsStore(fake.connection)
+    await store.load()
+
+    // Both providers get typed keys targeting live refs -> both need staging.
+    store.editProvider('a', 'apiKeyText', 'keyA2')
+    store.editProvider('b', 'apiKeyText', 'keyB2')
+    const plan = store.stagedCredentialPlan()
+    expect(plan).toHaveLength(2)
+    const refs = plan.map(p => p.ref)
+    expect(refs[0]).not.toBe(refs[1])
+    expect(refs[0]).toMatch(/_STAGING_/)
+    expect(refs[1]).toMatch(/_STAGING_/)
+    // The live originals are never targets.
+    expect(refs).not.toContain('A_REF')
+    expect(refs).not.toContain('B_REF')
   })
 })
