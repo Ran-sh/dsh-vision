@@ -22,6 +22,9 @@ is independent of DeepSeek and follows SemVer for its 0.x line.
 - Send-hook wrappers self-disable on dispose so stale chains held by later
   plugins become transparent trampolines.
 - Local-file roots must be absolute when the capability is enabled.
+- The rc.1 settings-card scope now injects every service it reads and resolves
+  settings/credential faces through guarded context lookups, so a missing
+  Cordis getter degrades to unavailable instead of crashing the card.
 
 ## [0.3.2] — dependency alignment
 

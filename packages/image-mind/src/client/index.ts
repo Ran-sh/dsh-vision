@@ -33,6 +33,9 @@ export const inject = ['conversation', 'slots', 'locale', 'sessions', 'settingsS
 
 export const NS = 'image-mind'
 
+/** Services required by the scoped settings-card controller. */
+export const SETTINGS_CARD_SERVICES = ['slots', 'remote', 'settingsScope'] as const
+
 let previewToggle = true
 
 export function getPreviewToggle(): boolean {
@@ -84,7 +87,11 @@ export function apply(ctx: Context): void {
     }, 'dsh-plugin-image-mind: committed conversation image preview')
   })
 
-  ctx.inject(['slots'], (slotsCtx: Context) => {
+  // The controller reads the settings scope and the credential face off the
+  // injected context, so this scope must carry both services (a cordis service
+  // that was not injected throws on property access instead of returning
+  // undefined — the card must never render in a half-injected state).
+  ctx.inject(SETTINGS_CARD_SERVICES, (slotsCtx: Context) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const slots = (slotsCtx as any).slots
     const controller = new ImageMindSettingsCardController(slotsCtx)
