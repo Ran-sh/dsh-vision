@@ -3,7 +3,7 @@
  * @vitest-environment node
  */
 
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { SETTINGS_CARD_SERVICES } from '../src/client/index.ts'
 import { ImageMindSettingsCardController } from '../src/client/settings-card.tsx'
 import {
@@ -111,5 +111,29 @@ describe('settings-scope resolution', () => {
       expect(controller.inject().hooks.imageMindSettingsCard.getSnapshot().transport).toBe('unavailable')
       controller.dispose()
     }).not.toThrow()
+  })
+
+  it('keeps the official controller path and binds its scope exactly once', () => {
+    const scope = {
+      getSnapshot: () => ({
+        status: 'ready' as const,
+        value: {},
+        base: undefined,
+        user: {},
+        revision: 1,
+        writable: true,
+      }),
+      subscribe: () => () => {},
+      mutate: async () => {},
+    }
+    const bind = vi.fn(() => scope)
+    const ctx = {
+      get: (service: string) => service === 'settingsScope' ? { bind } : undefined,
+    } as ImageMindClientContext
+
+    const controller = new ImageMindSettingsCardController(ctx as never)
+    expect(controller.inject().hooks.imageMindSettingsCard.getSnapshot().transport).toBe('official')
+    expect(bind).toHaveBeenCalledTimes(1)
+    controller.dispose()
   })
 })
