@@ -185,13 +185,16 @@ export class ImageMindSettingsStore {
   private readonly disposeScope: (() => void) | undefined
   private disposed = false
 
-  constructor(private readonly ctx: ImageMindClientContext) {
+  constructor(
+    private readonly ctx: ImageMindClientContext,
+    scope: SettingsScope<Record<string, unknown>> | undefined = resolveScope(ctx),
+  ) {
     this.store = createSnapshotStore(this.projection())
     // Bind the scope ONCE and treat it as an observable mirror, never as a
     // request/response getter: its first snapshot may be `loading`, and the
     // card must follow it into `ready` (and subsequent document/reconnect
     // changes) via subscribe — exactly like the official rc.1 controllers.
-    this.scope = resolveScope(ctx)
+    this.scope = scope
     if (this.scope === undefined) {
       this.view = { status: 'unavailable', value: undefined, base: undefined, user: undefined, revision: undefined, writable: false, mode: 'legacy' }
       this.publish()

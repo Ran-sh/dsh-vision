@@ -39,6 +39,7 @@ import {
   ImageMindSettingsStore, isValidProviderId, connectionFingerprint,
   type ProviderCardState, type ProviderDraft,
 } from './settings/store.ts'
+import { resolveScope, type ImageMindClientContext } from './settings/transport.ts'
 
 /** The whole image-mind card state the renderer consumes. */
 export interface ImageMindSettingsCardState {
@@ -79,8 +80,8 @@ export class ImageMindSettingsCardController {
 
   /** @param ctx - the slots-injected client context (carries the settings scope). */
   constructor(ctx: Context) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const settingsScope = (ctx as any).settingsScope ?? (ctx as any).get?.('settingsScope')
+    const clientContext = ctx as unknown as ImageMindClientContext
+    const settingsScope = resolveScope(clientContext)
     this.store = createSnapshotStore<ImageMindSettingsCardState>({
       shell: { available: false, exposed: false, writable: false, dirty: false, invalid: false, saving: false, failed: false },
       providers: [],
@@ -92,7 +93,7 @@ export class ImageMindSettingsCardController {
       transport: settingsScope !== undefined ? 'official' : 'unavailable',
     })
     this.host = settingsScope !== undefined
-      ? new ImageMindSettingsStore(ctx as unknown as import('./settings/transport.ts').ImageMindClientContext)
+      ? new ImageMindSettingsStore(clientContext, settingsScope)
       : undefined
     if (this.host !== undefined) {
       this.unsubscribeHost = this.host.store.subscribe(() => {

@@ -3,8 +3,9 @@
  * @vitest-environment node
  */
 
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { SETTINGS_CARD_SERVICES } from '../src/client/index.ts'
+import { ImageMindSettingsCardController } from '../src/client/settings-card.tsx'
 import {
   resolveCredentials,
   resolveScope,
@@ -81,5 +82,58 @@ describe('settings-scope resolution', () => {
     } as ImageMindClientContext
 
     expect(resolveScope(ctx)).toBeUndefined()
+  })
+
+  it('keeps the settings controller unavailable instead of throwing on an unbound getter', () => {
+    const ctx = {
+      get: () => undefined,
+      get settingsScope(): never {
+        throw new Error('service settingsScope is not injected')
+      },
+    } as ImageMindClientContext
+
+    expect(() => {
+      const controller = new ImageMindSettingsCardController(ctx as never)
+      expect(controller.inject().hooks.imageMindSettingsCard.getSnapshot().transport).toBe('unavailable')
+      controller.dispose()
+    }).not.toThrow()
+  })
+
+  it('keeps the settings controller unavailable when scope binding fails', () => {
+    const ctx = {
+      get: () => ({
+        bind: () => { throw new Error('settings scope bind failed') },
+      }),
+    } as ImageMindClientContext
+
+    expect(() => {
+      const controller = new ImageMindSettingsCardController(ctx as never)
+      expect(controller.inject().hooks.imageMindSettingsCard.getSnapshot().transport).toBe('unavailable')
+      controller.dispose()
+    }).not.toThrow()
+  })
+
+  it('keeps the official controller path and binds its scope exactly once', () => {
+    const scope = {
+      getSnapshot: () => ({
+        status: 'ready' as const,
+        value: {},
+        base: undefined,
+        user: {},
+        revision: 1,
+        writable: true,
+      }),
+      subscribe: () => () => {},
+      mutate: async () => {},
+    }
+    const bind = vi.fn(() => scope)
+    const ctx = {
+      get: (service: string) => service === 'settingsScope' ? { bind } : undefined,
+    } as ImageMindClientContext
+
+    const controller = new ImageMindSettingsCardController(ctx as never)
+    expect(controller.inject().hooks.imageMindSettingsCard.getSnapshot().transport).toBe('official')
+    expect(bind).toHaveBeenCalledTimes(1)
+    controller.dispose()
   })
 })
