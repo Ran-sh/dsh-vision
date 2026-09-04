@@ -93,7 +93,7 @@ export class ImageMindSettingsCardController {
       transport: settingsScope !== undefined ? 'official' : 'unavailable',
     })
     this.host = settingsScope !== undefined
-      ? new ImageMindSettingsStore(clientContext)
+      ? new ImageMindSettingsStore(clientContext, settingsScope)
       : undefined
     if (this.host !== undefined) {
       this.unsubscribeHost = this.host.store.subscribe(() => {
