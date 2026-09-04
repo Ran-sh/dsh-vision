@@ -5,6 +5,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { SETTINGS_CARD_SERVICES } from '../src/client/index.ts'
+import { ImageMindSettingsCardController } from '../src/client/settings-card.tsx'
 import {
   resolveCredentials,
   resolveScope,
@@ -81,5 +82,34 @@ describe('settings-scope resolution', () => {
     } as ImageMindClientContext
 
     expect(resolveScope(ctx)).toBeUndefined()
+  })
+
+  it('keeps the settings controller unavailable instead of throwing on an unbound getter', () => {
+    const ctx = {
+      get: () => undefined,
+      get settingsScope(): never {
+        throw new Error('service settingsScope is not injected')
+      },
+    } as ImageMindClientContext
+
+    expect(() => {
+      const controller = new ImageMindSettingsCardController(ctx as never)
+      expect(controller.inject().hooks.imageMindSettingsCard.getSnapshot().transport).toBe('unavailable')
+      controller.dispose()
+    }).not.toThrow()
+  })
+
+  it('keeps the settings controller unavailable when scope binding fails', () => {
+    const ctx = {
+      get: () => ({
+        bind: () => { throw new Error('settings scope bind failed') },
+      }),
+    } as ImageMindClientContext
+
+    expect(() => {
+      const controller = new ImageMindSettingsCardController(ctx as never)
+      expect(controller.inject().hooks.imageMindSettingsCard.getSnapshot().transport).toBe('unavailable')
+      controller.dispose()
+    }).not.toThrow()
   })
 })
