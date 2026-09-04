@@ -56,21 +56,30 @@ export interface ImageMindClientContext {
 /** Resolve the bound settings scope for the image-mind namespace. */
 export function resolveScope(ctx: ImageMindClientContext): SettingsScope<Record<string, unknown>> | undefined {
   try {
-    const direct = ctx.settingsScope?.bind<Record<string, unknown>>({ namespace: VISION_NAMESPACE })
-    if (direct !== undefined) return direct
     const viaGet = (ctx.get?.('settingsScope') as { bind<T>(spec: { namespace: string }): SettingsScope<T> } | undefined)
       ?.bind<Record<string, unknown>>({ namespace: VISION_NAMESPACE })
-    return viaGet
+    if (viaGet !== undefined) return viaGet
+    return ctx.settingsScope?.bind<Record<string, unknown>>({ namespace: VISION_NAMESPACE })
   } catch {
     return undefined
   }
 }
 
-/** Resolve the alpha remote credentials face. */
+/** Resolve the rc.1 remote credentials face. The cordis `remote` service is an
+ * injected getter: touching `ctx.remote` without the injection throws instead
+ * of returning undefined, so every access must be guarded — the card must
+ * degrade to "credentials unavailable" (settings stay editable, keys just
+ * cannot be stored) rather than crash a save. */
 export function resolveCredentials(ctx: ImageMindClientContext): RemoteCredentials | undefined {
-  const direct = ctx.remote?.credentials
-  if (direct !== undefined) return direct
-  return (ctx.get?.('remote') as RemoteFace | undefined)?.credentials
+  try {
+    // The `get` path is a plain lookup and never throws; prefer it.
+    const viaGet = (ctx.get?.('remote') as RemoteFace | undefined)?.credentials
+    if (viaGet !== undefined) return viaGet
+    const direct = ctx.remote?.credentials
+    return direct
+  } catch {
+    return undefined
+  }
 }
 
 /** Whether the alpha settings scope is live for this context. */
