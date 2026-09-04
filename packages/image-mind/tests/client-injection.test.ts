@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest'
 import { SETTINGS_CARD_SERVICES } from '../src/client/index.ts'
 import {
   resolveCredentials,
+  resolveScope,
   type ImageMindClientContext,
   type RemoteCredentials,
 } from '../src/client/settings/transport.ts'
@@ -53,5 +54,32 @@ describe('credential-face resolution', () => {
     const ctx: ImageMindClientContext = { remote: { credentials } }
 
     expect(resolveCredentials(ctx)).toBe(credentials)
+  })
+})
+
+describe('settings-scope resolution', () => {
+  it('prefers the non-throwing context lookup over the injected getter', () => {
+    const scope = {}
+    const ctx = {
+      get: (service: string) => service === 'settingsScope'
+        ? { bind: () => scope }
+        : undefined,
+      get settingsScope(): never {
+        throw new Error('service settingsScope is not injected')
+      },
+    } as ImageMindClientContext
+
+    expect(resolveScope(ctx)).toBe(scope)
+  })
+
+  it('degrades to unavailable when an unbound injected getter throws', () => {
+    const ctx = {
+      get: () => undefined,
+      get settingsScope(): never {
+        throw new Error('service settingsScope is not injected')
+      },
+    } as ImageMindClientContext
+
+    expect(resolveScope(ctx)).toBeUndefined()
   })
 })
